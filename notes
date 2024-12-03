@@ -1,0 +1,6 @@
+build docker images: yaws, nginx
+test scaphandre in a docker image (tested erlang lists:sum ...) 
+    => working (got beam.smp)
+create a script to send N number of requests to the server and the server should
+    respond.
+measure the energy for each server.
