@@ -4,3 +4,15 @@ test scaphandre in a docker image (tested erlang lists:sum ...)
 create a script to send N number of requests to the server and the server should
     respond.
 measure the energy for each server.
+
+To build the docker image:
+sudo docker build -t nginx-server .
+
+To start a server in a docker:
+sudo docker run -d -p 8000:80 nginx-server
+
+To start scaphandre in docker for quick testing:
+ sudo docker run --privileged -v /sys/class/powercap:/sys/class/powercap -v /proc:/proc -ti hubblo/scaphandre stdout -t 15
+
+ sudo docker run --privileged -v /sys/class/powercap:/sys/class/powercap -v /proc:/proc -ti hubblo/scaphandre json -f testyaw.json
+
