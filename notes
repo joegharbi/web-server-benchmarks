@@ -5,6 +5,10 @@ create a script to send N number of requests to the server and the server should
     respond.
 measure the energy for each server.
 
+-----------------------
+Match the configs: base image...
+----------------------
+
 To build the docker image:
 sudo docker build -t nginx-server .
 
@@ -16,3 +20,5 @@ To start scaphandre in docker for quick testing:
 
  sudo docker run --privileged -v /sys/class/powercap:/sys/class/powercap -v /proc:/proc -ti hubblo/scaphandre json -f testyaw.json
 
+To delete all docker images: 
+ sudo docker rmi -f $(sudo docker images -a -q)

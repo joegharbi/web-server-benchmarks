@@ -3,6 +3,8 @@ FROM nginx:latest
 # Copy the custom Nginx configuration file (create this later)
 COPY nginx.conf /etc/nginx/nginx.conf
 
+COPY index.html /usr/share/nginx/html
+
 # Expose the port that Nginx will use
 EXPOSE 80
 

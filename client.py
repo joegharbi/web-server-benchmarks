@@ -27,7 +27,11 @@ def main():
     print(f"Sending {n} requests to {url}...")
 
     # Use ThreadPoolExecutor for concurrency
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    # If you don't provide a value for max_workers, 
+    # the default behavior is to use a value equal to the number of processors
+    # on the machine, multiplied by 5. This default is determined by os.cpu_count().
+    # with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor as executor:
         futures = [executor.submit(send_request, url) for _ in range(n)]
         for _ in futures:
             _.result()  # Wait for all requests to complete
