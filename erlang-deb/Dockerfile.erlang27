@@ -1,0 +1,37 @@
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    libncurses5-dev \
+    libssl-dev \
+    autoconf \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+RUN curl -L --http1.1 https://github.com/erlang/otp/releases/download/OTP-27.0.1/otp_src_27.0.1.tar.gz -o erlang.tar.gz && \
+    tar -xzf erlang.tar.gz && \
+    cd otp_src_27.0.1 && \
+    ./configure && \
+    make && make install && \
+    cd .. && rm -rf erlang.tar.gz otp_src_27.0.1
+
+WORKDIR /app
+
+RUN echo '-module(hello).' > /app/hello.erl && \
+    echo '-export([main/1]).' >> /app/hello.erl && \
+    echo 'main(_Args) ->' >> /app/hello.erl && \
+    echo '    {ok, Sock} = gen_tcp:listen(8080, [{reuseaddr, true}]),' >> /app/hello.erl && \
+    echo '    accept_loop(Sock).' >> /app/hello.erl && \
+    echo 'accept_loop(Sock) ->' >> /app/hello.erl && \
+    echo '    {ok, Conn} = gen_tcp:accept(Sock),' >> /app/hello.erl && \
+    echo '    spawn(fun() -> handle(Conn) end),' >> /app/hello.erl && \
+    echo '    accept_loop(Sock).' >> /app/hello.erl && \
+    echo 'handle(Conn) ->' >> /app/hello.erl && \
+    echo '    gen_tcp:send(Conn, <<"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello, World!">>),' >> /app/hello.erl && \
+    echo '    gen_tcp:close(Conn).' >> /app/hello.erl
+
+RUN erlc -o /app /app/hello.erl
+
+EXPOSE 8080
+
+CMD ["erl", "-pa", "/app", "-noshell", "-run", "hello", "main", "start"]

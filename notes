@@ -18,7 +18,13 @@ sudo docker run -d -p 8000:80 nginx-server
 To start scaphandre in docker for quick testing:
  sudo docker run --privileged -v /sys/class/powercap:/sys/class/powercap -v /proc:/proc -ti hubblo/scaphandre stdout -t 15
 
- sudo docker run --privileged -v /sys/class/powercap:/sys/class/powercap -v /proc:/proc -ti hubblo/scaphandre json -f testyaw.json
+ sudo docker run --privileged -v /sys/class/powercap:/sys/class/powercap -v /proc:/proc -ti hubblo/scaphandre json -f test.json
 
 To delete all docker images: 
  sudo docker rmi -f $(sudo docker images -a -q)
+
+
+
+# sudo docker build -t yaws-server -f Dockerfile.yaws .
+# sudo docker run -d --name yaws-container -p 8001:80 yaws-server
+# sudo scaphandre json --containers -f nginx10k80k-test.json

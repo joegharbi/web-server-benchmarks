@@ -1,0 +1,42 @@
+# Use the official Elixir image
+FROM elixir:latest
+
+# Set working directory in the container
+WORKDIR /app
+
+# Install Hex and Rebar (Elixir's build tools)
+RUN mix local.hex --force && mix local.rebar --force
+
+# Create a new Elixir project
+RUN mix new cowboy_web_server --module CowboyWebServer
+
+# Set working directory to the newly created project
+WORKDIR /app/cowboy_web_server
+
+# Manually update mix.exs to add Cowboy dependency
+RUN sed -i "/defp deps do/a \
+  \ \ \ \ {:cowboy, \"~> 2.9\"}" mix.exs
+
+# Install dependencies (this will fetch Cowboy and any other dependencies)
+RUN mix deps.get
+
+RUN ls -al /app/cowboy_web_server/deps
+
+
+# Compile the dependencies
+# RUN mix compile
+RUN mix do clean, deps.get, compile
+
+
+# Ensure the app is set up correctly by adding the Cowboy handler
+RUN echo 'defmodule CowboyWebServer do\n  use Cowboy.Handler\n\n  def init(req, _opts) do\n    {:ok, req}\n  end\n\n  def handle(req, _opts) do\n    {:ok, req, "Hello, Cowboy!"}\n  end\n\n  def start(_type, _args) do\n    {:ok, _} = Cowboy.start_http(:http, 4000, [], [])\n    IO.puts("Cowboy web server running on port 4000!")\n    :ok\n  end\nend' > lib/cowboy_web_server.ex
+
+# Add the application start function in mix.exs
+RUN sed -i '/def application do/a \
+  \ \ \ \ [\n\ \ \ \ \ \ \ \ extra_applications: [:logger],\n\ \ \ \ \ \ \ \ mod: {CowboyWebServer, []}\n\ \ \ \ ]' mix.exs
+
+# Expose port 4000 for the web server
+EXPOSE 4000
+
+# Run the Cowboy web server when the container starts
+CMD ["mix", "run", "--no-halt"]

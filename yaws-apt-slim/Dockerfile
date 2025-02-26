@@ -4,7 +4,7 @@ FROM debian:bullseye-slim
 # Install dependencies
 RUN apt-get update && apt-get install -y \
     yaws\
-sudo
+    sudo
 
 # Create the necessary directory for Yaws docroot
 RUN mkdir -p /var/yaws/www
@@ -24,4 +24,4 @@ EXPOSE 80
 # Start Yaws
 # CMD ["yaws", "--interactive", "--conf", "/usr/local/etc/yaws/yaws.conf"]
 # CMD ["yaws", "-sname", "yaws_node", "-setcookie", "yaws_cookie"]
-CMD ["yaws" ,"-i"]
+CMD ["yaws"]

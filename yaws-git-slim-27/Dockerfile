@@ -40,4 +40,5 @@ EXPOSE 80
 
 # Start Yaws
 # CMD ["yaws", "--interactive", "--conf", "/usr/local/etc/yaws/yaws.conf"]
-CMD ["yaws" ,"-i"]
+# CMD ["yaws" ,"-i"]
+CMD ["yaws", "--conf", "/usr/local/etc/yaws/yaws.conf"]
