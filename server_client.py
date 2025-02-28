@@ -40,23 +40,21 @@ def send_request(url, request_num):
 
 def cleanup_existing_container(container_name, docker_path):
     """Check and stop/remove any existing container with the given name."""
-    # Check if container is running
     try:
         result = subprocess.run(["sudo", docker_path, "ps", "-q", "-f", f"name={container_name}"], capture_output=True, text=True, check=True)
-        if result.stdout.strip():  # Container is running
+        if result.stdout.strip():
             print(f"Stopping running container: {container_name}")
             subprocess.run(["sudo", docker_path, "stop", container_name], check=True)
             print(f"Removing stopped container: {container_name}")
             subprocess.run(["sudo", docker_path, "rm", container_name], check=True)
     except subprocess.CalledProcessError:
-        pass  # Ignore if no running container found
+        pass
     
-    # Remove any stopped/exited container
     try:
         subprocess.run(["sudo", docker_path, "rm", "-f", container_name], check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         print(f"Removed any existing container: {container_name}")
     except subprocess.CalledProcessError:
-        pass  # Ignore if container doesn't exist
+        pass
 
 def cleanup_existing_scaphandre():
     """Kill any existing scaphandre processes."""
@@ -118,8 +116,22 @@ def stop_scaphandre(scaphandre_process):
     except subprocess.CalledProcessError:
         print("No additional scaphandre processes found to kill")
 
+def check_container_health(url, retries=5, delay=2):
+    """Check if the container is responsive by sending a test request."""
+    for i in range(retries):
+        try:
+            response = requests.get(url, timeout=5)
+            if response.status_code == 200:
+                print(f"Container health check passed: {url} responded with status 200")
+                return True
+        except requests.exceptions.RequestException as e:
+            print(f"Health check attempt {i+1}/{retries} failed: {e}")
+            time.sleep(delay)
+    print(f"Container health check failed after {retries} attempts")
+    return False
+
 def start_server_container(server_image, detach_mode, port_mapping, server_params, container_name, docker_path):
-    cleanup_existing_container(container_name, docker_path)  # Clean up before starting
+    cleanup_existing_container(container_name, docker_path)
     server_command = ["sudo", docker_path, "run", detach_mode, "--name", container_name, "-p", port_mapping] + server_params + [server_image]
     server_process = subprocess.Popen(server_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     stdout, stderr = server_process.communicate()
@@ -248,7 +260,6 @@ def main():
 
     container_name = args.container_name if args.container_name else args.server_image
 
-    # Clean up any existing scaphandre processes before starting
     cleanup_existing_scaphandre()
 
     print("Starting container...")
@@ -256,7 +267,14 @@ def main():
         start_server_container(args.server_image, args.detach_mode, args.port_mapping, args.server_params, container_name, docker_path)
     except RuntimeError as e:
         print(f"Container startup failed: {e}")
-        return  # Exit if container fails to start
+        return
+
+    # Health check after container starts
+    print(f"Checking container health at {url}...")
+    if not check_container_health(url):
+        print("Container failed health check, stopping and exiting...")
+        stop_server_container(container_name, docker_path)
+        return
 
     print("Starting Scaphandre...")
     try:
