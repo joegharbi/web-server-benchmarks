@@ -26,49 +26,117 @@ def get_binary_path(binary_name):
 def send_request(url, request_num):
     """Send an HTTP request and track progress."""
     try:
-        response = requests.get(url)
+        response = requests.get(url, timeout=5)
         if 200 <= response.status_code < 300:
             results_counter['success'] += 1
         else:
             results_counter['failure'] += 1
             print(f"Request {request_num} failed: {response.status_code}, Response: {response.text}")
-        results_counter['total'] += 1
     except requests.exceptions.RequestException as e:
         results_counter['failure'] += 1
-        results_counter['total'] += 1
         print(f"Request {request_num} exception: {e}")
+    finally:
+        results_counter['total'] += 1
 
-def start_scaphandre(output_json, scaphandre_path):
+def cleanup_existing_container(container_name, docker_path):
+    """Check and stop/remove any existing container with the given name."""
+    # Check if container is running
+    try:
+        result = subprocess.run(["sudo", docker_path, "ps", "-q", "-f", f"name={container_name}"], capture_output=True, text=True, check=True)
+        if result.stdout.strip():  # Container is running
+            print(f"Stopping running container: {container_name}")
+            subprocess.run(["sudo", docker_path, "stop", container_name], check=True)
+            print(f"Removing stopped container: {container_name}")
+            subprocess.run(["sudo", docker_path, "rm", container_name], check=True)
+    except subprocess.CalledProcessError:
+        pass  # Ignore if no running container found
+    
+    # Remove any stopped/exited container
+    try:
+        subprocess.run(["sudo", docker_path, "rm", "-f", container_name], check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        print(f"Removed any existing container: {container_name}")
+    except subprocess.CalledProcessError:
+        pass  # Ignore if container doesn't exist
+
+def cleanup_existing_scaphandre():
+    """Kill any existing scaphandre processes."""
+    try:
+        subprocess.run(["sudo", "pkill", "-9", "scaphandre"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        print("Killed existing scaphandre processes")
+    except subprocess.CalledProcessError:
+        print("No existing scaphandre processes found to kill")
+
+def start_scaphandre(output_json, scaphandre_path, step=None, step_nano=None, max_top_consumers=None):
     os.makedirs("output", exist_ok=True)
     scaphandre_command = ["sudo", scaphandre_path, "json", "--containers", "-f", output_json]
+    
+    if step is not None:
+        if step < 0:
+            raise ValueError(f"Step {step} seconds must be non-negative")
+        scaphandre_command.extend(["--step", str(step)])
+    
+    if step_nano is not None:
+        if step_nano < 100000:
+            raise ValueError(f"Step-nano {step_nano} ns is too small; must be at least 100,000 ns (~100 µs) when specified")
+        if step_nano < 0:
+            raise ValueError(f"Step-nano {step_nano} nanoseconds must be non-negative")
+        if step is None:
+            scaphandre_command.extend(["--step", "0"])
+        scaphandre_command.extend(["--step-nano", str(step_nano)])
+    
+    if max_top_consumers is not None:
+        if max_top_consumers <= 0:
+            raise ValueError(f"Max-top-consumers {max_top_consumers} must be a positive integer")
+        scaphandre_command.extend(["--max-top-consumers", str(max_top_consumers)])
+    
     scaphandre_process = subprocess.Popen(scaphandre_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     time.sleep(5)
+    if scaphandre_process.poll() is not None:
+        stdout, stderr = scaphandre_process.communicate()
+        if stdout:
+            print(f"Scaphandre stdout: {stdout}")
+        if stderr:
+            print(f"Scaphandre stderr: {stderr}")
+        raise RuntimeError("Scaphandre failed to start or exited prematurely")
+    
     print("Scaphandre started on host")
     return scaphandre_process
 
 def stop_scaphandre(scaphandre_process):
     print("Stopping Scaphandre process...")
-    scaphandre_process.send_signal(signal.SIGINT)
-    scaphandre_process.wait(timeout=5)
+    scaphandre_process.terminate()
+    try:
+        scaphandre_process.wait(timeout=5)
+        print(f"Scaphandre (PID {scaphandre_process.pid}) terminated gracefully")
+    except subprocess.TimeoutExpired:
+        print(f"Scaphandre (PID {scaphandre_process.pid}) did not stop gracefully; forcing termination...")
+        scaphandre_process.kill()
+        scaphandre_process.wait(timeout=5)
+    try:
+        subprocess.run(["sudo", "pkill", "-9", "scaphandre"], check=False)
+        print("Ensured all scaphandre processes are terminated")
+    except subprocess.CalledProcessError:
+        print("No additional scaphandre processes found to kill")
 
 def start_server_container(server_image, detach_mode, port_mapping, server_params, container_name, docker_path):
-    container_name = container_name if container_name else server_image
-    server_command = ["sudo", docker_path, "run", detach_mode, "--name", container_name, "-p", port_mapping, server_image] + server_params
+    cleanup_existing_container(container_name, docker_path)  # Clean up before starting
+    server_command = ["sudo", docker_path, "run", detach_mode, "--name", container_name, "-p", port_mapping] + server_params + [server_image]
     server_process = subprocess.Popen(server_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     stdout, stderr = server_process.communicate()
     if server_process.returncode != 0:
-        print(f"Error starting container: {stderr}")
-        return
+        print(f"Error starting container: {stderr.decode('utf-8')}")
+        raise RuntimeError(f"Failed to start container '{container_name}': {stderr.decode('utf-8')}")
     time.sleep(10)
     print(f"Server container started with {detach_mode}, name: {container_name}, port mapping: {port_mapping}")
+    return True
 
 def stop_server_container(container_name, docker_path):
     print(f"Stopping server container: {container_name}")
     subprocess.run(["sudo", docker_path, "stop", container_name], check=True)
     subprocess.run(["sudo", docker_path, "rm", container_name], check=True)
 
-def parse_json_and_compute_energy(file_name, container_name, sample_interval=2.0):
-    """Parse JSON and compute total energy in Joules from power in microwatts with error handling."""
+def parse_json_and_compute_energy(file_name, container_name, runtime):
+    """Parse JSON and compute total energy in Joules from power in microwatts, only for non-zero consumption."""
     json_file_path = file_name
     try:
         with open(json_file_path, "r") as file:
@@ -77,36 +145,51 @@ def parse_json_and_compute_energy(file_name, container_name, sample_interval=2.0
         print(f"Error reading JSON file: {e}")
         return 0.0, 0.0, 0
 
-    total_server_consumption = 0.0
+    total_power_microwatts = 0.0
     number_samples = 0
+    timestamps = []
 
     for entry in data:
         consumers = entry.get("consumers", [])
+        host_timestamp = entry.get("host", {}).get("timestamp")
+        if host_timestamp:
+            timestamps.append(host_timestamp)
         for consumer in consumers:
             container = consumer.get("container")
             if container and container.get("name") == container_name:
-                power_microwatts = consumer.get("consumption", 0.0)  # µW (power)
-                energy_joules = power_microwatts * 1e-6 * sample_interval  # µW to W, then to J
-                total_server_consumption += energy_joules
-                number_samples += 1
-                print(f"Added energy for {consumer.get('exe', 'unknown')}: {energy_joules:.6f} J (from {power_microwatts:.2f} µW)")
+                power_microwatts = consumer.get("consumption", 0.0)
+                if power_microwatts > 0:
+                    total_power_microwatts += power_microwatts
+                    number_samples += 1
+                    print(f"Added power for {consumer.get('exe', 'unknown')}: {power_microwatts:.2f} µW")
 
     if number_samples == 0:
-        print(f"No energy data found for container: {container_name}")
+        print(f"No non-zero energy data found for container: {container_name}")
+        return 0.0, 0.0, 0
+
+    print(f"Found {number_samples} non-zero samples for container: {container_name}")
+    average_power_watts = (total_power_microwatts / number_samples) * 1e-6
+    total_energy_joules = average_power_watts * runtime
+    energy_per_request = total_energy_joules / results_counter['success'] if results_counter['success'] > 0 else 0.0
+    print(f"Energy per successful request: {energy_per_request:.6f} J/request")
+
+    if len(timestamps) > 1:
+        intervals = [timestamps[i+1] - timestamps[i] for i in range(len(timestamps)-1)]
+        avg_interval = sum(intervals) / len(intervals)
+        print(f"Average sampling interval: {avg_interval:.6f} seconds")
     else:
-        print(f"Found {number_samples} samples for container: {container_name}")
+        print("Average sampling interval: N/A (insufficient samples)")
 
-    average_energy = total_server_consumption / number_samples if number_samples != 0 else 0
-    return total_server_consumption, average_energy, number_samples
+    return total_energy_joules, average_power_watts, number_samples
 
-def save_results_to_csv(filename, results, total_energy, average_energy, total_runtime, requests_per_second, total_samples, container_name=None, num_requests=None):
+def save_results_to_csv(filename, results, total_energy, average_power, total_runtime, requests_per_second, total_samples, container_name=None, num_requests=None):
     if filename is None:
         os.makedirs("results", exist_ok=True)
         timestamp = datetime.now().strftime("%Y-%m-%d-%H%M%S")
         filename = os.path.join("results", f"{container_name}_{num_requests}_{timestamp}.csv")
     
     headers = ["Total Requests", "Successful Requests", "Failed Requests", "Execution Time (seconds)", "Requests Per Second",
-               "Total Energy Consumption (J)", "Average Energy Consumption per Sample (J)", "Number of Samples"]
+               "Total Energy Consumption (J)", "Average Power Consumption (W)", "Number of Samples"]
     data = [
         [
             results['total'],
@@ -115,7 +198,7 @@ def save_results_to_csv(filename, results, total_energy, average_energy, total_r
             total_runtime,
             requests_per_second,
             total_energy,
-            average_energy,
+            average_power,
             total_samples
         ]
     ]
@@ -132,13 +215,15 @@ def main():
     parser.add_argument('--server_image', type=str, required=True, help="Server Docker image (required)")
     parser.add_argument('--container_name', type=str, default=None, help="Name of the container to track (defaults to server_image if not specified)")
     parser.add_argument('--server_params', type=str, nargs='*', default=[],
-                        help="Additional parameters for the server container")
+                        help="Additional parameters for the server container (e.g., '-e KEY=VALUE' in quotes)")
     parser.add_argument('--detach_mode', type=str, default='-d',
                         help="Detach mode for Docker (e.g., -d, -it, or -itd)")
     parser.add_argument('--port_mapping', type=str, default='8001:80',
                         help="Port mapping for Docker in host:container format (e.g., 8001:80)")
     parser.add_argument('--num_requests', type=int, default=500, help="Number of requests to send")
-    parser.add_argument('--sample_interval', type=float, default=2.0, help="Scaphandre sample interval in seconds")
+    parser.add_argument('--step', type=int, default=None, help="Scaphandre sampling interval in seconds (optional, passed to --step)")
+    parser.add_argument('--step_nano', type=int, default=None, help="Sampling interval in nanoseconds (optional, passed to --step-nano, min 100,000 ns when specified, adds --step 0 if --step not provided)")
+    parser.add_argument('--max_top_consumers', type=int, default=None, help="Maximum number of top consuming processes to monitor (optional, passed to --max-top-consumers, defaults to 10 if not specified)")
     parser.add_argument('--output_csv', type=str, default=None, help="Output CSV file path (defaults to containerName_requestNum_timestamp.csv in results folder if not specified)")
     parser.add_argument('--output_json', type=str, default=None, help="Output JSON file name (defaults to timestamp if not specified)")
     
@@ -163,12 +248,23 @@ def main():
 
     container_name = args.container_name if args.container_name else args.server_image
 
+    # Clean up any existing scaphandre processes before starting
+    cleanup_existing_scaphandre()
+
     print("Starting container...")
-    start_server_container(args.server_image, args.detach_mode, args.port_mapping, args.server_params, container_name, docker_path)
-    time.sleep(5)
+    try:
+        start_server_container(args.server_image, args.detach_mode, args.port_mapping, args.server_params, container_name, docker_path)
+    except RuntimeError as e:
+        print(f"Container startup failed: {e}")
+        return  # Exit if container fails to start
 
     print("Starting Scaphandre...")
-    scaphandre_process = start_scaphandre(output_json, scaphandre_path)
+    try:
+        scaphandre_process = start_scaphandre(output_json, scaphandre_path, args.step, args.step_nano, args.max_top_consumers)
+    except (ValueError, RuntimeError) as e:
+        print(f"Failed to start Scaphandre: {e}")
+        stop_server_container(container_name, docker_path)
+        return
     
     print(f"Sending {n} requests to {url}...")
     time.sleep(15)
@@ -190,8 +286,8 @@ def main():
     stop_scaphandre(scaphandre_process)
     stop_server_container(container_name, docker_path)
 
-    total_energy, average_energy, total_samples = parse_json_and_compute_energy(output_json, container_name, sample_interval=args.sample_interval)
-    save_results_to_csv(args.output_csv, results_counter, total_energy, average_energy, runtime, requests_per_second, total_samples,
+    total_energy, average_power, total_samples = parse_json_and_compute_energy(output_json, container_name, runtime)
+    save_results_to_csv(args.output_csv, results_counter, total_energy, average_power, runtime, requests_per_second, total_samples,
                        container_name=container_name, num_requests=n)
 
     print("\nSummary:")
@@ -201,7 +297,7 @@ def main():
     print(f"Execution Time: {runtime:.2f} seconds")
     print(f"Requests Per Second: {requests_per_second:.2f}")
     print(f"Total Energy Consumption: {total_energy:.6f} J")
-    print(f"Average Energy Consumption per Sample: {average_energy:.6f} J")
+    print(f"Average Power Consumption: {average_power:.6f} W")
     print(f"JSON output saved to: {output_json}")
     print(f"Measured energy for container: {container_name}")
 
