@@ -5,8 +5,14 @@ create a script to send N number of requests to the server and the server should
     respond.
 measure the energy for each server.
 
------------------------
-Match the configs: base image...
+-----------TODO------------
+- match the configs: base image, compile and clean install yaws, nginx
+- test new images (apache, cowboy)
+- implement dynamic servers
+- test images locally not in docker
+- test with different threadpool sizes, ulimit, max connections
+- use docker-compose to run multiple servers
+
 ----------------------
 
 To build the docker image:
