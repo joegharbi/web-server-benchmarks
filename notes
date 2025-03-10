@@ -12,6 +12,7 @@ measure the energy for each server.
 - test images locally not in docker
 - test with different threadpool sizes, ulimit, max connections
 - use docker-compose to run multiple servers
+- websockets
 
 ----------------------
 

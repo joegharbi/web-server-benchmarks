@@ -1,0 +1,22 @@
+
+-----------------TODO----------------------
+
+-DONE-  match the configs: base image, compile and clean install yaws, nginx
+-DONE-  test new images (apache, cowboy)
+- test images locally not in docker:
+                        - nginx
+                        - yaws
+                        - apache
+                        - cowboy
+- implement dynamic servers:
+                        - DONE - nginx
+                        - DONE - yaws
+                        - apache
+                        - cowboy
+- use docker-compose to run multiple servers
+- implement new servers using websockets:
+                        - nginx
+                        - yaws
+                        - apache
+                        - cowboy
+- test with different threadpool sizes, ulimit, max connections
