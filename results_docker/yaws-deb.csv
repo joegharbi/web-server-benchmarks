@@ -1,0 +1,2 @@
+Total Requests,Successful Requests,Failed Requests,Execution Time (seconds),Requests Per Second,Total Energy Consumption (J),Average Power Consumption (W),Number of Samples,Average CPU Usage (% of System),Average CPU Usage (Cores),Average Memory Usage (MB)
+50000,50000,0,65.13736200332642,767.6086114363461,277.6797360102257,4.26298713165641,39,18.996306818181818,1.5197045454545455,63.74272727272726

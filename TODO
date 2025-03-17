@@ -4,8 +4,9 @@
 -DONE-  match the configs: base image, compile and clean install yaws, nginx
 -DONE-  test new images (apache, cowboy)
 - test images locally not in docker:
-                        - nginx
-                        - yaws
+                        - nginx - DONE
+                        - yaws  - DONE
+                        - create a script to test the servers locally - DONE
                         - apache
                         - cowboy
 - implement dynamic servers:
@@ -20,3 +21,7 @@
                         - apache
                         - cowboy
 - test with different threadpool sizes, ulimit, max connections
+
+########################
+
+create a script to visulize the results of the tests

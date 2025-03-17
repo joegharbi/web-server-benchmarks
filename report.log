@@ -1,0 +1,3 @@
+2025-03-16T02:44:15.952897+01:00 notice: Yaws: Listening to 0.0.0.0:8001 for <1> virtual servers:, - http://localhost:8001 under /var/www/html
+2025-03-16T02:44:51.952448+01:00 notice: Stopping yaws
+2025-03-16T02:44:51.952820+01:00 notice: stop_ready([], <0.210.0>)
