@@ -1,0 +1,2 @@
+Total Requests,Successful Requests,Failed Requests,Execution Time (seconds),Requests Per Second,Total Energy Consumption (J),Average Energy Consumption per Sample (J),Number of Samples
+100000,79392,20608,149.70687079429626,667.9720140393846,376.6224857411999,6.174139110511474,61
