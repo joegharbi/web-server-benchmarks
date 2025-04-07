@@ -1,0 +1,48 @@
+# Use Debian-based Nginx as base
+FROM nginx:1.21.6
+
+# Install Python and websockets
+RUN apt-get update && apt-get install -y python3 python3-pip \
+    && pip3 install websockets \
+    && apt-get clean
+
+# Create Nginx config directly
+RUN echo "server { \
+        listen 80; \
+        server_name localhost; \
+        location /ws { \
+            proxy_pass http://127.0.0.1:8080; \
+            proxy_http_version 1.1; \
+            proxy_set_header Upgrade \$http_upgrade; \
+            proxy_set_header Connection \"upgrade\"; \
+            proxy_buffering off; \
+            proxy_buffer_size 128k; \
+            proxy_buffers 8 256k; \
+            proxy_read_timeout 3600s; \
+        } \
+    }" > /etc/nginx/conf.d/default.conf
+
+# Create /app directory and WebSocket server script with executable permissions
+RUN mkdir -p /app \
+    && echo "#!/usr/bin/env python3\n\
+import asyncio\n\
+import websockets\n\
+async def handler(websocket, path):\n\
+    try:\n\
+        while True:\n\
+            data = await websocket.recv()\n\
+            await websocket.send(data)\n\
+    except websockets.ConnectionClosed:\n\
+        pass\n\
+async def main():\n\
+    server = await websockets.serve(handler, \"0.0.0.0\", 8080)\n\
+    await server.wait_closed()\n\
+if __name__ == \"__main__\":\n\
+    asyncio.run(main())" > /app/ws_server.py \
+    && chmod +x /app/ws_server.py
+
+# Expose port
+EXPOSE 80
+
+# Start Nginx and WebSocket server
+CMD ["sh", "-c", "nginx && /app/ws_server.py"]
