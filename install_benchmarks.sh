@@ -3,12 +3,12 @@
 # Install all Docker images for the benchmarks
 
 # Define the directories containing Dockerfiles
-static_dirs=("./containers/static/nginx-deb" "./containers/static/cowboy-test" "./containers/static/yaws-deb" "./containers/static/yaws-git-slim-27" "./containers/static/yaws-git-full-27")
+image_dirs=("./containers/static/apache-deb" "./containers/static/nginx-deb" "./containers/static/cowboy-play" "./containers/static/yaws-deb" "./containers/dynamic/nginx-dynamic-deb" "./containers/dynamic/yaws-dynamic-latest-deb")
 
 echo "Processing directory: ."
 
 # Loop through each directory and build the Docker image
-for dir in "${static_dirs[@]}"; do
+for dir in "${image_dirs[@]}"; do
     dockerfile_path=$(find "$dir" -name "Dockerfile*" -type f)
     if [[ -z "$dockerfile_path" ]]; then
         echo "No Dockerfile found in $dir, skipping."
