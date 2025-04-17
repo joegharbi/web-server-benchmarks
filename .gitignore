@@ -1,7 +1,7 @@
-srv/*
-logs/*
-output/*
-brainstorming/*
-old_results/*
-venv/*
+./srv/*
+./logs/*
+./output/*
+./brainstorming/*
+./old_results/*
+./venv/*
 *.json
