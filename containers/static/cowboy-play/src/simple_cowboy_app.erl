@@ -9,9 +9,14 @@ start(_StartType, _StartArgs) ->
             {"/", hello_handler, []}
         ]}
     ]),
+    Port = case application:get_env(simple_cowboy_app, port) of
+        undefined -> 8080; % Default to 8080 if not set
+        {ok, Value} when is_integer(Value) -> Value;
+        _ -> exit({error, invalid_port})
+    end,
+    io:format("Starting Cowboy on port: ~p~n", [Port]), % Debug log to verify the port value
     {ok, _} = cowboy:start_clear(http_listener,
-        % [{port, 8080}],
-        [{port, application:get_env(simple_cowboy_app, port)}],
+        [{port, Port}],
         #{env => #{dispatch => Dispatch}}
     ),
     simple_cowboy_sup:start_link().

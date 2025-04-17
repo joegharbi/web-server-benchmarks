@@ -1,0 +1,3 @@
+Checking and freeing port 8001...
+Running tests for: yaws
+Running measure_local.py for yaws with 100 requests

@@ -7,25 +7,24 @@
                         - nginx - DONE
                         - yaws  - DONE
                         - create a script to test the servers locally - DONE
-                        - apache
-                        - cowboy
 - implement dynamic servers:
                         - DONE - nginx
                         - DONE - yaws
-                        - apache
-                        - cowboy
 - use docker-compose to run multiple servers
 - implement new servers using websockets:
                         - nginx: done (adding JAVA)
                         - yaws: done 
-                        - apache
-                        - cowboy
 - test with different threadpool sizes, ulimit, max connections
 
 ########################
 
-create a script to visulize the results of the tests
 
 needs to fix the websocket( nginx, yaws) servers parse the json files - Done
 find the correct process name in the json files - Done
 fix the large size buffers for the nginx and yaws | send a video
+
+
+create a script to visulize the results of the tests
+
+
+

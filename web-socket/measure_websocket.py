@@ -31,7 +31,7 @@ def get_binary_path(binary_name):
 
 async def send_large_data(url, client_num, size_mb, interval_s, duration_s):
     try:
-        async with websockets.connect(url) as ws:
+        async with websockets.connect(url, max_size=None) as ws:
             payload = b"x" * (size_mb * 1024 * 1024)
             end_time = time.time() + duration_s
             while time.time() < end_time:
@@ -75,6 +75,19 @@ def cleanup_existing_scaphandre():
         logger.debug("Killed existing scaphandre processes")
     except subprocess.CalledProcessError:
         logger.debug("No existing scaphandre processes found")
+
+def cleanup_existing_container(container_name):
+    client = docker.from_env()
+    try:
+        container = client.containers.get(container_name)
+        logger.info(f"Stopping existing container '{container_name}'...")
+        container.stop()
+        container.remove()
+        logger.info(f"Removed existing container '{container_name}'")
+    except docker.errors.NotFound:
+        logger.debug(f"No existing container '{container_name}' found")
+    except docker.errors.APIError as e:
+        logger.error(f"Error cleaning up container '{container_name}': {e}")
 
 def start_scaphandre(output_json, scaphandre_path):
     os.makedirs("output", exist_ok=True)
@@ -161,8 +174,8 @@ def parse_json_and_compute_energy(file_name, container_name, runtime):
     number_samples = 0
     for entry in data:
         for consumer in entry.get("consumers", []):
-            # Check if 'container' exists and matches the container_name
-            if consumer.get("container") and consumer["container"].get("name") == container_name:
+            container_info = consumer.get("container")
+            if container_info and container_info.get("name") == container_name:
                 power = consumer.get("consumption", 0.0)
                 if power > 0:
                     total_power_microwatts += power
@@ -203,6 +216,19 @@ def print_summary(results, total_energy, average_power, runtime, throughput_mb_s
     logger.info(f"JSON: {output_json}, CSV: {output_csv or f'results_websocket/{server_image}.csv'}")
     logger.info("==========================")
 
+def check_container_health(url, retries=10, delay=2):
+    for _ in range(retries):
+        try:
+            async def check():
+                async with websockets.connect(url, max_size=None) as ws:
+                    await ws.send(b"ping")
+                    await ws.recv()
+            asyncio.run(check())
+            return True
+        except Exception as e:
+            logger.debug(f"Health check failed: {e}")
+            time.sleep(delay)
+    return False
 
 def main():
     parser = argparse.ArgumentParser(description="Measure WebSocket energy consumption in Docker")
@@ -233,18 +259,26 @@ def main():
 
     num_cores = os.cpu_count()
     output_json = args.output_json or os.path.join("output", datetime.now().strftime("%Y-%m-%d-%H%M%S") + ".json")
-    url = "ws://localhost:8001/ws"
-    container_name = f"ws-test-{args.server_image}-{int(time.time())}"
+    url = "ws://localhost:8001/ws"  # Fixed to WebSocket protocol
+    container_name = args.server_image  # Use image name as container name
     client = docker.from_env()
 
     cleanup_existing_scaphandre()
+    cleanup_existing_container(container_name)  # Added cleanup before starting
     try:
         logger.info(f"Starting container '{container_name}'...")
         container = client.containers.run(args.server_image, name=container_name, ports={'80/tcp': 8001}, 
                                          detach=True, mem_limit="8g")
-        time.sleep(5)
     except docker.errors.APIError as e:
         logger.error(f"Failed to start container: {e}")
+        return
+
+    # Health check
+    logger.info(f"Checking container health at {url}...")
+    if not check_container_health(url):
+        logger.error("Container health check failed")
+        container.stop()
+        container.remove()
         return
 
     logger.info("Starting Scaphandre...")
