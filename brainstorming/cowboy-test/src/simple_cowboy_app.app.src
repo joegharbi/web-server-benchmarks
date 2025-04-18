@@ -1,0 +1,15 @@
+{application, simple_cowboy_app,
+ [{description, "Simple Cowboy Web Server"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, {simple_cowboy_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    cowboy
+   ]},
+  {env,[]},
+  {modules, [simple_cowboy_app, simple_cowboy_sup]},
+  {licenses, ["Apache 2.0"]},
+  {links, []}
+ ]}.

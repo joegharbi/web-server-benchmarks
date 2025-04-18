@@ -1,0 +1,31 @@
+Checking and freeing port 8001...
+Running tests for: yaws
+Running measure_local.py for yaws with 100 requests
+./srv/bin/python3: can't open file '/home/youssef/web-server-benchmarks/./measure_local.py': [Errno 2] No such file or directory
+Running measure_local.py for yaws with 1000 requests
+./srv/bin/python3: can't open file '/home/youssef/web-server-benchmarks/./measure_local.py': [Errno 2] No such file or directory
+Running measure_local.py for yaws with 5000 requests
+./srv/bin/python3: can't open file '/home/youssef/web-server-benchmarks/./measure_local.py': [Errno 2] No such file or directory
+Running measure_local.py for yaws with 8000 requests
+./srv/bin/python3: can't open file '/home/youssef/web-server-benchmarks/./measure_local.py': [Errno 2] No such file or directory
+Running measure_local.py for yaws with 10000 requests
+./srv/bin/python3: can't open file '/home/youssef/web-server-benchmarks/./measure_local.py': [Errno 2] No such file or directory
+Running measure_local.py for yaws with 15000 requests
+./srv/bin/python3: can't open file '/home/youssef/web-server-benchmarks/./measure_local.py': [Errno 2] No such file or directory
+Running measure_local.py for yaws with 20000 requests
+./srv/bin/python3: can't open file '/home/youssef/web-server-benchmarks/./measure_local.py': [Errno 2] No such file or directory
+Running tests for: yaws
+Running measure_local.py for yaws with 100 requests
+./srv/bin/python3: can't open file '/home/youssef/web-server-benchmarks/./measure_local.py': [Errno 2] No such file or directory
+Running measure_local.py for yaws with 1000 requests
+./srv/bin/python3: can't open file '/home/youssef/web-server-benchmarks/./measure_local.py': [Errno 2] No such file or directory
+Running measure_local.py for yaws with 5000 requests
+./srv/bin/python3: can't open file '/home/youssef/web-server-benchmarks/./measure_local.py': [Errno 2] No such file or directory
+Running measure_local.py for yaws with 8000 requests
+./srv/bin/python3: can't open file '/home/youssef/web-server-benchmarks/./measure_local.py': [Errno 2] No such file or directory
+Running measure_local.py for yaws with 10000 requests
+./srv/bin/python3: can't open file '/home/youssef/web-server-benchmarks/./measure_local.py': [Errno 2] No such file or directory
+Running measure_local.py for yaws with 15000 requests
+./srv/bin/python3: can't open file '/home/youssef/web-server-benchmarks/./measure_local.py': [Errno 2] No such file or directory
+Running measure_local.py for yaws with 20000 requests
+./srv/bin/python3: can't open file '/home/youssef/web-server-benchmarks/./measure_local.py': [Errno 2] No such file or directory

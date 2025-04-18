@@ -1,0 +1,37 @@
+build docker images: yaws, nginx
+test scaphandre in a docker image (tested erlang lists:sum ...) 
+    => working (got beam.smp)
+create a script to send N number of requests to the server and the server should
+    respond.
+measure the energy for each server.
+
+-----------TODO------------
+- match the configs: base image, compile and clean install yaws, nginx
+- test new images (apache, cowboy)
+- implement dynamic servers
+- test images locally not in docker
+- test with different threadpool sizes, ulimit, max connections
+- use docker-compose to run multiple servers
+- websockets
+
+----------------------
+
+To build the docker image:
+sudo docker build -t nginx-server .
+
+To start a server in a docker:
+sudo docker run -d -p 8000:80 nginx-server
+
+To start scaphandre in docker for quick testing:
+ sudo docker run --privileged -v /sys/class/powercap:/sys/class/powercap -v /proc:/proc -ti hubblo/scaphandre stdout -t 15
+
+ sudo docker run --privileged -v /sys/class/powercap:/sys/class/powercap -v /proc:/proc -ti hubblo/scaphandre json -f test.json
+
+To delete all docker images: 
+ sudo docker rmi -f $(sudo docker images -a -q)
+
+
+
+# sudo docker build -t yaws-server -f Dockerfile.yaws .
+# sudo docker run -d --name yaws-container -p 8001:80 yaws-server
+# sudo scaphandre json --containers -f nginx10k80k-test.json

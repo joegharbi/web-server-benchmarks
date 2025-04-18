@@ -1,0 +1,20 @@
+Checking and freeing port 8001...
+./run_benchmarks.sh: line 82: 1108365 Killed                  sudo "local/setup_${server}.sh" stop > /dev/null 2>&1
+./run_benchmarks.sh: line 82: 1108441 Killed                  sudo "local/setup_${server}.sh" stop > /dev/null 2>&1
+Running tests for: yaws
+Running measure_local.py for yaws with 100 requests
+Starting yaws server...
+Starting Scaphandre...
+Sending 100 requests to http://localhost:8001/...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Server: yaws
+Total Requests: 100, Successful: 100, Failed: 0
+Execution Time: 0.12 s, Requests/s: 845.11
+Energy: Total 0.00 J, Avg Power 0.01 W
+CPU: Avg 0.39%, Peak 6.20%, Total 49.60%
+Memory: Avg 78.64 MB, Peak 78.64 MB, Total 1258.31 MB
+JSON: output/2025-04-10-162556.json, CSV: ../results_local/yaws.csv
+==========================
+Running measure_local.py for yaws with 1000 requests
+Starting yaws server...

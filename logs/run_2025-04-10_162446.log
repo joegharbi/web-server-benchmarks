@@ -1,0 +1,20 @@
+Checking and freeing port 8001...
+./run_benchmarks.sh: line 82: 1107846 Killed                  sudo "local/setup_${server}.sh" stop > /dev/null 2>&1
+./run_benchmarks.sh: line 82: 1107922 Killed                  sudo "local/setup_${server}.sh" stop > /dev/null 2>&1
+Running tests for: nginx
+Running measure_local.py for nginx with 100 requests
+Starting nginx server...
+Starting Scaphandre...
+Sending 100 requests to http://localhost:8001/...
+Waiting for Scaphandre to collect data...
+No non-zero energy data found for /usr/local/nginx/sbin/nginx
+=== Measurement Summary ===
+Server: nginx
+Total Requests: 100, Successful: 100, Failed: 0
+Execution Time: 0.13 s, Requests/s: 761.59
+Energy: Total 0.00 J, Avg Power 0.00 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 59.12 MB, Peak 59.12 MB, Total 413.85 MB
+JSON: output/2025-04-10-162457.json, CSV: ../results_local/nginx.csv
+==========================
+Running measure_local.py for nginx with 1000 requests

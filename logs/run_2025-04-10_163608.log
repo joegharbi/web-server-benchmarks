@@ -1,0 +1,1574 @@
+Checking and freeing port 8001...
+./run_benchmarks.sh: line 82: 1111738 Killed                  sudo "local/setup_${server}.sh" stop > /dev/null 2>&1
+./run_benchmarks.sh: line 82: 1111814 Killed                  sudo "local/setup_${server}.sh" stop > /dev/null 2>&1
+Running tests for: nginx_websocket
+Running measure_websocket.py for nginx_websocket in burst mode
+Starting container 'nginx_websocket'...
+Checking container health at ws://localhost:8001/ws...
+Starting Scaphandre...
+Simulating 10 WebSocket clients to ws://localhost:8001/ws...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Container: nginx_websocket
+Total Clients: 10, Successful: 10, Failed: 0
+Execution Time: 62.65 s, Throughput: 100.00 MB/s
+Energy: Total 157.28 J, Avg Power 2.51 W
+CPU: Avg 1.16%, Peak 14.98%, Total 815.67%
+Memory: Avg 373.72 MB, Peak 476.43 MB, Total 32887.38 MB
+JSON: output/2025-04-10-163619.json, CSV: results_websocket/nginx_websocket-burst.csv
+==========================
+Running measure_websocket.py for nginx_websocket in streaming mode
+Starting container 'nginx_websocket'...
+Checking container health at ws://localhost:8001/ws...
+Starting Scaphandre...
+Simulating 10 WebSocket clients to ws://localhost:8001/ws...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Container: nginx_websocket
+Total Clients: 10, Successful: 10, Failed: 0
+Execution Time: 61.18 s, Throughput: 50.00 MB/s
+Energy: Total 94.15 J, Avg Power 1.54 W
+CPU: Avg 1.07%, Peak 3.33%, Total 736.00%
+Memory: Avg 76.11 MB, Peak 87.17 MB, Total 6545.67 MB
+JSON: output/2025-04-10-163757.json, CSV: results_websocket/nginx_websocket-streaming.csv
+==========================
+Running tests for: nginx-java-websocket
+Running measure_websocket.py for nginx-java-websocket in burst mode
+Starting container 'nginx-java-websocket'...
+Checking container health at ws://localhost:8001/ws...
+Starting Scaphandre...
+Simulating 10 WebSocket clients to ws://localhost:8001/ws...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Container: nginx-java-websocket
+Total Clients: 10, Successful: 0, Failed: 10
+Execution Time: 0.14 s, Throughput: 100.00 MB/s
+Energy: Total 0.00 J, Avg Power 0.00 W
+CPU: Avg 1.31%, Peak 17.00%, Total 136.03%
+Memory: Avg 58.23 MB, Peak 58.23 MB, Total 757.05 MB
+JSON: output/2025-04-10-163933.json, CSV: results_websocket/nginx-java-websocket-burst.csv
+==========================
+Running measure_websocket.py for nginx-java-websocket in streaming mode
+Starting container 'nginx-java-websocket'...
+Checking container health at ws://localhost:8001/ws...
+Starting Scaphandre...
+Simulating 10 WebSocket clients to ws://localhost:8001/ws...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Container: nginx-java-websocket
+Total Clients: 10, Successful: 0, Failed: 10
+Execution Time: 0.05 s, Throughput: 50.00 MB/s
+Energy: Total 0.00 J, Avg Power 0.01 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 52.45 MB, Peak 52.45 MB, Total 629.39 MB
+JSON: output/2025-04-10-164007.json, CSV: results_websocket/nginx-java-websocket-streaming.csv
+==========================
+Running tests for: nginx-tornado
+Running measure_websocket.py for nginx-tornado in burst mode
+Starting container 'nginx-tornado'...
+Checking container health at ws://localhost:8001/ws...
+Starting Scaphandre...
+Simulating 10 WebSocket clients to ws://localhost:8001/ws...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Container: nginx-tornado
+Total Clients: 10, Successful: 10, Failed: 0
+Execution Time: 60.95 s, Throughput: 100.00 MB/s
+Energy: Total 8.38 J, Avg Power 0.14 W
+CPU: Avg 0.79%, Peak 4.49%, Total 530.90%
+Memory: Avg 521.40 MB, Peak 655.20 MB, Total 43797.81 MB
+JSON: output/2025-04-10-164043.json, CSV: results_websocket/nginx-tornado-burst.csv
+==========================
+Running measure_websocket.py for nginx-tornado in streaming mode
+Starting container 'nginx-tornado'...
+Checking container health at ws://localhost:8001/ws...
+Starting Scaphandre...
+Simulating 10 WebSocket clients to ws://localhost:8001/ws...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Container: nginx-tornado
+Total Clients: 10, Successful: 10, Failed: 0
+Execution Time: 61.01 s, Throughput: 50.00 MB/s
+Energy: Total 3.96 J, Avg Power 0.06 W
+CPU: Avg 0.55%, Peak 4.11%, Total 371.83%
+Memory: Avg 117.25 MB, Peak 145.69 MB, Total 9848.98 MB
+JSON: output/2025-04-10-164220.json, CSV: results_websocket/nginx-tornado-streaming.csv
+==========================
+Running tests for: yaws-dynamic-latest-deb
+Running measure_docker.py for yaws-dynamic-latest-deb with 100 requests
+Starting container 'yaws-dynamic-latest-deb'...
+Starting Scaphandre...
+Sending 100 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: yaws-dynamic-latest-deb
+Total Requests: 100, Successful: 100, Failed: 0
+Execution Time: 0.13 s, Requests/s: 746.00
+Energy: Total 0.00 J, Avg Power 0.02 W
+CPU: Avg 8.60%, Peak 8.60%, Total 68.80%
+Memory: Avg 91.46 MB, Peak 91.46 MB, Total 457.30 MB
+JSON: output/2025-04-10-164356.json, CSV: results_docker/dynamic/yaws-dynamic-latest-deb.csv
+==========================
+Running measure_docker.py for yaws-dynamic-latest-deb with 1000 requests
+Starting container 'yaws-dynamic-latest-deb'...
+Starting Scaphandre...
+Sending 1000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: yaws-dynamic-latest-deb
+Total Requests: 1000, Successful: 1000, Failed: 0
+Execution Time: 0.98 s, Requests/s: 1016.95
+Energy: Total 0.20 J, Avg Power 0.20 W
+CPU: Avg 18.18%, Peak 18.19%, Total 290.80%
+Memory: Avg 96.37 MB, Peak 96.40 MB, Total 674.59 MB
+JSON: output/2025-04-10-164425.json, CSV: results_docker/dynamic/yaws-dynamic-latest-deb.csv
+==========================
+Running measure_docker.py for yaws-dynamic-latest-deb with 5000 requests
+Starting container 'yaws-dynamic-latest-deb'...
+Starting Scaphandre...
+Sending 5000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: yaws-dynamic-latest-deb
+Total Requests: 5000, Successful: 5000, Failed: 0
+Execution Time: 4.74 s, Requests/s: 1054.92
+Energy: Total 6.17 J, Avg Power 1.30 W
+CPU: Avg 17.22%, Peak 20.24%, Total 964.20%
+Memory: Avg 96.76 MB, Peak 97.74 MB, Total 1161.07 MB
+JSON: output/2025-04-10-164456.json, CSV: results_docker/dynamic/yaws-dynamic-latest-deb.csv
+==========================
+Running measure_docker.py for yaws-dynamic-latest-deb with 8000 requests
+Starting container 'yaws-dynamic-latest-deb'...
+Starting Scaphandre...
+Sending 8000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: yaws-dynamic-latest-deb
+Total Requests: 8000, Successful: 8000, Failed: 0
+Execution Time: 7.54 s, Requests/s: 1060.91
+Energy: Total 14.54 J, Avg Power 1.93 W
+CPU: Avg 14.86%, Peak 19.80%, Total 1426.50%
+Memory: Avg 96.68 MB, Peak 97.37 MB, Total 1546.86 MB
+JSON: output/2025-04-10-164531.json, CSV: results_docker/dynamic/yaws-dynamic-latest-deb.csv
+==========================
+Running measure_docker.py for yaws-dynamic-latest-deb with 10000 requests
+Starting container 'yaws-dynamic-latest-deb'...
+Starting Scaphandre...
+Sending 10000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: yaws-dynamic-latest-deb
+Total Requests: 10000, Successful: 10000, Failed: 0
+Execution Time: 10.53 s, Requests/s: 949.24
+Energy: Total 25.99 J, Avg Power 2.47 W
+CPU: Avg 15.94%, Peak 20.14%, Total 2040.70%
+Memory: Avg 94.87 MB, Peak 95.44 MB, Total 1897.34 MB
+JSON: output/2025-04-10-164608.json, CSV: results_docker/dynamic/yaws-dynamic-latest-deb.csv
+==========================
+Running measure_docker.py for yaws-dynamic-latest-deb with 15000 requests
+Starting container 'yaws-dynamic-latest-deb'...
+Starting Scaphandre...
+Sending 15000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: yaws-dynamic-latest-deb
+Total Requests: 15000, Successful: 15000, Failed: 0
+Execution Time: 16.20 s, Requests/s: 926.07
+Energy: Total 47.33 J, Avg Power 2.92 W
+CPU: Avg 14.97%, Peak 19.35%, Total 2874.70%
+Memory: Avg 95.07 MB, Peak 97.90 MB, Total 2757.10 MB
+JSON: output/2025-04-10-164648.json, CSV: results_docker/dynamic/yaws-dynamic-latest-deb.csv
+==========================
+Running measure_docker.py for yaws-dynamic-latest-deb with 20000 requests
+Starting container 'yaws-dynamic-latest-deb'...
+Starting Scaphandre...
+Sending 20000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: yaws-dynamic-latest-deb
+Total Requests: 20000, Successful: 19290, Failed: 710
+Execution Time: 22.42 s, Requests/s: 892.22
+Energy: Total 86.17 J, Avg Power 3.84 W
+CPU: Avg 13.12%, Peak 19.20%, Total 3462.60%
+Memory: Avg 95.00 MB, Peak 95.85 MB, Total 3610.11 MB
+JSON: output/2025-04-10-164733.json, CSV: results_docker/dynamic/yaws-dynamic-latest-deb.csv
+==========================
+Running tests for: nginx-dynamic-deb
+Running measure_docker.py for nginx-dynamic-deb with 100 requests
+Starting container 'nginx-dynamic-deb'...
+Starting Scaphandre...
+Sending 100 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: nginx-dynamic-deb
+Total Requests: 100, Successful: 100, Failed: 0
+Execution Time: 0.12 s, Requests/s: 815.26
+Energy: Total 0.00 J, Avg Power 0.02 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 49.72 MB, Peak 49.72 MB, Total 99.45 MB
+JSON: output/2025-04-10-164825.json, CSV: results_docker/dynamic/nginx-dynamic-deb.csv
+==========================
+Running measure_docker.py for nginx-dynamic-deb with 1000 requests
+Starting container 'nginx-dynamic-deb'...
+Starting Scaphandre...
+Sending 1000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: nginx-dynamic-deb
+Total Requests: 1000, Successful: 1000, Failed: 0
+Execution Time: 1.02 s, Requests/s: 976.19
+Energy: Total 0.13 J, Avg Power 0.12 W
+CPU: Avg 1.54%, Peak 1.54%, Total 12.31%
+Memory: Avg 51.28 MB, Peak 52.14 MB, Total 153.83 MB
+JSON: output/2025-04-10-164854.json, CSV: results_docker/dynamic/nginx-dynamic-deb.csv
+==========================
+Running measure_docker.py for nginx-dynamic-deb with 5000 requests
+Starting container 'nginx-dynamic-deb'...
+Starting Scaphandre...
+Sending 5000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: nginx-dynamic-deb
+Total Requests: 5000, Successful: 5000, Failed: 0
+Execution Time: 4.97 s, Requests/s: 1005.34
+Energy: Total 1.34 J, Avg Power 0.27 W
+CPU: Avg 1.55%, Peak 1.79%, Total 37.20%
+Memory: Avg 64.00 MB, Peak 66.04 MB, Total 320.02 MB
+JSON: output/2025-04-10-164925.json, CSV: results_docker/dynamic/nginx-dynamic-deb.csv
+==========================
+Running measure_docker.py for nginx-dynamic-deb with 8000 requests
+Starting container 'nginx-dynamic-deb'...
+Starting Scaphandre...
+Sending 8000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: nginx-dynamic-deb
+Total Requests: 8000, Successful: 8000, Failed: 0
+Execution Time: 8.02 s, Requests/s: 997.59
+Energy: Total 1.94 J, Avg Power 0.24 W
+CPU: Avg 1.61%, Peak 1.80%, Total 64.34%
+Memory: Avg 70.45 MB, Peak 71.93 MB, Total 493.17 MB
+JSON: output/2025-04-10-165000.json, CSV: results_docker/dynamic/nginx-dynamic-deb.csv
+==========================
+Running measure_docker.py for nginx-dynamic-deb with 10000 requests
+Starting container 'nginx-dynamic-deb'...
+Starting Scaphandre...
+Sending 10000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: nginx-dynamic-deb
+Total Requests: 10000, Successful: 10000, Failed: 0
+Execution Time: 11.13 s, Requests/s: 898.60
+Energy: Total 3.30 J, Avg Power 0.30 W
+CPU: Avg 1.63%, Peak 1.78%, Total 78.41%
+Memory: Avg 72.78 MB, Peak 74.04 MB, Total 582.22 MB
+JSON: output/2025-04-10-165039.json, CSV: results_docker/dynamic/nginx-dynamic-deb.csv
+==========================
+Running measure_docker.py for nginx-dynamic-deb with 15000 requests
+Starting container 'nginx-dynamic-deb'...
+Starting Scaphandre...
+Sending 15000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: nginx-dynamic-deb
+Total Requests: 15000, Successful: 15000, Failed: 0
+Execution Time: 17.01 s, Requests/s: 881.76
+Energy: Total 5.93 J, Avg Power 0.35 W
+CPU: Avg 1.44%, Peak 1.77%, Total 115.10%
+Memory: Avg 80.91 MB, Peak 81.96 MB, Total 890.05 MB
+JSON: output/2025-04-10-165121.json, CSV: results_docker/dynamic/nginx-dynamic-deb.csv
+==========================
+Running measure_docker.py for nginx-dynamic-deb with 20000 requests
+Starting container 'nginx-dynamic-deb'...
+Starting Scaphandre...
+Sending 20000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: nginx-dynamic-deb
+Total Requests: 20000, Successful: 19651, Failed: 349
+Execution Time: 23.03 s, Requests/s: 868.30
+Energy: Total 7.56 J, Avg Power 0.33 W
+CPU: Avg 1.55%, Peak 1.98%, Total 161.23%
+Memory: Avg 90.45 MB, Peak 91.44 MB, Total 1356.70 MB
+JSON: output/2025-04-10-165206.json, CSV: results_docker/dynamic/nginx-dynamic-deb.csv
+==========================
+Running tests for: apache-deb
+Running measure_docker.py for apache-deb with 100 requests
+Starting container 'apache-deb'...
+Starting Scaphandre...
+Sending 100 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: apache-deb
+Total Requests: 100, Successful: 100, Failed: 0
+Execution Time: 0.13 s, Requests/s: 747.66
+Energy: Total 0.00 J, Avg Power 0.00 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-165301.json, CSV: results_docker/static/apache-deb.csv
+==========================
+Running measure_docker.py for apache-deb with 1000 requests
+Starting container 'apache-deb'...
+Starting Scaphandre...
+Sending 1000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: apache-deb
+Total Requests: 1000, Successful: 1000, Failed: 0
+Execution Time: 0.98 s, Requests/s: 1022.59
+Energy: Total 0.03 J, Avg Power 0.03 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-165329.json, CSV: results_docker/static/apache-deb.csv
+==========================
+Running measure_docker.py for apache-deb with 5000 requests
+Starting container 'apache-deb'...
+Starting Scaphandre...
+Sending 5000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: apache-deb
+Total Requests: 5000, Successful: 5000, Failed: 0
+Execution Time: 4.39 s, Requests/s: 1138.98
+Energy: Total 2.35 J, Avg Power 0.54 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-165400.json, CSV: results_docker/static/apache-deb.csv
+==========================
+Running measure_docker.py for apache-deb with 8000 requests
+Starting container 'apache-deb'...
+Starting Scaphandre...
+Sending 8000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: apache-deb
+Total Requests: 8000, Successful: 8000, Failed: 0
+Execution Time: 6.72 s, Requests/s: 1190.88
+Energy: Total 3.59 J, Avg Power 0.53 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-165433.json, CSV: results_docker/static/apache-deb.csv
+==========================
+Running measure_docker.py for apache-deb with 10000 requests
+Starting container 'apache-deb'...
+Starting Scaphandre...
+Sending 10000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: apache-deb
+Total Requests: 10000, Successful: 10000, Failed: 0
+Execution Time: 10.04 s, Requests/s: 996.36
+Energy: Total 5.03 J, Avg Power 0.50 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-165508.json, CSV: results_docker/static/apache-deb.csv
+==========================
+Running measure_docker.py for apache-deb with 15000 requests
+Starting container 'apache-deb'...
+Starting Scaphandre...
+Sending 15000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: apache-deb
+Total Requests: 15000, Successful: 15000, Failed: 0
+Execution Time: 16.03 s, Requests/s: 936.03
+Energy: Total 5.98 J, Avg Power 0.37 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-165548.json, CSV: results_docker/static/apache-deb.csv
+==========================
+Running measure_docker.py for apache-deb with 20000 requests
+Starting container 'apache-deb'...
+Starting Scaphandre...
+Sending 20000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: apache-deb
+Total Requests: 20000, Successful: 19104, Failed: 896
+Execution Time: 22.12 s, Requests/s: 904.35
+Energy: Total 7.80 J, Avg Power 0.35 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-165633.json, CSV: results_docker/static/apache-deb.csv
+==========================
+Running tests for: nginx
+Running measure_local.py for nginx with 100 requests
+Starting nginx server...
+Starting Scaphandre...
+Sending 100 requests to http://localhost:8001/...
+Waiting for Scaphandre to collect data...
+No non-zero energy data found for /usr/local/nginx/sbin/nginx
+=== Measurement Summary ===
+Server: nginx
+Total Requests: 100, Successful: 100, Failed: 0
+Execution Time: 0.14 s, Requests/s: 713.97
+Energy: Total 0.00 J, Avg Power 0.00 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 54.83 MB, Peak 54.83 MB, Total 383.80 MB
+JSON: output/2025-04-10-165725.json, CSV: ../results_local/nginx.csv
+==========================
+Running measure_local.py for nginx with 1000 requests
+Starting nginx server...
+Starting Scaphandre...
+Sending 1000 requests to http://localhost:8001/...
+Waiting for Scaphandre to collect data...
+No non-zero energy data found for /usr/local/nginx/sbin/nginx
+=== Measurement Summary ===
+Server: nginx
+Total Requests: 1000, Successful: 1000, Failed: 0
+Execution Time: 0.83 s, Requests/s: 1208.57
+Energy: Total 0.00 J, Avg Power 0.00 W
+CPU: Avg 0.20%, Peak 1.42%, Total 11.39%
+Memory: Avg 59.13 MB, Peak 61.93 MB, Total 413.93 MB
+JSON: output/2025-04-10-165806.json, CSV: ../results_local/nginx.csv
+==========================
+Running measure_local.py for nginx with 5000 requests
+Starting nginx server...
+Starting Scaphandre...
+Sending 5000 requests to http://localhost:8001/...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Server: nginx
+Total Requests: 5000, Successful: 5000, Failed: 0
+Execution Time: 3.85 s, Requests/s: 1299.32
+Energy: Total 0.08 J, Avg Power 0.02 W
+CPU: Avg 0.52%, Peak 1.61%, Total 37.58%
+Memory: Avg 65.58 MB, Peak 67.68 MB, Total 590.19 MB
+JSON: output/2025-04-10-165846.json, CSV: ../results_local/nginx.csv
+==========================
+Running measure_local.py for nginx with 8000 requests
+Starting nginx server...
+Starting Scaphandre...
+Sending 8000 requests to http://localhost:8001/...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Server: nginx
+Total Requests: 8000, Successful: 8000, Failed: 0
+Execution Time: 6.15 s, Requests/s: 1300.12
+Energy: Total 0.21 J, Avg Power 0.03 W
+CPU: Avg 0.63%, Peak 1.71%, Total 50.08%
+Memory: Avg 71.36 MB, Peak 73.21 MB, Total 713.63 MB
+JSON: output/2025-04-10-165929.json, CSV: ../results_local/nginx.csv
+==========================
+Running measure_local.py for nginx with 10000 requests
+Starting nginx server...
+Starting Scaphandre...
+Sending 10000 requests to http://localhost:8001/...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Server: nginx
+Total Requests: 10000, Successful: 10000, Failed: 0
+Execution Time: 7.79 s, Requests/s: 1284.30
+Energy: Total 0.28 J, Avg Power 0.04 W
+CPU: Avg 0.72%, Peak 1.80%, Total 63.40%
+Memory: Avg 74.44 MB, Peak 76.65 MB, Total 818.83 MB
+JSON: output/2025-04-10-170013.json, CSV: ../results_local/nginx.csv
+==========================
+Running measure_local.py for nginx with 15000 requests
+Starting nginx server...
+Starting Scaphandre...
+Sending 15000 requests to http://localhost:8001/...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Server: nginx
+Total Requests: 15000, Successful: 15000, Failed: 0
+Execution Time: 11.58 s, Requests/s: 1295.69
+Energy: Total 0.39 J, Avg Power 0.03 W
+CPU: Avg 0.79%, Peak 1.68%, Total 89.00%
+Memory: Avg 84.26 MB, Peak 86.30 MB, Total 1179.64 MB
+JSON: output/2025-04-10-170100.json, CSV: ../results_local/nginx.csv
+==========================
+Running measure_local.py for nginx with 20000 requests
+Starting nginx server...
+Starting Scaphandre...
+Sending 20000 requests to http://localhost:8001/...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Server: nginx
+Total Requests: 20000, Successful: 20000, Failed: 0
+Execution Time: 15.35 s, Requests/s: 1303.32
+Energy: Total 0.58 J, Avg Power 0.04 W
+CPU: Avg 0.89%, Peak 1.77%, Total 114.07%
+Memory: Avg 91.38 MB, Peak 93.54 MB, Total 1462.08 MB
+JSON: output/2025-04-10-170151.json, CSV: ../results_local/nginx.csv
+==========================
+Running tests for: yaws
+Running measure_local.py for yaws with 100 requests
+Starting yaws server...
+Starting Scaphandre...
+Sending 100 requests to http://localhost:8001/...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Server: yaws
+Total Requests: 100, Successful: 100, Failed: 0
+Execution Time: 0.14 s, Requests/s: 733.72
+Energy: Total 0.00 J, Avg Power 0.02 W
+CPU: Avg 0.82%, Peak 13.05%, Total 104.40%
+Memory: Avg 81.51 MB, Peak 81.51 MB, Total 1304.19 MB
+JSON: output/2025-04-10-170245.json, CSV: ../results_local/yaws.csv
+==========================
+Running measure_local.py for yaws with 1000 requests
+Starting yaws server...
+Starting Scaphandre...
+Sending 1000 requests to http://localhost:8001/...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Server: yaws
+Total Requests: 1000, Successful: 1000, Failed: 0
+Execution Time: 0.84 s, Requests/s: 1183.50
+Energy: Total 0.37 J, Avg Power 0.44 W
+CPU: Avg 1.94%, Peak 17.18%, Total 264.50%
+Memory: Avg 80.12 MB, Peak 80.24 MB, Total 1361.96 MB
+JSON: output/2025-04-10-170324.json, CSV: ../results_local/yaws.csv
+==========================
+Running measure_local.py for yaws with 5000 requests
+Starting yaws server...
+Starting Scaphandre...
+Sending 5000 requests to http://localhost:8001/...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Server: yaws
+Total Requests: 5000, Successful: 5000, Failed: 0
+Execution Time: 4.06 s, Requests/s: 1231.63
+Energy: Total 6.32 J, Avg Power 1.56 W
+CPU: Avg 4.44%, Peak 19.69%, Total 781.70%
+Memory: Avg 80.18 MB, Peak 80.84 MB, Total 1764.05 MB
+JSON: output/2025-04-10-170405.json, CSV: ../results_local/yaws.csv
+==========================
+Running measure_local.py for yaws with 8000 requests
+Starting yaws server...
+Starting Scaphandre...
+Sending 8000 requests to http://localhost:8001/...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Server: yaws
+Total Requests: 8000, Successful: 8000, Failed: 0
+Execution Time: 6.65 s, Requests/s: 1202.51
+Energy: Total 13.47 J, Avg Power 2.03 W
+CPU: Avg 5.36%, Peak 18.21%, Total 1115.80%
+Memory: Avg 81.42 MB, Peak 82.09 MB, Total 2117.04 MB
+JSON: output/2025-04-10-170448.json, CSV: ../results_local/yaws.csv
+==========================
+Running measure_local.py for yaws with 10000 requests
+Starting yaws server...
+Starting Scaphandre...
+Sending 10000 requests to http://localhost:8001/...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Server: yaws
+Total Requests: 10000, Successful: 10000, Failed: 0
+Execution Time: 8.10 s, Requests/s: 1235.28
+Energy: Total 40.21 J, Avg Power 4.97 W
+CPU: Avg 7.11%, Peak 19.45%, Total 1593.00%
+Memory: Avg 79.79 MB, Peak 80.64 MB, Total 2234.22 MB
+JSON: output/2025-04-10-170533.json, CSV: ../results_local/yaws.csv
+==========================
+Running measure_local.py for yaws with 15000 requests
+Starting yaws server...
+Starting Scaphandre...
+Sending 15000 requests to http://localhost:8001/...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Server: yaws
+Total Requests: 15000, Successful: 15000, Failed: 0
+Execution Time: 12.20 s, Requests/s: 1229.05
+Energy: Total 28.81 J, Avg Power 2.36 W
+CPU: Avg 7.65%, Peak 18.73%, Total 2142.60%
+Memory: Avg 83.24 MB, Peak 84.16 MB, Total 2913.31 MB
+JSON: output/2025-04-10-170620.json, CSV: ../results_local/yaws.csv
+==========================
+Running measure_local.py for yaws with 20000 requests
+Starting yaws server...
+Starting Scaphandre...
+Sending 20000 requests to http://localhost:8001/...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Server: yaws
+Total Requests: 20000, Successful: 20000, Failed: 0
+Execution Time: 16.94 s, Requests/s: 1180.88
+Energy: Total 44.50 J, Avg Power 2.63 W
+CPU: Avg 9.10%, Peak 18.35%, Total 3058.50%
+Memory: Avg 84.32 MB, Peak 85.14 MB, Total 3541.24 MB
+JSON: output/2025-04-10-170711.json, CSV: ../results_local/yaws.csv
+==========================
+Running tests for: erlang27
+Running measure_docker.py for erlang27 with 100 requests
+Starting container 'erlang27'...
+Starting Scaphandre...
+Sending 100 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: erlang27
+Total Requests: 100, Successful: 100, Failed: 0
+Execution Time: 0.13 s, Requests/s: 772.08
+Energy: Total 0.00 J, Avg Power 0.02 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-170808.json, CSV: results_docker/static/erlang27.csv
+==========================
+Running measure_docker.py for erlang27 with 1000 requests
+Starting container 'erlang27'...
+Starting Scaphandre...
+Sending 1000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: erlang27
+Total Requests: 1000, Successful: 1000, Failed: 0
+Execution Time: 0.99 s, Requests/s: 1006.61
+Energy: Total 0.00 J, Avg Power 0.00 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-170828.json, CSV: results_docker/static/erlang27.csv
+==========================
+Running measure_docker.py for erlang27 with 5000 requests
+Starting container 'erlang27'...
+Starting Scaphandre...
+Sending 5000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: erlang27
+Total Requests: 5000, Successful: 5000, Failed: 0
+Execution Time: 4.52 s, Requests/s: 1107.42
+Energy: Total 3.02 J, Avg Power 0.67 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-170850.json, CSV: results_docker/static/erlang27.csv
+==========================
+Running measure_docker.py for erlang27 with 8000 requests
+Starting container 'erlang27'...
+Starting Scaphandre...
+Sending 8000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: erlang27
+Total Requests: 8000, Successful: 7998, Failed: 2
+Execution Time: 6.87 s, Requests/s: 1165.06
+Energy: Total 12.04 J, Avg Power 1.75 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-170914.json, CSV: results_docker/static/erlang27.csv
+==========================
+Running measure_docker.py for erlang27 with 10000 requests
+Starting container 'erlang27'...
+Starting Scaphandre...
+Sending 10000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: erlang27
+Total Requests: 10000, Successful: 9999, Failed: 1
+Execution Time: 9.27 s, Requests/s: 1078.36
+Energy: Total 6.13 J, Avg Power 0.66 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-170942.json, CSV: results_docker/static/erlang27.csv
+==========================
+Running measure_docker.py for erlang27 with 15000 requests
+Starting container 'erlang27'...
+Starting Scaphandre...
+Sending 15000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: erlang27
+Total Requests: 15000, Successful: 15000, Failed: 0
+Execution Time: 14.12 s, Requests/s: 1062.48
+Energy: Total 13.66 J, Avg Power 0.97 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-171012.json, CSV: results_docker/static/erlang27.csv
+==========================
+Running measure_docker.py for erlang27 with 20000 requests
+Starting container 'erlang27'...
+Starting Scaphandre...
+Sending 20000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: erlang27
+Total Requests: 20000, Successful: 19999, Failed: 1
+Execution Time: 19.00 s, Requests/s: 1052.81
+Energy: Total 29.21 J, Avg Power 1.54 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-171046.json, CSV: results_docker/static/erlang27.csv
+==========================
+Running tests for: erlindex23
+Running measure_docker.py for erlindex23 with 100 requests
+Starting container 'erlindex23'...
+Starting Scaphandre...
+Sending 100 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: erlindex23
+Total Requests: 100, Successful: 100, Failed: 0
+Execution Time: 0.12 s, Requests/s: 833.34
+Energy: Total 0.00 J, Avg Power 0.00 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-171125.json, CSV: results_docker/static/erlindex23.csv
+==========================
+Running measure_docker.py for erlindex23 with 1000 requests
+Starting container 'erlindex23'...
+Starting Scaphandre...
+Sending 1000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: erlindex23
+Total Requests: 1000, Successful: 1000, Failed: 0
+Execution Time: 0.96 s, Requests/s: 1036.49
+Energy: Total 0.22 J, Avg Power 0.23 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-171144.json, CSV: results_docker/static/erlindex23.csv
+==========================
+Running measure_docker.py for erlindex23 with 5000 requests
+Starting container 'erlindex23'...
+Starting Scaphandre...
+Sending 5000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: erlindex23
+Total Requests: 5000, Successful: 5000, Failed: 0
+Execution Time: 4.87 s, Requests/s: 1027.33
+Energy: Total 6.04 J, Avg Power 1.24 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-171206.json, CSV: results_docker/static/erlindex23.csv
+==========================
+Running measure_docker.py for erlindex23 with 8000 requests
+Starting container 'erlindex23'...
+Starting Scaphandre...
+Sending 8000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: erlindex23
+Total Requests: 8000, Successful: 8000, Failed: 0
+Execution Time: 7.75 s, Requests/s: 1031.62
+Energy: Total 14.76 J, Avg Power 1.90 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-171232.json, CSV: results_docker/static/erlindex23.csv
+==========================
+Running measure_docker.py for erlindex23 with 10000 requests
+Starting container 'erlindex23'...
+Starting Scaphandre...
+Sending 10000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: erlindex23
+Total Requests: 10000, Successful: 10000, Failed: 0
+Execution Time: 9.83 s, Requests/s: 1016.79
+Energy: Total 21.20 J, Avg Power 2.16 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-171300.json, CSV: results_docker/static/erlindex23.csv
+==========================
+Running measure_docker.py for erlindex23 with 15000 requests
+Starting container 'erlindex23'...
+Starting Scaphandre...
+Sending 15000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: erlindex23
+Total Requests: 15000, Successful: 15000, Failed: 0
+Execution Time: 14.79 s, Requests/s: 1014.53
+Energy: Total 42.58 J, Avg Power 2.88 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-171330.json, CSV: results_docker/static/erlindex23.csv
+==========================
+Running measure_docker.py for erlindex23 with 20000 requests
+Starting container 'erlindex23'...
+Starting Scaphandre...
+Sending 20000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: erlindex23
+Total Requests: 20000, Successful: 20000, Failed: 0
+Execution Time: 19.92 s, Requests/s: 1003.83
+Energy: Total 50.75 J, Avg Power 2.55 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-171405.json, CSV: results_docker/static/erlindex23.csv
+==========================
+Running tests for: index26
+Running measure_docker.py for index26 with 100 requests
+Starting container 'index26'...
+Starting Scaphandre...
+Sending 100 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: index26
+Total Requests: 100, Successful: 100, Failed: 0
+Execution Time: 0.12 s, Requests/s: 836.35
+Energy: Total 0.00 J, Avg Power 0.02 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-171445.json, CSV: results_docker/static/index26.csv
+==========================
+Running measure_docker.py for index26 with 1000 requests
+Starting container 'index26'...
+Starting Scaphandre...
+Sending 1000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: index26
+Total Requests: 1000, Successful: 1000, Failed: 0
+Execution Time: 0.95 s, Requests/s: 1048.00
+Energy: Total 0.22 J, Avg Power 0.23 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-171505.json, CSV: results_docker/static/index26.csv
+==========================
+Running measure_docker.py for index26 with 5000 requests
+Starting container 'index26'...
+Starting Scaphandre...
+Sending 5000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: index26
+Total Requests: 5000, Successful: 5000, Failed: 0
+Execution Time: 4.79 s, Requests/s: 1044.49
+Energy: Total 8.40 J, Avg Power 1.75 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-171527.json, CSV: results_docker/static/index26.csv
+==========================
+Running measure_docker.py for index26 with 8000 requests
+Starting container 'index26'...
+Starting Scaphandre...
+Sending 8000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: index26
+Total Requests: 8000, Successful: 8000, Failed: 0
+Execution Time: 7.72 s, Requests/s: 1035.92
+Energy: Total 15.77 J, Avg Power 2.04 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-171553.json, CSV: results_docker/static/index26.csv
+==========================
+Running measure_docker.py for index26 with 10000 requests
+Starting container 'index26'...
+Starting Scaphandre...
+Sending 10000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: index26
+Total Requests: 10000, Successful: 10000, Failed: 0
+Execution Time: 9.76 s, Requests/s: 1025.03
+Energy: Total 18.56 J, Avg Power 1.90 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-171621.json, CSV: results_docker/static/index26.csv
+==========================
+Running measure_docker.py for index26 with 15000 requests
+Starting container 'index26'...
+Starting Scaphandre...
+Sending 15000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: index26
+Total Requests: 15000, Successful: 15000, Failed: 0
+Execution Time: 15.03 s, Requests/s: 997.96
+Energy: Total 38.12 J, Avg Power 2.54 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-171651.json, CSV: results_docker/static/index26.csv
+==========================
+Running measure_docker.py for index26 with 20000 requests
+Starting container 'index26'...
+Starting Scaphandre...
+Sending 20000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: index26
+Total Requests: 20000, Successful: 20000, Failed: 0
+Execution Time: 19.93 s, Requests/s: 1003.66
+Energy: Total 60.23 J, Avg Power 3.02 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-171727.json, CSV: results_docker/static/index26.csv
+==========================
+Running tests for: index27
+Running measure_docker.py for index27 with 100 requests
+Starting container 'index27'...
+Starting Scaphandre...
+Sending 100 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: index27
+Total Requests: 100, Successful: 100, Failed: 0
+Execution Time: 0.12 s, Requests/s: 859.72
+Energy: Total 0.00 J, Avg Power 0.00 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-171808.json, CSV: results_docker/static/index27.csv
+==========================
+Running measure_docker.py for index27 with 1000 requests
+Starting container 'index27'...
+Starting Scaphandre...
+Sending 1000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: index27
+Total Requests: 1000, Successful: 1000, Failed: 0
+Execution Time: 0.99 s, Requests/s: 1008.48
+Energy: Total 0.22 J, Avg Power 0.22 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-171827.json, CSV: results_docker/static/index27.csv
+==========================
+Running measure_docker.py for index27 with 5000 requests
+Starting container 'index27'...
+Starting Scaphandre...
+Sending 5000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: index27
+Total Requests: 5000, Successful: 5000, Failed: 0
+Execution Time: 4.79 s, Requests/s: 1043.44
+Energy: Total 8.47 J, Avg Power 1.77 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-171849.json, CSV: results_docker/static/index27.csv
+==========================
+Running measure_docker.py for index27 with 8000 requests
+Starting container 'index27'...
+Starting Scaphandre...
+Sending 8000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: index27
+Total Requests: 8000, Successful: 8000, Failed: 0
+Execution Time: 7.78 s, Requests/s: 1028.61
+Energy: Total 13.36 J, Avg Power 1.72 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-171915.json, CSV: results_docker/static/index27.csv
+==========================
+Running measure_docker.py for index27 with 10000 requests
+Starting container 'index27'...
+Starting Scaphandre...
+Sending 10000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: index27
+Total Requests: 10000, Successful: 9999, Failed: 1
+Execution Time: 9.77 s, Requests/s: 1023.85
+Energy: Total 22.89 J, Avg Power 2.34 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-171943.json, CSV: results_docker/static/index27.csv
+==========================
+Running measure_docker.py for index27 with 15000 requests
+Starting container 'index27'...
+Starting Scaphandre...
+Sending 15000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: index27
+Total Requests: 15000, Successful: 15000, Failed: 0
+Execution Time: 14.88 s, Requests/s: 1008.29
+Energy: Total 45.09 J, Avg Power 3.03 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-172013.json, CSV: results_docker/static/index27.csv
+==========================
+Running measure_docker.py for index27 with 20000 requests
+Starting container 'index27'...
+Starting Scaphandre...
+Sending 20000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: index27
+Total Requests: 20000, Successful: 19999, Failed: 1
+Execution Time: 20.24 s, Requests/s: 987.93
+Energy: Total 66.44 J, Avg Power 3.28 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-172049.json, CSV: results_docker/static/index27.csv
+==========================
+Running tests for: erlang23
+Running measure_docker.py for erlang23 with 100 requests
+Starting container 'erlang23'...
+Starting Scaphandre...
+Sending 100 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: erlang23
+Total Requests: 100, Successful: 100, Failed: 0
+Execution Time: 0.11 s, Requests/s: 873.03
+Energy: Total 0.00 J, Avg Power 0.02 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-172130.json, CSV: results_docker/static/erlang23.csv
+==========================
+Running measure_docker.py for erlang23 with 1000 requests
+Starting container 'erlang23'...
+Starting Scaphandre...
+Sending 1000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: erlang23
+Total Requests: 1000, Successful: 1000, Failed: 0
+Execution Time: 0.95 s, Requests/s: 1048.13
+Energy: Total 0.08 J, Avg Power 0.08 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-172149.json, CSV: results_docker/static/erlang23.csv
+==========================
+Running measure_docker.py for erlang23 with 5000 requests
+Starting container 'erlang23'...
+Starting Scaphandre...
+Sending 5000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: erlang23
+Total Requests: 5000, Successful: 5000, Failed: 0
+Execution Time: 4.24 s, Requests/s: 1180.01
+Energy: Total 4.10 J, Avg Power 0.97 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-172211.json, CSV: results_docker/static/erlang23.csv
+==========================
+Running measure_docker.py for erlang23 with 8000 requests
+Starting container 'erlang23'...
+Starting Scaphandre...
+Sending 8000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: erlang23
+Total Requests: 8000, Successful: 8000, Failed: 0
+Execution Time: 7.39 s, Requests/s: 1081.91
+Energy: Total 5.62 J, Avg Power 0.76 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-172235.json, CSV: results_docker/static/erlang23.csv
+==========================
+Running measure_docker.py for erlang23 with 10000 requests
+Starting container 'erlang23'...
+Starting Scaphandre...
+Sending 10000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: erlang23
+Total Requests: 10000, Successful: 10000, Failed: 0
+Execution Time: 8.99 s, Requests/s: 1112.49
+Energy: Total 7.78 J, Avg Power 0.87 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-172303.json, CSV: results_docker/static/erlang23.csv
+==========================
+Running measure_docker.py for erlang23 with 15000 requests
+Starting container 'erlang23'...
+Starting Scaphandre...
+Sending 15000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: erlang23
+Total Requests: 15000, Successful: 14997, Failed: 3
+Execution Time: 14.22 s, Requests/s: 1054.91
+Energy: Total 15.48 J, Avg Power 1.09 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-172333.json, CSV: results_docker/static/erlang23.csv
+==========================
+Running measure_docker.py for erlang23 with 20000 requests
+Starting container 'erlang23'...
+Starting Scaphandre...
+Sending 20000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: erlang23
+Total Requests: 20000, Successful: 19994, Failed: 6
+Execution Time: 19.00 s, Requests/s: 1052.61
+Energy: Total 19.56 J, Avg Power 1.03 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-172408.json, CSV: results_docker/static/erlang23.csv
+==========================
+Running tests for: erlang26
+Running measure_docker.py for erlang26 with 100 requests
+Starting container 'erlang26'...
+Starting Scaphandre...
+Sending 100 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: erlang26
+Total Requests: 100, Successful: 100, Failed: 0
+Execution Time: 0.11 s, Requests/s: 875.65
+Energy: Total 0.00 J, Avg Power 0.00 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-172446.json, CSV: results_docker/static/erlang26.csv
+==========================
+Running measure_docker.py for erlang26 with 1000 requests
+Starting container 'erlang26'...
+Starting Scaphandre...
+Sending 1000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: erlang26
+Total Requests: 1000, Successful: 1000, Failed: 0
+Execution Time: 0.94 s, Requests/s: 1058.64
+Energy: Total 0.03 J, Avg Power 0.03 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-172506.json, CSV: results_docker/static/erlang26.csv
+==========================
+Running measure_docker.py for erlang26 with 5000 requests
+Starting container 'erlang26'...
+Starting Scaphandre...
+Sending 5000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: erlang26
+Total Requests: 5000, Successful: 5000, Failed: 0
+Execution Time: 4.27 s, Requests/s: 1170.24
+Energy: Total 3.25 J, Avg Power 0.76 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-172527.json, CSV: results_docker/static/erlang26.csv
+==========================
+Running measure_docker.py for erlang26 with 8000 requests
+Starting container 'erlang26'...
+Starting Scaphandre...
+Sending 8000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: erlang26
+Total Requests: 8000, Successful: 8000, Failed: 0
+Execution Time: 7.40 s, Requests/s: 1081.60
+Energy: Total 10.67 J, Avg Power 1.44 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-172551.json, CSV: results_docker/static/erlang26.csv
+==========================
+Running measure_docker.py for erlang26 with 10000 requests
+Starting container 'erlang26'...
+Starting Scaphandre...
+Sending 10000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: erlang26
+Total Requests: 10000, Successful: 9999, Failed: 1
+Execution Time: 9.36 s, Requests/s: 1068.59
+Energy: Total 6.62 J, Avg Power 0.71 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-172619.json, CSV: results_docker/static/erlang26.csv
+==========================
+Running measure_docker.py for erlang26 with 15000 requests
+Starting container 'erlang26'...
+Starting Scaphandre...
+Sending 15000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: erlang26
+Total Requests: 15000, Successful: 14998, Failed: 2
+Execution Time: 14.32 s, Requests/s: 1047.14
+Energy: Total 15.31 J, Avg Power 1.07 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-172649.json, CSV: results_docker/static/erlang26.csv
+==========================
+Running measure_docker.py for erlang26 with 20000 requests
+Starting container 'erlang26'...
+Starting Scaphandre...
+Sending 20000 requests to http://localhost:8001/...
+Waiting for Scaphandre...
+=== Measurement Summary ===
+Container: erlang26
+Total Requests: 20000, Successful: 19999, Failed: 1
+Execution Time: 19.22 s, Requests/s: 1040.52
+Energy: Total 22.89 J, Avg Power 1.19 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 0.00 MB, Peak 0.00 MB, Total 0.00 MB
+JSON: output/2025-04-10-172724.json, CSV: results_docker/static/erlang26.csv
+==========================
+Running tests for: yaws-apt-slim
+Running measure_docker.py for yaws-apt-slim with 100 requests
+Starting container 'yaws-apt-slim'...
+Container health check failed
+Running measure_docker.py for yaws-apt-slim with 1000 requests
+Starting container 'yaws-apt-slim'...
+Container health check failed
+Running measure_docker.py for yaws-apt-slim with 5000 requests
+Starting container 'yaws-apt-slim'...
+Container health check failed
+Running measure_docker.py for yaws-apt-slim with 8000 requests
+Starting container 'yaws-apt-slim'...
+Container health check failed
+Running measure_docker.py for yaws-apt-slim with 10000 requests
+Starting container 'yaws-apt-slim'...
+Container health check failed
+Running measure_docker.py for yaws-apt-slim with 15000 requests
+Starting container 'yaws-apt-slim'...
+Container health check failed
+Running measure_docker.py for yaws-apt-slim with 20000 requests
+Starting container 'yaws-apt-slim'...
+Container health check failed
+Running tests for: cowboy-play
+Running measure_docker.py for cowboy-play with 100 requests
+Starting container 'cowboy-play'...
+Container health check failed
+Running measure_docker.py for cowboy-play with 1000 requests
+Starting container 'cowboy-play'...
+Container health check failed
+Running measure_docker.py for cowboy-play with 5000 requests
+Starting container 'cowboy-play'...
+Container health check failed
+Running measure_docker.py for cowboy-play with 8000 requests
+Starting container 'cowboy-play'...
+Container health check failed
+Running measure_docker.py for cowboy-play with 10000 requests
+Starting container 'cowboy-play'...
+Container health check failed
+Running measure_docker.py for cowboy-play with 15000 requests
+Starting container 'cowboy-play'...
+Container health check failed
+Running measure_docker.py for cowboy-play with 20000 requests
+Starting container 'cowboy-play'...
+Container health check failed
+Running tests for: yaws-git-full-27
+Running measure_docker.py for yaws-git-full-27 with 100 requests
+Starting container 'yaws-git-full-27'...
+Container health check failed
+Running measure_docker.py for yaws-git-full-27 with 1000 requests
+Starting container 'yaws-git-full-27'...
+Container health check failed
+Running measure_docker.py for yaws-git-full-27 with 5000 requests
+Starting container 'yaws-git-full-27'...
+Container health check failed
+Running measure_docker.py for yaws-git-full-27 with 8000 requests
+Starting container 'yaws-git-full-27'...
+Container health check failed
+Running measure_docker.py for yaws-git-full-27 with 10000 requests
+Starting container 'yaws-git-full-27'...
+Container health check failed
+Running measure_docker.py for yaws-git-full-27 with 15000 requests
+Starting container 'yaws-git-full-27'...
+Container health check failed
+Running measure_docker.py for yaws-git-full-27 with 20000 requests
+Starting container 'yaws-git-full-27'...
+Container health check failed
+Running tests for: yaws-git-slim-27
+Running measure_docker.py for yaws-git-slim-27 with 100 requests
+Starting container 'yaws-git-slim-27'...
+Container health check failed
+Running measure_docker.py for yaws-git-slim-27 with 1000 requests
+Starting container 'yaws-git-slim-27'...
+Container health check failed
+Running measure_docker.py for yaws-git-slim-27 with 5000 requests
+Starting container 'yaws-git-slim-27'...
+Container health check failed
+Running measure_docker.py for yaws-git-slim-27 with 8000 requests
+Starting container 'yaws-git-slim-27'...
+Container health check failed
+Running measure_docker.py for yaws-git-slim-27 with 10000 requests
+Starting container 'yaws-git-slim-27'...
+Container health check failed
+Running measure_docker.py for yaws-git-slim-27 with 15000 requests
+Starting container 'yaws-git-slim-27'...
+Container health check failed
+Running measure_docker.py for yaws-git-slim-27 with 20000 requests
+Starting container 'yaws-git-slim-27'...
+Container health check failed
+Running tests for: yaws-deb
+Running measure_docker.py for yaws-deb with 100 requests
+Starting container 'yaws-deb'...
+Container health check failed
+Running measure_docker.py for yaws-deb with 1000 requests
+Starting container 'yaws-deb'...
+Container health check failed
+Running measure_docker.py for yaws-deb with 5000 requests
+Starting container 'yaws-deb'...
+Container health check failed
+Running measure_docker.py for yaws-deb with 8000 requests
+Starting container 'yaws-deb'...
+Container health check failed
+Running measure_docker.py for yaws-deb with 10000 requests
+Starting container 'yaws-deb'...
+Container health check failed
+Running measure_docker.py for yaws-deb with 15000 requests
+Starting container 'yaws-deb'...
+Container health check failed
+Running measure_docker.py for yaws-deb with 20000 requests
+Starting container 'yaws-deb'...
+Container health check failed
+Running tests for: cowboy-test
+Running measure_docker.py for cowboy-test with 100 requests
+Starting container 'cowboy-test'...
+Container health check failed
+Running measure_docker.py for cowboy-test with 1000 requests
+Starting container 'cowboy-test'...
+Container health check failed
+Running measure_docker.py for cowboy-test with 5000 requests
+Starting container 'cowboy-test'...
+Container health check failed
+Running measure_docker.py for cowboy-test with 8000 requests
+Starting container 'cowboy-test'...
+Container health check failed
+Running measure_docker.py for cowboy-test with 10000 requests
+Starting container 'cowboy-test'...
+Container health check failed
+Running measure_docker.py for cowboy-test with 15000 requests
+Starting container 'cowboy-test'...
+Container health check failed
+Running measure_docker.py for cowboy-test with 20000 requests
+Starting container 'cowboy-test'...
+Container health check failed
+Running tests for: yaws_websocket
+Running measure_websocket.py for yaws_websocket in burst mode
+Starting container 'yaws_websocket'...
+Checking container health at ws://localhost:8001/ws...
+Starting Scaphandre...
+Simulating 10 WebSocket clients to ws://localhost:8001/ws...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Container: yaws_websocket
+Total Clients: 10, Successful: 10, Failed: 0
+Execution Time: 64.02 s, Throughput: 100.00 MB/s
+Energy: Total 369.51 J, Avg Power 5.77 W
+CPU: Avg 24.42%, Peak 96.01%, Total 22860.10%
+Memory: Avg 4013.41 MB, Peak 6512.12 MB, Total 469568.64 MB
+JSON: output/2025-04-10-173649.json, CSV: results_websocket/yaws_websocket-burst.csv
+==========================
+Running measure_websocket.py for yaws_websocket in streaming mode
+Starting container 'yaws_websocket'...
+Checking container health at ws://localhost:8001/ws...
+Starting Scaphandre...
+Simulating 10 WebSocket clients to ws://localhost:8001/ws...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Container: yaws_websocket
+Total Clients: 10, Successful: 10, Failed: 0
+Execution Time: 61.42 s, Throughput: 50.00 MB/s
+Energy: Total 357.48 J, Avg Power 5.82 W
+CPU: Avg 24.01%, Peak 97.33%, Total 21705.50%
+Memory: Avg 472.41 MB, Peak 817.06 MB, Total 53382.66 MB
+JSON: output/2025-04-10-173828.json, CSV: results_websocket/yaws_websocket-streaming.csv
+==========================
+Running tests for: copy
+Uncategorized Docker image copy - treating as static with default port 8001:80
+Running measure_docker.py for copy with 100 requests
+Starting container 'copy'...
+Container health check failed
+Running measure_docker.py for copy with 1000 requests
+Starting container 'copy'...
+Container health check failed
+Running measure_docker.py for copy with 5000 requests
+Starting container 'copy'...
+Container health check failed
+Running measure_docker.py for copy with 8000 requests
+Starting container 'copy'...
+Container health check failed
+Running measure_docker.py for copy with 10000 requests
+Starting container 'copy'...
+Container health check failed
+Running measure_docker.py for copy with 15000 requests
+Starting container 'copy'...
+Container health check failed
+Running measure_docker.py for copy with 20000 requests
+Starting container 'copy'...
+Container health check failed
+Running tests for: yaws
+Running measure_local.py for yaws with 100 requests
+Starting yaws server...
+Starting Scaphandre...
+Sending 100 requests to http://localhost:8001/...
+Waiting for Scaphandre to collect data...
+No non-zero energy data found for /usr/local/bin/yaws
+=== Measurement Summary ===
+Server: yaws
+Total Requests: 100, Successful: 100, Failed: 0
+Execution Time: 0.12 s, Requests/s: 809.50
+Energy: Total 0.00 J, Avg Power 0.00 W
+CPU: Avg 0.36%, Peak 5.72%, Total 45.80%
+Memory: Avg 78.65 MB, Peak 78.65 MB, Total 1258.44 MB
+JSON: output/2025-04-10-174155.json, CSV: ../results_local/yaws.csv
+==========================
+Running measure_local.py for yaws with 1000 requests
+Starting yaws server...
+Starting Scaphandre...
+Sending 1000 requests to http://localhost:8001/...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Server: yaws
+Total Requests: 1000, Successful: 1000, Failed: 0
+Execution Time: 0.85 s, Requests/s: 1175.61
+Energy: Total 0.11 J, Avg Power 0.13 W
+CPU: Avg 1.84%, Peak 15.26%, Total 250.60%
+Memory: Avg 81.99 MB, Peak 82.12 MB, Total 1393.89 MB
+JSON: output/2025-04-10-174234.json, CSV: ../results_local/yaws.csv
+==========================
+Running measure_local.py for yaws with 5000 requests
+Starting yaws server...
+Starting Scaphandre...
+Sending 5000 requests to http://localhost:8001/...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Server: yaws
+Total Requests: 5000, Successful: 5000, Failed: 0
+Execution Time: 4.13 s, Requests/s: 1211.00
+Energy: Total 4.24 J, Avg Power 1.03 W
+CPU: Avg 4.79%, Peak 18.68%, Total 843.90%
+Memory: Avg 81.88 MB, Peak 82.21 MB, Total 1801.46 MB
+JSON: output/2025-04-10-174313.json, CSV: ../results_local/yaws.csv
+==========================
+Running measure_local.py for yaws with 8000 requests
+Starting yaws server...
+Starting Scaphandre...
+Sending 8000 requests to http://localhost:8001/...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Server: yaws
+Total Requests: 8000, Successful: 8000, Failed: 0
+Execution Time: 6.60 s, Requests/s: 1211.99
+Energy: Total 18.89 J, Avg Power 2.86 W
+CPU: Avg 6.35%, Peak 19.04%, Total 1321.10%
+Memory: Avg 80.36 MB, Peak 80.88 MB, Total 2089.48 MB
+JSON: output/2025-04-10-174356.json, CSV: ../results_local/yaws.csv
+==========================
+Running measure_local.py for yaws with 10000 requests
+Starting yaws server...
+Starting Scaphandre...
+Sending 10000 requests to http://localhost:8001/...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Server: yaws
+Total Requests: 10000, Successful: 10000, Failed: 0
+Execution Time: 8.07 s, Requests/s: 1239.21
+Energy: Total 35.20 J, Avg Power 4.36 W
+CPU: Avg 7.05%, Peak 18.61%, Total 1578.50%
+Memory: Avg 82.10 MB, Peak 82.67 MB, Total 2298.66 MB
+JSON: output/2025-04-10-174441.json, CSV: ../results_local/yaws.csv
+==========================
+Running measure_local.py for yaws with 15000 requests
+Starting yaws server...
+Starting Scaphandre...
+Sending 15000 requests to http://localhost:8001/...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Server: yaws
+Total Requests: 15000, Successful: 15000, Failed: 0
+Execution Time: 12.17 s, Requests/s: 1232.81
+Energy: Total 27.99 J, Avg Power 2.30 W
+CPU: Avg 7.66%, Peak 18.11%, Total 2145.20%
+Memory: Avg 83.37 MB, Peak 84.79 MB, Total 2917.90 MB
+JSON: output/2025-04-10-174528.json, CSV: ../results_local/yaws.csv
+==========================
+Running measure_local.py for yaws with 20000 requests
+Starting yaws server...
+Starting Scaphandre...
+Sending 20000 requests to http://localhost:8001/...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Server: yaws
+Total Requests: 20000, Successful: 20000, Failed: 0
+Execution Time: 16.98 s, Requests/s: 1177.88
+Energy: Total 49.74 J, Avg Power 2.93 W
+CPU: Avg 9.56%, Peak 18.77%, Total 3210.90%
+Memory: Avg 81.45 MB, Peak 83.23 MB, Total 3420.82 MB
+JSON: output/2025-04-10-174619.json, CSV: ../results_local/yaws.csv
+==========================
+Running tests for: nginx
+Running measure_local.py for nginx with 100 requests
+Starting nginx server...
+Starting Scaphandre...
+Sending 100 requests to http://localhost:8001/...
+Waiting for Scaphandre to collect data...
+No non-zero energy data found for /usr/local/nginx/sbin/nginx
+=== Measurement Summary ===
+Server: nginx
+Total Requests: 100, Successful: 100, Failed: 0
+Execution Time: 0.12 s, Requests/s: 813.88
+Energy: Total 0.00 J, Avg Power 0.00 W
+CPU: Avg 0.00%, Peak 0.00%, Total 0.00%
+Memory: Avg 54.58 MB, Peak 54.58 MB, Total 382.05 MB
+JSON: output/2025-04-10-174716.json, CSV: ../results_local/nginx.csv
+==========================
+Running measure_local.py for nginx with 1000 requests
+Starting nginx server...
+Starting Scaphandre...
+Sending 1000 requests to http://localhost:8001/...
+Waiting for Scaphandre to collect data...
+No non-zero energy data found for /usr/local/nginx/sbin/nginx
+=== Measurement Summary ===
+Server: nginx
+Total Requests: 1000, Successful: 1000, Failed: 0
+Execution Time: 0.81 s, Requests/s: 1238.49
+Energy: Total 0.00 J, Avg Power 0.00 W
+CPU: Avg 0.22%, Peak 1.52%, Total 12.16%
+Memory: Avg 56.42 MB, Peak 59.25 MB, Total 394.94 MB
+JSON: output/2025-04-10-174757.json, CSV: ../results_local/nginx.csv
+==========================
+Running measure_local.py for nginx with 5000 requests
+Starting nginx server...
+Starting Scaphandre...
+Sending 5000 requests to http://localhost:8001/...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Server: nginx
+Total Requests: 5000, Successful: 5000, Failed: 0
+Execution Time: 3.94 s, Requests/s: 1268.06
+Energy: Total 0.06 J, Avg Power 0.01 W
+CPU: Avg 0.57%, Peak 1.96%, Total 40.73%
+Memory: Avg 65.17 MB, Peak 67.29 MB, Total 586.52 MB
+JSON: output/2025-04-10-174837.json, CSV: ../results_local/nginx.csv
+==========================
+Running measure_local.py for nginx with 8000 requests
+Starting nginx server...
+Starting Scaphandre...
+Sending 8000 requests to http://localhost:8001/...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Server: nginx
+Total Requests: 8000, Successful: 8000, Failed: 0
+Execution Time: 6.18 s, Requests/s: 1295.24
+Energy: Total 0.19 J, Avg Power 0.03 W
+CPU: Avg 0.62%, Peak 1.56%, Total 49.56%
+Memory: Avg 71.04 MB, Peak 72.34 MB, Total 710.41 MB
+JSON: output/2025-04-10-174920.json, CSV: ../results_local/nginx.csv
+==========================
+Running measure_local.py for nginx with 10000 requests
+Starting nginx server...
+Starting Scaphandre...
+Sending 10000 requests to http://localhost:8001/...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Server: nginx
+Total Requests: 10000, Successful: 10000, Failed: 0
+Execution Time: 7.77 s, Requests/s: 1287.77
+Energy: Total 0.27 J, Avg Power 0.04 W
+CPU: Avg 0.77%, Peak 1.93%, Total 67.94%
+Memory: Avg 74.22 MB, Peak 75.92 MB, Total 816.42 MB
+JSON: output/2025-04-10-175004.json, CSV: ../results_local/nginx.csv
+==========================
+Running measure_local.py for nginx with 15000 requests
+Starting nginx server...
+Starting Scaphandre...
+Sending 15000 requests to http://localhost:8001/...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Server: nginx
+Total Requests: 15000, Successful: 15000, Failed: 0
+Execution Time: 11.52 s, Requests/s: 1302.14
+Energy: Total 0.40 J, Avg Power 0.03 W
+CPU: Avg 0.82%, Peak 1.61%, Total 85.49%
+Memory: Avg 83.59 MB, Peak 85.97 MB, Total 1086.68 MB
+JSON: output/2025-04-10-175051.json, CSV: ../results_local/nginx.csv
+==========================
+Running measure_local.py for nginx with 20000 requests
+Starting nginx server...
+Starting Scaphandre...
+Sending 20000 requests to http://localhost:8001/...
+Waiting for Scaphandre to collect data...
+=== Measurement Summary ===
+Server: nginx
+Total Requests: 20000, Successful: 20000, Failed: 0
+Execution Time: 15.39 s, Requests/s: 1299.14
+Energy: Total 0.60 J, Avg Power 0.04 W
+CPU: Avg 0.92%, Peak 2.11%, Total 117.79%
+Memory: Avg 91.19 MB, Peak 94.02 MB, Total 1459.08 MB
+JSON: output/2025-04-10-175141.json, CSV: ../results_local/nginx.csv
+==========================
