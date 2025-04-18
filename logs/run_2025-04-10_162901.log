@@ -1,4 +1,0 @@
-Checking and freeing port 8001...
-./run_benchmarks.sh: line 82: 1109696 Killed                  sudo "local/setup_${server}.sh" stop > /dev/null 2>&1
-Running tests for: yaws
-Running measure_local.py for yaws with 100 requests

@@ -1,6 +1,0 @@
-Checking and freeing port 8001...
-d49f7345a2c0
-Running tests for: yaws
-Running measure_docker.py for yaws with 100 requests
-Starting container 'yaws'...
-Container health check failed
