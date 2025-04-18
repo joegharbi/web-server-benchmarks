@@ -1,8 +1,0 @@
-{application, my_server,
- [{description, "Cowboy Web Server"},
-  {vsn, "0.1.0"},
-  {registered, []},
-  {applications, [kernel, stdlib, cowboy]},
-  {mod, {my_server_app, []}},
-  {modules, [my_server_app, my_server_sup, toppage_handler]},
-  {env, []}]}.
