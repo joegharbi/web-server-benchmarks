@@ -9,9 +9,10 @@ This project benchmarks the performance and energy efficiency of web servers run
 3. [Adding Dockerfiles](#adding-dockerfiles)
 4. [Installing Docker Images](#installing-docker-images)
 5. [Running the Scripts](#running-the-scripts)
-6. [Measurement Script](#measurement-script)
-7. [GUI Graph Generator](#gui-graph-generator)
-8. [Troubleshooting](#troubleshooting)
+6. [Local Webserver Baseline](#local-webserver-baseline)
+7. [Measurement Script](#measurement-script)
+8. [GUI Graph Generator](#gui-graph-generator)
+9. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -44,8 +45,8 @@ web-server-benchmarks/
 │   │   ├── nginx-dynamic-deb/
 │   │   └── ...
 ├── local/
-│   ├── setup_yaws.sh
-│   ├── measure_local.py
+│   ├── nginx/
+│   ├── yaws/
 │   └── ...
 ├── brainstorming/
 │   ├── server_client.py
@@ -95,13 +96,7 @@ The script:
 
 ## Running the Scripts
 
-### 1. **Setup Scripts**
-Some servers (e.g., Yaws) require setup. Use the provided setup scripts:
-```bash
-./local/setup_yaws.sh
-```
-
-### 2. **Run Benchmarks**
+### 1. **Run Benchmarks**
 Use the `measure.py` script to benchmark a server:
 ```bash
 sudo python3 measure.py --server_image <image_name> --num_requests <number>
@@ -117,6 +112,17 @@ sudo python3 measure.py --server_image nginx-deb --num_requests 5000
 - `--num_requests`: Number of HTTP requests to send.
 - `--output_csv`: Custom CSV output file.
 - `--port_mapping`: Map host to container port (default: `8001:80`).
+
+---
+
+## Local Webserver Baseline
+The `local` folder contains scripts and configurations for running a local webserver as a baseline for benchmarking. This includes lightweight setups for servers like Nginx and Yaws, which are used to compare performance and energy efficiency against containerized web servers.
+
+You can directly run these local webservers without requiring Docker containers. For example:
+- **Nginx**: Use the provided configuration files in the `local/nginx/` directory to start the server locally.
+- **Yaws**: Follow the instructions and setup scripts in the `local/yaws/` directory to set up and run the Yaws webserver.
+
+These local setups serve as a baseline for comparison with containerized web servers.
 
 ---
 
