@@ -4,4 +4,7 @@ output/
 brainstorming/
 old_results/
 venv/
+results_docker/
+results_local/ 
+results_websocket/
 *.json
