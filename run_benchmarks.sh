@@ -8,16 +8,14 @@ DEFAULT_PORT="8001:80"
 ERLANG_PORT="8001:8080"  # For Erlang-based images exposing 8080
 
 # Define payloads for measure_docker.py and measure_local.py
-payloads=(100 1000 5000 8000 10000 15000 20000)
+payloads=(100 1000 5000 8000 10000 15000 20000 30000 40000 50000 60000 70000 80000)
 
 # Define categories of images with their port mappings
 declare -A websocket_images=( 
     ["nginx_websocket"]="" 
-    ["nginx-aiohttp"]="" 
     ["nginx-java-websocket"]="" 
     ["nginx-tornado"]="" 
     ["yaws_websocket"]="" 
-    ["yaws-socket"]="" 
 )
 declare -A dynamic_images=( 
     ["nginx-dynamic-deb"]="$DEFAULT_PORT" 
@@ -42,11 +40,13 @@ declare -A local_servers=(
     ["yaws"]="" 
 )
 
-# Ensure required directories exist
-mkdir -p results_docker/dynamic results_docker/static results_local results_websocket logs
+# Create a fixed parent directory for results
+RESULTS_PARENT_DIR="results"
+TIMESTAMP=$(date +"%Y-%m-%d_%H%M%S")
+RESULTS_DIR="$RESULTS_PARENT_DIR/$TIMESTAMP"
+mkdir -p "$RESULTS_DIR/static" "$RESULTS_DIR/dynamic" "$RESULTS_DIR/local" "$RESULTS_DIR/websocket" logs
 
 # Log file setup
-TIMESTAMP=$(date +"%Y-%m-%d_%H%M%S")
 LOG_FILE="logs/run_${TIMESTAMP}.log"
 echo "Logging to $LOG_FILE"
 exec > >(tee -a "$LOG_FILE") 2>&1  # Redirect stdout and stderr to log file and console
@@ -70,24 +70,35 @@ run_websocket_tests() {
         echo "Error: ./web-socket/measure_websocket.py not found"
         return 1
     fi
-    echo "Running measure_websocket.py for $image in burst mode"
-    "$PYTHON_PATH" ./web-socket/measure_websocket.py \
-        --server_image "$image" \
-        --num_clients 10 \
-        --size_mb 10 \
-        --interval_s 1 \
-        --duration_s 60 \
-        --output_csv "results_websocket/$image-burst.csv" || echo "Burst mode failed for $image"
 
-    echo "Running measure_websocket.py for $image in streaming mode"
-    "$PYTHON_PATH" ./web-socket/measure_websocket.py \
-        --server_image "$image" \
-        --num_clients 10 \
-        --rate_mb_s 5 \
-        --duration_s 60 \
-        --size_mb 0 \
-        --interval_s 0 \
-        --output_csv "results_websocket/$image-streaming.csv" || echo "Streaming mode failed for $image"
+    # Burst mode with varying payloads
+    for num_clients in 10 20 50; do
+        for size_mb in 10 50 100; do
+            echo "Running measure_websocket.py for $image in burst mode with $num_clients clients and $size_mb MB payload"
+            "$PYTHON_PATH" ./web-socket/measure_websocket.py \
+                --server_image "$image" \
+                --num_clients "$num_clients" \
+                --size_mb "$size_mb" \
+                --interval_s 1 \
+                --duration_s 60 \
+                --output_csv "$RESULTS_DIR/websocket/$image-burst-${num_clients}clients-${size_mb}MB.csv" || echo "Burst mode failed for $image"
+        done
+    done
+
+    # Streaming mode with varying rates
+    for rate_mb_s in 5 10 20; do
+        for num_clients in 10 20 50; do
+            echo "Running measure_websocket.py for $image in streaming mode with $num_clients clients and $rate_mb_s MB/s rate"
+            "$PYTHON_PATH" ./web-socket/measure_websocket.py \
+                --server_image "$image" \
+                --num_clients "$num_clients" \
+                --rate_mb_s "$rate_mb_s" \
+                --duration_s 60 \
+                --size_mb 0 \
+                --interval_s 0 \
+                --output_csv "$RESULTS_DIR/websocket/$image-streaming-${num_clients}clients-${rate_mb_s}MBps.csv" || echo "Streaming mode failed for $image"
+        done
+    done
 }
 
 # Function to run dynamic/static tests (with port_mapping)
@@ -105,7 +116,7 @@ run_docker_tests() {
             --server_image "$image" \
             --num_requests "$payload" \
             --port_mapping "$port_mapping" \
-            --output_csv "results_docker/$category/$image.csv"
+            --output_csv "$RESULTS_DIR/$category/$image.csv"
     done
 }
 
@@ -122,7 +133,7 @@ run_local_tests() {
         (cd local && "$PYTHON_PATH" measure_local.py \
             --server "$server" \
             --num_requests "$payload" \
-            --output_csv "../results_local/$server.csv")
+            --output_csv "../$RESULTS_DIR/local/$server.csv")
     done
 }
 
