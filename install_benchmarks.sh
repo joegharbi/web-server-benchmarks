@@ -12,6 +12,10 @@ default_image_dirs=(
  "./containers/static/yaws-deb" 
  "./containers/dynamic/nginx-dynamic-deb" 
  "./containers/dynamic/yaws-dynamic-latest-deb"
+ "./web-socket/yaws_websocket"
+ "./web-socket/nginx_websocket"
+ "./web-socket/nginx-tornado"
+ "./web-socket/nginx-java-websocket"
 )
 
 # Allow additional directories to be passed as arguments

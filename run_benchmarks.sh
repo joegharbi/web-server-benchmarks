@@ -7,9 +7,6 @@ PYTHON_PATH="$(pwd)/srv/bin/python3"  # Absolute path from root directory
 DEFAULT_PORT="8001:80"
 ERLANG_PORT="8001:8080"  # For Erlang-based images exposing 8080
 
-# Get all Docker image names
-image_names=$(sudo docker images --format "{{.Repository}}")
-
 # Define payloads for measure_docker.py and measure_local.py
 payloads=(100 1000 5000 8000 10000 15000 20000)
 
@@ -28,21 +25,17 @@ declare -A dynamic_images=(
 )
 declare -A static_images=( 
     ["apache-deb"]="$DEFAULT_PORT" 
-    ["cowboy-play"]="$ERLANG_PORT"      # Erlang-based, uses 8080
-    # ["cowboy-test"]="$DEFAULT_PORT" 
+    ["cowboy-play"]="$ERLANG_PORT" 
     ["erlang-deb"]="$DEFAULT_PORT" 
     ["nginx-deb"]="$DEFAULT_PORT" 
-    # ["yaws-apt-slim"]="$DEFAULT_PORT" 
     ["yaws-deb"]="$DEFAULT_PORT" 
-    # ["yaws-git-full-27"]="$DEFAULT_PORT" 
-    # ["yaws-git-slim-27"]="$DEFAULT_PORT" 
     ["yaws-latest-deb"]="$DEFAULT_PORT" 
-    ["erlang27"]="$ERLANG_PORT"         # Erlang-based, uses 8080
-    ["erlindex23"]="$ERLANG_PORT"       # Erlang-based, uses 8080
-    ["index26"]="$ERLANG_PORT"          # Erlang-based, uses 8080
-    ["index27"]="$ERLANG_PORT"          # Erlang-based, uses 8080
-    ["erlang23"]="$ERLANG_PORT"         # Erlang-based, uses 8080
-    ["erlang26"]="$ERLANG_PORT"         # Erlang-based, uses 8080
+    ["erlang27"]="$ERLANG_PORT" 
+    ["erlindex23"]="$ERLANG_PORT" 
+    ["index26"]="$ERLANG_PORT" 
+    ["index27"]="$ERLANG_PORT" 
+    ["erlang23"]="$ERLANG_PORT" 
+    ["erlang26"]="$ERLANG_PORT" 
 )
 declare -A local_servers=( 
     ["nginx"]="" 
@@ -60,31 +53,14 @@ exec > >(tee -a "$LOG_FILE") 2>&1  # Redirect stdout and stderr to log file and 
 
 # Parse arguments
 RUN_ALL=1
-TARGET=""
-if [[ $# -gt 0 ]]; then
-    if [[ "$1" == "--name" && $# -ge 2 ]]; then
-        RUN_ALL=0
-        TARGET="$2"
-    elif [[ "$1" != "--"* ]]; then  # If first arg isn't an option, treat it as target
-        RUN_ALL=0
-        TARGET="$1"
-    else
-        echo "Unknown parameter: $1 (running all benchmarks by default)"
-    fi
-fi
+TARGET_TYPE=""
+TARGET_IMAGES=()
 
-# Free up port 8001 if in use (Docker only unless target is local)
-echo "Checking and freeing port 8001..."
-sudo docker ps -q --filter "publish=8001" | xargs -r sudo docker stop
-sudo docker ps -a -q --filter "publish=8001" | xargs -r sudo docker rm
-# Stop local servers only if target is in local_servers
-if [[ -v "local_servers[$TARGET]" || $RUN_ALL -eq 1 ]]; then
-    for server in "${!local_servers[@]}"; do
-        if [ -f "local/setup_${server}.sh" ]; then
-            echo "Stopping $server..."
-            sudo "local/setup_${server}.sh" stop || echo "Warning: Failed to stop $server cleanly"
-        fi
-    done
+if [[ $# -gt 0 ]]; then
+    RUN_ALL=0
+    TARGET_TYPE="$1"
+    shift
+    TARGET_IMAGES=("$@")
 fi
 
 # Function to run WebSocket tests (no port_mapping)
@@ -151,43 +127,61 @@ run_local_tests() {
 }
 
 # Main logic
-for image in $image_names "${!local_servers[@]}"; do
-    if [[ $RUN_ALL -eq 0 && "$image" != "$TARGET" ]]; then
-        continue
-    fi
-
-    echo "Running tests for: $image"
-    
-    # Docker-specific cleanup only for Docker images
-    if [[ ! -v "local_servers[$image]" ]]; then
-        sudo docker rm -f "$image" > /dev/null 2>&1
-    fi
-
-    # WebSocket images
-    if [[ -v "websocket_images[$image]" ]]; then
+if [[ $RUN_ALL -eq 1 ]]; then
+    # Run all images in websocket_images, dynamic_images, static_images, and local_servers
+    for image in "${!websocket_images[@]}"; do
         run_websocket_tests "$image"
-        continue
-    fi
-
-    # Dynamic images
-    if [[ -v "dynamic_images[$image]" ]]; then
+    done
+    for image in "${!dynamic_images[@]}"; do
         run_docker_tests "$image" "${dynamic_images[$image]}" "dynamic"
-        continue
-    fi
-
-    # Static images
-    if [[ -v "static_images[$image]" ]]; then
+    done
+    for image in "${!static_images[@]}"; do
         run_docker_tests "$image" "${static_images[$image]}" "static"
-        continue
-    fi
-
-    # Local servers
-    if [[ -v "local_servers[$image]" ]]; then
-        run_local_tests "$image"
-        continue
-    fi
-
-    # Default to static with DEFAULT_PORT if uncategorized Docker image
-    echo "Uncategorized Docker image $image - treating as static with default port $DEFAULT_PORT"
-    run_docker_tests "$image" "$DEFAULT_PORT" "static"
-done
+    done
+    for server in "${!local_servers[@]}"; do
+        run_local_tests "$server"
+    done
+else
+    # Run specific type or images
+    case "$TARGET_TYPE" in
+        websocket)
+            for image in "${TARGET_IMAGES[@]}"; do
+                if [[ -v "websocket_images[$image]" ]]; then
+                    run_websocket_tests "$image"
+                else
+                    echo "Error: $image is not a valid WebSocket image"
+                fi
+            done
+            ;;
+        dynamic)
+            for image in "${TARGET_IMAGES[@]}"; do
+                if [[ -v "dynamic_images[$image]" ]]; then
+                    run_docker_tests "$image" "${dynamic_images[$image]}" "dynamic"
+                else
+                    echo "Error: $image is not a valid dynamic image"
+                fi
+            done
+            ;;
+        static)
+            for image in "${TARGET_IMAGES[@]}"; do
+                if [[ -v "static_images[$image]" ]]; then
+                    run_docker_tests "$image" "${static_images[$image]}" "static"
+                else
+                    echo "Error: $image is not a valid static image"
+                fi
+            done
+            ;;
+        local)
+            for server in "${TARGET_IMAGES[@]}"; do
+                if [[ -v "local_servers[$server]" ]]; then
+                    run_local_tests "$server"
+                else
+                    echo "Error: $server is not a valid local server"
+                fi
+            done
+            ;;
+        *)
+            echo "Error: Unknown type $TARGET_TYPE. Valid types are: websocket, dynamic, static, local."
+            ;;
+    esac
+fi
