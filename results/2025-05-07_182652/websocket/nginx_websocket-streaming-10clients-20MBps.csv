@@ -1,0 +1,2 @@
+Total Clients,Successful Clients,Failed Clients,Execution Time (s),Throughput (MB/s),Total Energy (J),Avg Power (W),Samples,Avg CPU (%),Peak CPU (%),Total CPU (%),Avg Mem (MB),Peak Mem (MB),Total Mem (MB)
+10,10,0,62.19540500640869,200.0,125.29217414255454,2.014492455345283,53,1.230243445692884,2.0833333333333335,875.9333333333333,77.41423806179775,89.1796875,6889.8671875

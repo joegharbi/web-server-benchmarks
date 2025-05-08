@@ -95,3 +95,42 @@
 2025-05-06T18:14:37.776084+02:00 notice: Yaws: Listening to 0.0.0.0:8001 for <1> virtual servers:, - http://localhost:8001 under /var/www/html
 2025-05-06T18:15:21.849207+02:00 notice: Stopping yaws
 2025-05-06T18:15:21.849549+02:00 notice: stop_ready([], <0.307.0>)
+2025-05-07T22:59:06.538951+02:00 notice: Yaws: Listening to 0.0.0.0:8001 for <1> virtual servers:, - http://localhost:8001 under /var/www/html
+2025-05-07T22:59:34.214186+02:00 notice: Stopping yaws
+2025-05-07T22:59:34.214514+02:00 notice: stop_ready([], <0.120.0>)
+2025-05-07T22:59:45.052511+02:00 notice: Yaws: Listening to 0.0.0.0:8001 for <1> virtual servers:, - http://localhost:8001 under /var/www/html
+2025-05-07T23:00:14.775556+02:00 notice: Stopping yaws
+2025-05-07T23:00:14.775875+02:00 notice: stop_ready([], <0.125.0>)
+2025-05-07T23:00:25.607536+02:00 notice: Yaws: Listening to 0.0.0.0:8001 for <1> virtual servers:, - http://localhost:8001 under /var/www/html
+2025-05-07T23:00:57.363340+02:00 notice: Stopping yaws
+2025-05-07T23:00:57.363655+02:00 notice: stop_ready([], <0.163.0>)
+2025-05-07T23:01:08.199056+02:00 notice: Yaws: Listening to 0.0.0.0:8001 for <1> virtual servers:, - http://localhost:8001 under /var/www/html
+2025-05-07T23:01:42.053650+02:00 notice: Stopping yaws
+2025-05-07T23:01:42.053997+02:00 notice: stop_ready([], <0.210.0>)
+2025-05-07T23:01:52.893236+02:00 notice: Yaws: Listening to 0.0.0.0:8001 for <1> virtual servers:, - http://localhost:8001 under /var/www/html
+2025-05-07T23:02:28.778191+02:00 notice: Stopping yaws
+2025-05-07T23:02:28.778556+02:00 notice: stop_ready([], <0.203.0>)
+2025-05-07T23:02:39.622790+02:00 notice: Yaws: Listening to 0.0.0.0:8001 for <1> virtual servers:, - http://localhost:8001 under /var/www/html
+2025-05-07T23:03:19.540040+02:00 notice: Stopping yaws
+2025-05-07T23:03:19.540367+02:00 notice: stop_ready([], <0.274.0>)
+2025-05-07T23:03:30.380588+02:00 notice: Yaws: Listening to 0.0.0.0:8001 for <1> virtual servers:, - http://localhost:8001 under /var/www/html
+2025-05-07T23:04:14.399514+02:00 notice: Stopping yaws
+2025-05-07T23:04:14.399848+02:00 notice: stop_ready([], <0.301.0>)
+2025-05-07T23:04:25.244972+02:00 notice: Yaws: Listening to 0.0.0.0:8001 for <1> virtual servers:, - http://localhost:8001 under /var/www/html
+2025-05-07T23:05:19.452045+02:00 notice: Stopping yaws
+2025-05-07T23:05:19.452375+02:00 notice: stop_ready([], <0.416.0>)
+2025-05-07T23:05:30.293111+02:00 notice: Yaws: Listening to 0.0.0.0:8001 for <1> virtual servers:, - http://localhost:8001 under /var/www/html
+2025-05-07T23:06:34.695673+02:00 notice: Stopping yaws
+2025-05-07T23:06:34.696058+02:00 notice: stop_ready([], <0.525.0>)
+2025-05-07T23:06:45.541202+02:00 notice: Yaws: Listening to 0.0.0.0:8001 for <1> virtual servers:, - http://localhost:8001 under /var/www/html
+2025-05-07T23:07:59.985374+02:00 notice: Stopping yaws
+2025-05-07T23:07:59.985738+02:00 notice: stop_ready([], <0.699.0>)
+2025-05-07T23:08:10.835319+02:00 notice: Yaws: Listening to 0.0.0.0:8001 for <1> virtual servers:, - http://localhost:8001 under /var/www/html
+2025-05-07T23:09:35.637795+02:00 notice: Stopping yaws
+2025-05-07T23:09:35.638161+02:00 notice: stop_ready([], <0.714.0>)
+2025-05-07T23:09:46.534741+02:00 notice: Yaws: Listening to 0.0.0.0:8001 for <1> virtual servers:, - http://localhost:8001 under /var/www/html
+2025-05-07T23:11:21.556053+02:00 notice: Stopping yaws
+2025-05-07T23:11:21.561346+02:00 notice: stop_ready([], <0.879.0>)
+2025-05-07T23:11:32.421795+02:00 notice: Yaws: Listening to 0.0.0.0:8001 for <1> virtual servers:, - http://localhost:8001 under /var/www/html
+2025-05-07T23:13:17.571607+02:00 notice: Stopping yaws
+2025-05-07T23:13:17.571947+02:00 notice: stop_ready([], <0.895.0>)
