@@ -316,7 +316,9 @@ def main():
     stop_event.set()
     resource_thread.join()
 
-    total_data_mb = (args.num_clients * args.size_mb * (runtime / args.interval_s)) if args.size_mb else (args.num_clients * args.rate_mb_s * runtime)
+    # total_data_mb = (args.num_clients * args.size_mb * (runtime / args.interval_s)) if args.size_mb else (args.num_clients * args.rate_mb_s * runtime)
+
+    total_data_mb = (args.num_clients * args.size_mb * args.interval_s) if args.size_mb else (args.num_clients * args.rate_mb_s)
     throughput_mb_s = total_data_mb / runtime if runtime > 0 else 0
 
     stop_scaphandre(scaphandre_process)
