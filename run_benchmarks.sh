@@ -15,28 +15,34 @@ payloads=(100 1000 5000 8000 10000 15000 20000 30000 40000 50000 60000 70000 800
 # If not, auto-discover and use sensible defaults
 
 declare -A websocket_images=( 
-    ["nginx_websocket"]="" 
-    ["nginx-java-websocket"]="8080:8080" 
-    ["nginx-tornado"]="" 
-    ["yaws_websocket"]="" 
+    ["ws-nginx"]="" 
+    ["ws-nginx-java"]="8080:8080" 
+    ["ws-nginx-tornado"]="" 
+    ["ws-yaws"]="" 
 )
 declare -A dynamic_images=( 
-    ["nginx-dynamic-deb"]="$DEFAULT_PORT" 
-    ["yaws-dynamic-latest-deb"]="$DEFAULT_PORT" 
+    ["dy-nginx-deb"]="$DEFAULT_PORT" 
+    ["dy-yaws-latest-deb"]="$DEFAULT_PORT" 
+    ["dy-apache-deb"]="$DEFAULT_PORT" 
+    ["dy-erlang23"]="$ERLANG_PORT" 
+    ["dy-erlang26"]="$ERLANG_PORT" 
+    ["dy-erlang27"]="$ERLANG_PORT" 
+    ["dy-erlindex23"]="$ERLANG_PORT" 
+    ["dy-erlindex26"]="$ERLANG_PORT" 
+    ["dy-erlindex27"]="$ERLANG_PORT" 
 )
 declare -A static_images=( 
-    ["apache-deb"]="$DEFAULT_PORT" 
-    ["cowboy-play"]="$ERLANG_PORT" 
-    ["erlang-deb"]="$DEFAULT_PORT" 
-    ["nginx-deb"]="$DEFAULT_PORT" 
-    ["yaws-deb"]="$DEFAULT_PORT" 
-    ["yaws-latest-deb"]="$DEFAULT_PORT" 
-    ["erlang27"]="$ERLANG_PORT" 
-    ["erlindex23"]="$ERLANG_PORT" 
-    ["index26"]="$ERLANG_PORT" 
-    ["index27"]="$ERLANG_PORT" 
-    ["erlang23"]="$ERLANG_PORT" 
-    ["erlang26"]="$ERLANG_PORT" 
+    ["st-apache-deb"]="$DEFAULT_PORT" 
+    ["st-cowboy-play"]="$ERLANG_PORT" 
+    ["st-nginx-deb"]="$DEFAULT_PORT" 
+    ["st-yaws-deb"]="$DEFAULT_PORT" 
+    ["st-yaws-latest-deb"]="$DEFAULT_PORT" 
+    ["st-erlang23"]="$ERLANG_PORT" 
+    ["st-erlang26"]="$ERLANG_PORT" 
+    ["st-erlang27"]="$ERLANG_PORT" 
+    ["st-erlindex23"]="$ERLANG_PORT" 
+    ["st-erlindex26"]="$ERLANG_PORT" 
+    ["st-erlindex27"]="$ERLANG_PORT" 
 )
 declare -A local_servers=( 
     ["nginx"]="" 

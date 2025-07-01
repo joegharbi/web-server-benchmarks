@@ -283,7 +283,7 @@ def save_results_to_csv(filename, results, total_energy, average_power, runtime,
         os.makedirs("results_local", exist_ok=True)
         filename = os.path.join("results_local", f"{server}.csv")
     
-    headers = ["server_image", "type", "Total Requests", "Successful Requests", "Failed Requests", "Execution Time (s)", "Requests/s",
+    headers = ["container_name", "type", "Total Requests", "Successful Requests", "Failed Requests", "Execution Time (s)", "Requests/s",
                "Total Energy (J)", "Avg Power (W)", "Samples", "Avg CPU (%)", "Peak CPU (%)", "Total CPU (%)",
                "Avg Mem (MB)", "Peak Mem (MB)", "Total Mem (MB)"]
     data = [[server, measurement_type, results['total'], results['success'], results['failure'], runtime, requests_per_second,

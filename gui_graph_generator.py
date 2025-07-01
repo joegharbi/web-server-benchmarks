@@ -180,24 +180,35 @@ class GraphGeneratorApp:
                 ) or "other"
 
             if self.merge_csv_var.get():
-                # Try to infer measurement type from all files
-                types_found = set()
+                # Extract metadata from CSVs
                 server_names = set()
-                for file_path in self.csv_data.keys():
-                    for t in ["local", "dynamic", "static", "websocket"]:
-                        if f"/{t}/" in file_path or f"{os.sep}{t}{os.sep}" in file_path:
-                            types_found.add(t)
-                    server_names.add(os.path.basename(os.path.dirname(file_path)).replace("results_", ""))
+                types_found = set()
+                modes_found = set()
+                for data in self.csv_data.values():
+                    if 'container_name' in data.columns:
+                        server_names.add(str(data['container_name'].iloc[0]))
+                    if 'type' in data.columns:
+                        types_found.add(str(data['type'].iloc[0]))
+                    if 'mode' in data.columns:
+                        modes_found.add(str(data['mode'].iloc[0]))
+                # Determine merged type
                 if len(types_found) == 1:
                     merged_type = types_found.pop()
                 else:
                     merged_type = ask_measurement_type()
+                # Determine mode (for websocket)
+                merged_mode = None
+                if merged_type == 'websocket' and len(modes_found) == 1:
+                    merged_mode = modes_found.pop()
+                # Build output folder
                 merged_folder = os.path.join(graphs_root, merged_type)
+                if merged_mode:
+                    merged_folder = os.path.join(merged_folder, merged_mode)
                 os.makedirs(merged_folder, exist_ok=True)
                 server_part = "_".join(sorted(server_names))
                 plt.figure(figsize=(10, 6))
                 for file_idx, (file_path, data) in enumerate(self.csv_data.items()):
-                    folder_name = os.path.basename(os.path.dirname(file_path)).replace("results_", "")
+                    folder_name = data['container_name'].iloc[0] if 'container_name' in data.columns else os.path.basename(os.path.dirname(file_path))
                     file_name = os.path.splitext(os.path.basename(file_path))[0]
                     for i, column in enumerate(selected_columns):
                         if column in data.columns:
@@ -208,22 +219,24 @@ class GraphGeneratorApp:
                 plt.ylabel(selected_columns[0] if len(selected_columns) == 1 else "Values")
                 plt.legend(framealpha=0.5)
                 plt.grid(True)
-                merged_path = os.path.join(merged_folder, f"merged_{server_part}_{'_'.join(selected_columns)}.png")
+                merged_filename = f"{server_part}.png"
+                merged_path = os.path.join(merged_folder, merged_filename)
                 plt.savefig(merged_path, dpi=300)
                 print(f"Saved merged graph: {merged_path}")
                 plt.close()
             else:
                 for file_idx, (file_path, data) in enumerate(self.csv_data.items()):
-                    measurement_type = None
-                    for t in ["local", "dynamic", "static", "websocket"]:
-                        if f"/{t}/" in file_path or f"{os.sep}{t}{os.sep}" in file_path:
-                            measurement_type = t
-                            break
+                    # Extract metadata from CSV
+                    server_name = data['container_name'].iloc[0] if 'container_name' in data.columns else os.path.basename(os.path.dirname(file_path))
+                    measurement_type = data['type'].iloc[0] if 'type' in data.columns else None
+                    mode = data['mode'].iloc[0] if 'mode' in data.columns else None
                     if not measurement_type:
                         measurement_type = ask_measurement_type()
-                    server_name = os.path.basename(os.path.dirname(file_path)).replace("results_", "")
-                    file_name = os.path.splitext(os.path.basename(file_path))[0]
-                    file_graphs_folder = os.path.join(graphs_root, measurement_type, server_name)
+                    # Build output folder
+                    file_graphs_folder = os.path.join(graphs_root, measurement_type)
+                    if measurement_type == 'websocket' and mode:
+                        file_graphs_folder = os.path.join(file_graphs_folder, mode)
+                    file_graphs_folder = os.path.join(file_graphs_folder, server_name)
                     os.makedirs(file_graphs_folder, exist_ok=True)
 
                     if self.merge_columns_var.get():
@@ -231,7 +244,7 @@ class GraphGeneratorApp:
                         for i, column in enumerate(selected_columns):
                             if column in data.columns:
                                 color, marker = color_marker_combinations[(file_idx * len(selected_columns) + i) % len(color_marker_combinations)]
-                                plt.plot(data.index, data[column], label=f"{server_name}/{file_name} - {column}", color=color, marker=marker, linestyle='-')
+                                plt.plot(data.index, data[column], label=f"{server_name}/{os.path.splitext(os.path.basename(file_path))[0]} - {column}", color=color, marker=marker, linestyle='-')
                         plt.title(f"{server_name}")
                         plt.xlabel("Number of Requests")
                         plt.ylabel("Values")
@@ -246,14 +259,14 @@ class GraphGeneratorApp:
                             if column in data.columns:
                                 plt.figure(figsize=(10, 6))
                                 color, marker = color_marker_combinations[(file_idx * len(selected_columns) + i) % len(color_marker_combinations)]
-                                plt.plot(data.index, data[column], label=f"{server_name}/{file_name} - {column}", color=color, marker=marker, linestyle='-')
+                                plt.plot(data.index, data[column], label=f"{server_name}/{os.path.splitext(os.path.basename(file_path))[0]} - {column}", color=color, marker=marker, linestyle='-')
                                 plt.title(f"{server_name}")
                                 plt.xlabel("Number of Requests")
                                 plt.ylabel(column)
                                 plt.legend(framealpha=0.5)
                                 plt.grid(True)
                                 safe_column = column.replace(' ', '_')
-                                save_path = os.path.join(file_graphs_folder, f"{file_name}_{safe_column}.png")
+                                save_path = os.path.join(file_graphs_folder, f"{os.path.splitext(os.path.basename(file_path))[0]}_{safe_column}.png")
                                 plt.savefig(save_path, dpi=300)
                                 print(f"Saved graph: {save_path}")
                                 plt.close()

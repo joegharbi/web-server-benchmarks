@@ -189,9 +189,25 @@ def parse_json_and_compute_energy(file_name, container_name, runtime):
     total_energy_joules = avg_power_watts * runtime
     return total_energy_joules, avg_power_watts, number_samples
 
-def save_results_to_csv(filename, results, total_energy, average_power, runtime, throughput_mb_s, total_samples, cpu_metrics, mem_metrics, server_image):
-    # This function is now deprecated and should not be used.
-    pass
+def save_results_to_csv(filename, results, total_energy, average_power, runtime, throughput_mb_s, total_samples, cpu_metrics, mem_metrics, container_name, measurement_type, extra_fields=None):
+    if filename is None:
+        os.makedirs("results_websocket", exist_ok=True)
+        filename = os.path.join("results_websocket", f"{container_name}.csv")
+    
+    headers = ["container_name", "type", "Total Requests", "Successful Requests", "Failed Requests", "Execution Time (s)", "Requests/s",
+               "Total Energy (J)", "Avg Power (W)", "Samples", "Avg CPU (%)", "Peak CPU (%)", "Total CPU (%)",
+               "Avg Mem (MB)", "Peak Mem (MB)", "Total Mem (MB)"]
+    row = [container_name, measurement_type, results['total'], results['success'], results['failure'], runtime, throughput_mb_s,
+           total_energy, average_power, total_samples, cpu_metrics['avg'], cpu_metrics['peak'],
+           cpu_metrics['total'], mem_metrics['avg'], mem_metrics['peak'], mem_metrics['total']]
+    if extra_fields:
+        headers += list(extra_fields.keys())
+        row += list(extra_fields.values())
+    with open(filename, mode='a', newline='') as file:
+        writer = csv.writer(file)
+        if not os.path.isfile(filename) or os.stat(filename).st_size == 0:
+            writer.writerow(headers)
+        writer.writerow(row)
 
 def print_summary(results, total_energy, average_power, runtime, throughput_mb_s, cpu_metrics, mem_metrics, output_json, output_csv, server_image):
     logger.info("=== Measurement Summary ===")

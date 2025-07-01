@@ -232,7 +232,7 @@ def save_results_to_csv(filename, results, total_energy, average_power, runtime,
         os.makedirs("results_docker", exist_ok=True)
         filename = os.path.join("results_docker", f"{container_name}.csv")
     
-    headers = ["server_image", "type", "Total Requests", "Successful Requests", "Failed Requests", "Execution Time (s)", "Requests/s",
+    headers = ["container_name", "type", "Total Requests", "Successful Requests", "Failed Requests", "Execution Time (s)", "Requests/s",
                "Total Energy (J)", "Avg Power (W)", "Samples", "Avg CPU (%)", "Peak CPU (%)", "Total CPU (%)",
                "Avg Mem (MB)", "Peak Mem (MB)", "Total Mem (MB)"]
     data = [[container_name, measurement_type, results['total'], results['success'], results['failure'], runtime, requests_per_second,
