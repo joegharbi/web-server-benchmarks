@@ -190,20 +190,8 @@ def parse_json_and_compute_energy(file_name, container_name, runtime):
     return total_energy_joules, avg_power_watts, number_samples
 
 def save_results_to_csv(filename, results, total_energy, average_power, runtime, throughput_mb_s, total_samples, cpu_metrics, mem_metrics, server_image):
-    if filename is None:
-        os.makedirs("results_websocket", exist_ok=True)
-        filename = os.path.join("results_websocket", f"{server_image}.csv")
-    headers = ["Total Clients", "Successful Clients", "Failed Clients", "Execution Time (s)", "Throughput (MB/s)",
-               "Total Energy (J)", "Avg Power (W)", "Samples", "Avg CPU (%)", "Peak CPU (%)", "Total CPU (%)",
-               "Avg Mem (MB)", "Peak Mem (MB)", "Total Mem (MB)"]
-    data = [[results['total'], results['success'], results['failure'], runtime, throughput_mb_s,
-             total_energy, average_power, total_samples, cpu_metrics['avg'], cpu_metrics['peak'],
-             cpu_metrics['total'], mem_metrics['avg'], mem_metrics['peak'], mem_metrics['total']]]
-    with open(filename, mode='a', newline='') as file:
-        writer = csv.writer(file)
-        if not os.path.isfile(filename) or os.stat(filename).st_size == 0:
-            writer.writerow(headers)
-        writer.writerows(data)
+    # This function is now deprecated and should not be used.
+    pass
 
 def print_summary(results, total_energy, average_power, runtime, throughput_mb_s, cpu_metrics, mem_metrics, output_json, output_csv, server_image):
     logger.info("=== Measurement Summary ===")
@@ -242,8 +230,10 @@ def main():
     parser.add_argument('--output_csv', type=str, default=None, help="Output CSV path")
     parser.add_argument('--output_json', type=str, default=None, help="Output JSON path")
     parser.add_argument('--verbose', action='store_true', help="Enable verbose logging")
+    parser.add_argument('--measurement_type', type=str, default=None, help="Type of measurement (websocket, etc.)")
 
     args = parser.parse_args()
+    measurement_type = args.measurement_type or "websocket"
     if args.verbose:
         logger.setLevel(logging.DEBUG)
     if (args.size_mb and not args.interval_s) or (args.interval_s and not args.size_mb):
@@ -326,10 +316,54 @@ def main():
     container.remove()
 
     total_energy, average_power, total_samples = parse_json_and_compute_energy(output_json, container_name, runtime)
-    save_results_to_csv(args.output_csv, results_counter, total_energy, average_power, runtime, throughput_mb_s, 
-                        total_samples, resource_results['cpu'], resource_results['mem'], args.server_image)
+    # save_results_to_csv(args.output_csv, results_counter, total_energy, average_power, runtime, throughput_mb_s, 
+    #                     total_samples, resource_results['cpu'], resource_results['mem'], args.server_image)
     print_summary(results_counter, total_energy, average_power, runtime, throughput_mb_s, 
                   resource_results['cpu'], resource_results['mem'], output_json, args.output_csv, args.server_image)
+
+    # Determine mode and chunk size
+    if hasattr(args, "size_mb") and args.size_mb and args.size_mb > 0:
+        mode = "burst"
+        chunk_size = args.size_mb
+    elif hasattr(args, "rate_mb_s") and args.rate_mb_s and args.rate_mb_s > 0:
+        mode = "streaming"
+        chunk_size = args.rate_mb_s
+    else:
+        mode = "unknown"
+        chunk_size = 0
+
+    # Compose a row with all relevant data
+    result_row = {
+        "server_image": args.server_image,
+        "type": measurement_type,
+        "Total Requests": results_counter['total'],
+        "Successful Requests": results_counter['success'],
+        "Failed Requests": results_counter['failure'],
+        "Execution Time (s)": runtime,
+        "Throughput (MB/s)": throughput_mb_s,
+        "Total Energy (J)": total_energy,
+        "Avg Power (W)": average_power,
+        "Samples": total_samples,
+        "Avg CPU (%)": resource_results['cpu']['avg'],
+        "Peak CPU (%)": resource_results['cpu']['peak'],
+        "Total CPU (%)": resource_results['cpu']['total'],
+        "Avg Mem (MB)": resource_results['mem']['avg'],
+        "Peak Mem (MB)": resource_results['mem']['peak'],
+        "Total Mem (MB)": resource_results['mem']['total'],
+        # Websocket-specific fields (optional, can be commented out if not needed)
+        # "num_clients": args.num_clients,
+        # "chunk_size": chunk_size,
+        # "mode": mode,
+    }
+
+    header = list(result_row.keys())
+
+    write_header = not os.path.exists(args.output_csv)
+    with open(args.output_csv, "a", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=header)
+        if write_header:
+            writer.writeheader()
+        writer.writerow(result_row)
 
 if __name__ == "__main__":
     main()

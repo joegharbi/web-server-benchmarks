@@ -1,22 +1,29 @@
 FROM debian:bookworm-slim
 
+# Install dependencies and add Bullseye repo for OpenSSL 1.1.1
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
     libncurses5-dev \
-    libssl-dev \
     autoconf \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+    && echo "deb http://deb.debian.org/debian bullseye main" > /etc/apt/sources.list.d/bullseye.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends -t bullseye libssl-dev=1.1.1* && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
-RUN curl -L --http1.1 https://github.com/erlang/otp/releases/download/OTP-27.0.1/otp_src_27.0.1.tar.gz -o erlang.tar.gz && \
+# Install Erlang from source (OTP 23.3.4.18)
+RUN curl -L --http1.1 https://github.com/erlang/otp/releases/download/OTP-23.3.4.18/otp_src_23.3.4.18.tar.gz -o erlang.tar.gz && \
     tar -xzf erlang.tar.gz && \
-    cd otp_src_27.0.1 && \
+    cd otp_src_23.3.4.18 && \
     ./configure && \
     make && make install && \
-    cd .. && rm -rf erlang.tar.gz otp_src_27.0.1
+    cd .. && rm -rf erlang.tar.gz otp_src_23.3.4.18
 
+# Set working directory
 WORKDIR /app
 
+
+# Create and compile the Erlang HTTP server
 RUN echo '-module(hello).' > /app/hello.erl && \
     echo '-export([main/1]).' >> /app/hello.erl && \
     echo 'main(_Args) ->' >> /app/hello.erl && \
@@ -32,6 +39,8 @@ RUN echo '-module(hello).' > /app/hello.erl && \
 
 RUN erlc -o /app /app/hello.erl
 
+# Expose port 8080
 EXPOSE 8080
 
+# Start the server
 CMD ["erl", "-pa", "/app", "-noshell", "-run", "hello", "main", "start"]

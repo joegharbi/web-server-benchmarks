@@ -1,0 +1,2 @@
+server_image,type,Total Requests,Successful Requests,Failed Requests,Execution Time (s),Throughput (MB/s),Total Energy (J),Avg Power (W),Samples,Avg CPU (%),Peak CPU (%),Total CPU (%),Avg Mem (MB),Peak Mem (MB),Total Mem (MB)
+nginx-java-websocket,websocket,10,0,10,0.504025936126709,992.0124425388758,0.014511901379472033,0.028791973466666666,6,2.2701704545454544,24.971875,199.775,97.3739346590909,553.73046875,1071.11328125

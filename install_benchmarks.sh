@@ -2,27 +2,15 @@
 
 # Install all Docker images for the benchmarks
 
-# Default directories containing Dockerfiles
-default_image_dirs=(
- "./containers/static/apache-deb"
- "./containers/static/yaws-latest-deb"
- "./containers/static/nginx-deb"
- "./containers/static/erlang-deb"
- "./containers/static/cowboy-play"
- "./containers/static/yaws-deb" 
- "./containers/dynamic/nginx-dynamic-deb" 
- "./containers/dynamic/yaws-dynamic-latest-deb"
- "./web-socket/yaws_websocket"
- "./web-socket/nginx_websocket"
- "./web-socket/nginx-tornado"
- "./web-socket/nginx-java-websocket"
-)
-
-# Allow additional directories to be passed as arguments
+# If arguments are provided, use them as directories or Dockerfiles to build
 if [[ $# -gt 0 ]]; then
     image_dirs=("$@")
 else
-    image_dirs=("${default_image_dirs[@]}")
+    # Otherwise, automatically find all subfolders in static and dynamic
+    image_dirs=(
+        $(find ./containers/static/ -mindepth 1 -maxdepth 1 -type d)
+        $(find ./containers/dynamic/ -mindepth 1 -maxdepth 1 -type d)
+    )
 fi
 
 echo "Processing directories: ${image_dirs[*]}"
@@ -35,25 +23,15 @@ for dir in "${image_dirs[@]}"; do
         continue
     fi
 
-    # Find all Dockerfiles in the directory
-    dockerfile_paths=$(find "$dir" -name "Dockerfile*" -type f)
-    if [[ -z "$dockerfile_paths" ]]; then
-        echo "No Dockerfiles found in $dir, skipping."
+    # Only build if there is a file named exactly 'Dockerfile' in the directory
+    if [[ ! -f "$dir/Dockerfile" ]]; then
+        echo "No Dockerfile found in $dir, skipping."
         continue
     fi
 
-    # Build an image for each Dockerfile
-    for dockerfile_path in $dockerfile_paths; do
-        dockerfile_name=$(basename "$dockerfile_path")
-        image_name=$(basename "$dir")
+    dockerfile_path="$dir/Dockerfile"
+    image_name=$(basename "$dir")
 
-        # Append the extension to the image name if the Dockerfile has one
-        if [[ "$dockerfile_name" != "Dockerfile" ]]; then
-            extension="${dockerfile_name#Dockerfile.}"
-            image_name+="-$extension"
-        fi
-
-        echo "Building Docker image for $dockerfile_path as $image_name"
-        docker build -t "$image_name" -f "$dockerfile_path" "$dir"
-    done
+    echo "Building Docker image for $dockerfile_path as $image_name"
+    docker build -t "$image_name" -f "$dockerfile_path" "$dir"
 done

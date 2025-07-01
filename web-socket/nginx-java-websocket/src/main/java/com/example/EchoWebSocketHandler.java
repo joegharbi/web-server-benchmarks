@@ -9,14 +9,26 @@ import org.springframework.web.socket.handler.AbstractWebSocketHandler;
 public class EchoWebSocketHandler extends AbstractWebSocketHandler {
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
-        System.out.println("Received text: " + message.getPayloadLength() + " bytes");
-        session.sendMessage(message);
+        try {
+            System.out.println("Received text: " + message.getPayloadLength() + " bytes");
+            session.sendMessage(message);
+        } catch (Exception e) {
+            System.err.println("Exception in handleTextMessage: ");
+            e.printStackTrace();
+            throw e;
+        }
     }
 
     @Override
     protected void handleBinaryMessage(WebSocketSession session, BinaryMessage message) throws Exception {
-        System.out.println("Received binary: " + message.getPayloadLength() + " bytes");
-        session.sendMessage(message);
+        try {
+            System.out.println("Received binary: " + message.getPayloadLength() + " bytes");
+            session.sendMessage(message);
+        } catch (Exception e) {
+            System.err.println("Exception in handleBinaryMessage: ");
+            e.printStackTrace();
+            throw e;
+        }
     }
 
     @Override

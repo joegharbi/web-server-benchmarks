@@ -22,8 +22,21 @@ RUN curl -L --http1.1 https://github.com/erlang/otp/releases/download/OTP-23.3.4
 # Set working directory
 WORKDIR /app
 
+# Create document root
+RUN mkdir -p /var/www/html
 
-# Create and compile the Erlang HTTP server
+# Embed a simple index.html
+RUN echo '<!DOCTYPE html>' > /var/www/html/index.html && \
+    echo '<html>' >> /var/www/html/index.html && \
+    echo '  <head>' >> /var/www/html/index.html && \
+    echo '    <title>Energy Test</title>' >> /var/www/html/index.html && \
+    echo '  </head>' >> /var/www/html/index.html && \
+    echo '  <body>' >> /var/www/html/index.html && \
+    echo '    <h1>Hello, Energy Test!</h1>' >> /var/www/html/index.html && \
+    echo '  </body>' >> /var/www/html/index.html && \
+    echo '</html>' >> /var/www/html/index.html
+
+# Create a simple Erlang HTTP server
 RUN echo '-module(hello).' > /app/hello.erl && \
     echo '-export([main/1]).' >> /app/hello.erl && \
     echo 'main(_Args) ->' >> /app/hello.erl && \
@@ -34,13 +47,14 @@ RUN echo '-module(hello).' > /app/hello.erl && \
     echo '    spawn(fun() -> handle(Conn) end),' >> /app/hello.erl && \
     echo '    accept_loop(Sock).' >> /app/hello.erl && \
     echo 'handle(Conn) ->' >> /app/hello.erl && \
-    echo '    gen_tcp:send(Conn, <<"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello, World!">>),' >> /app/hello.erl && \
+    echo '    {ok, Html} = file:read_file("/var/www/html/index.html"),' >> /app/hello.erl && \
+    echo '    Response = <<<<"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n">>/binary, Html/binary>>,' >> /app/hello.erl && \
+    echo '    gen_tcp:send(Conn, Response),' >> /app/hello.erl && \
     echo '    gen_tcp:close(Conn).' >> /app/hello.erl
 
+# Compile the Erlang app
 RUN erlc -o /app /app/hello.erl
 
 # Expose port 8080
 EXPOSE 8080
 
-# Start the server
-CMD ["erl", "-pa", "/app", "-noshell", "-run", "hello", "main", "start"]

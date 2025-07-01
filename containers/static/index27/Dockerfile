@@ -1,31 +1,30 @@
+# Use a lightweight Debian base image
 FROM debian:bookworm-slim
 
-# Install dependencies and add Bullseye repo for OpenSSL 1.1.1
+# Install dependencies required to build Erlang
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
     libncurses5-dev \
+    libssl-dev \
     autoconf \
-    && echo "deb http://deb.debian.org/debian bullseye main" > /etc/apt/sources.list.d/bullseye.list && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends -t bullseye libssl-dev=1.1.1* && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install Erlang from source (OTP 23.3.4.18)
-RUN curl -L --http1.1 https://github.com/erlang/otp/releases/download/OTP-23.3.4.18/otp_src_23.3.4.18.tar.gz -o erlang.tar.gz && \
+# Install Erlang from source (OTP 27.0.1 - latest as of Feb 26, 2025)
+RUN curl -L --http1.1 https://github.com/erlang/otp/releases/download/OTP-27.0.1/otp_src_27.0.1.tar.gz -o erlang.tar.gz && \
     tar -xzf erlang.tar.gz && \
-    cd otp_src_23.3.4.18 && \
+    cd otp_src_27.0.1 && \
     ./configure && \
     make && make install && \
-    cd .. && rm -rf erlang.tar.gz otp_src_23.3.4.18
+    cd .. && rm -rf erlang.tar.gz otp_src_27.0.1
 
 # Set working directory
 WORKDIR /app
 
-# Create document root
+# Create the document root directory
 RUN mkdir -p /var/www/html
 
-# Embed a simple index.html
+# Embed a simple index.html file directly in the image
 RUN echo '<!DOCTYPE html>' > /var/www/html/index.html && \
     echo '<html>' >> /var/www/html/index.html && \
     echo '  <head>' >> /var/www/html/index.html && \
@@ -36,7 +35,7 @@ RUN echo '<!DOCTYPE html>' > /var/www/html/index.html && \
     echo '  </body>' >> /var/www/html/index.html && \
     echo '</html>' >> /var/www/html/index.html
 
-# Create a simple Erlang HTTP server
+# Create a simple Erlang HTTP server to serve index.html
 RUN echo '-module(hello).' > /app/hello.erl && \
     echo '-export([main/1]).' >> /app/hello.erl && \
     echo 'main(_Args) ->' >> /app/hello.erl && \
@@ -59,4 +58,3 @@ RUN erlc -o /app /app/hello.erl
 EXPOSE 8080
 
 # Start the server
-CMD ["erl", "-pa", "/app", "-noshell", "-run", "hello", "main", "start"]

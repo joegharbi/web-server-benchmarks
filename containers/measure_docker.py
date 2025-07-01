@@ -227,18 +227,18 @@ def parse_json_and_compute_energy(file_name, container_name, runtime):
     return total_energy_joules, avg_power_watts, number_samples
 
 def save_results_to_csv(filename, results, total_energy, average_power, runtime, requests_per_second, total_samples, 
-                       cpu_metrics, mem_metrics, num_cores, container_name):
+                       cpu_metrics, mem_metrics, num_cores, container_name, measurement_type):
     if filename is None:
         os.makedirs("results_docker", exist_ok=True)
         filename = os.path.join("results_docker", f"{container_name}.csv")
     
-    headers = ["Total Requests", "Successful Requests", "Failed Requests", "Execution Time (s)", "Requests/s",
+    headers = ["server_image", "type", "Total Requests", "Successful Requests", "Failed Requests", "Execution Time (s)", "Requests/s",
                "Total Energy (J)", "Avg Power (W)", "Samples", "Avg CPU (%)", "Peak CPU (%)", "Total CPU (%)",
                "Avg Mem (MB)", "Peak Mem (MB)", "Total Mem (MB)"]
-    data = [[results['total'], results['success'], results['failure'], runtime, requests_per_second,
+    data = [[container_name, measurement_type, results['total'], results['success'], results['failure'], runtime, requests_per_second,
              total_energy, average_power, total_samples, cpu_metrics['avg'], cpu_metrics['peak'],
              cpu_metrics['total'], mem_metrics['avg'], mem_metrics['peak'], mem_metrics['total']]]
-    
+
     with open(filename, mode='a', newline='') as file:
         writer = csv.writer(file)
         if not os.path.isfile(filename) or os.stat(filename).st_size == 0:
@@ -267,6 +267,7 @@ def main():
     parser.add_argument('--output_csv', type=str, default=None, help="Output CSV file path (default: results_docker/<container_name>.csv)")
     parser.add_argument('--output_json', type=str, default=None, help="Output JSON file path (default: output/<timestamp>.json)")
     parser.add_argument('--verbose', action='store_true', help="Enable verbose logging")
+    parser.add_argument('--measurement_type', type=str, default=None, help="Type of measurement (static, dynamic, etc.)")
     
     args = parser.parse_args()
     if args.verbose:
@@ -325,8 +326,9 @@ def main():
     stop_server_container(container_name, docker_path)
 
     total_energy, average_power, total_samples = parse_json_and_compute_energy(output_json, container_name, runtime)
+    measurement_type = getattr(args, 'measurement_type', None) or "unknown"
     save_results_to_csv(args.output_csv, results_counter, total_energy, average_power, runtime, requests_per_second, 
-                        total_samples, resource_results['cpu'], resource_results['mem'], num_cores, container_name)
+                       total_samples, resource_results['cpu'], resource_results['mem'], num_cores, args.server_image, measurement_type)
     print_summary(results_counter, total_energy, average_power, runtime, requests_per_second, 
                   resource_results['cpu'], resource_results['mem'], num_cores, output_json, args.output_csv, container_name)
 

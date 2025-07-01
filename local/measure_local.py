@@ -277,19 +277,19 @@ def parse_json_and_compute_energy(file_name, server_exe, runtime):
     return total_energy_joules, avg_power_watts, number_samples
 
 def save_results_to_csv(filename, results, total_energy, average_power, runtime, requests_per_second, total_samples, 
-                       cpu_metrics, mem_metrics, server):
+                       cpu_metrics, mem_metrics, server, measurement_type):
     """Save results to a CSV file in results_local folder."""
     if filename is None:
         os.makedirs("results_local", exist_ok=True)
         filename = os.path.join("results_local", f"{server}.csv")
     
-    headers = ["Total Requests", "Successful Requests", "Failed Requests", "Execution Time (s)", "Requests/s",
+    headers = ["server_image", "type", "Total Requests", "Successful Requests", "Failed Requests", "Execution Time (s)", "Requests/s",
                "Total Energy (J)", "Avg Power (W)", "Samples", "Avg CPU (%)", "Peak CPU (%)", "Total CPU (%)",
                "Avg Mem (MB)", "Peak Mem (MB)", "Total Mem (MB)"]
-    data = [[results['total'], results['success'], results['failure'], runtime, requests_per_second,
+    data = [[server, measurement_type, results['total'], results['success'], results['failure'], runtime, requests_per_second,
              total_energy, average_power, total_samples, cpu_metrics['avg'], cpu_metrics['peak'],
              cpu_metrics['total'], mem_metrics['avg'], mem_metrics['peak'], mem_metrics['total']]]
-    
+
     with open(filename, mode='a', newline='') as file:
         writer = csv.writer(file)
         if not os.path.isfile(filename) or os.stat(filename).st_size == 0:
@@ -308,7 +308,7 @@ def print_summary(results, total_energy, average_power, runtime, requests_per_se
     logger.info("==========================")
 
 def main():
-    parser = argparse.ArgumentParser(description="Measure energy consumption of a locally installed web server with Scaphandre")
+    parser = argparse.ArgumentParser(description="Measure local web server energy usage")
     parser.add_argument('--server', type=str, required=True, choices=['nginx', 'yaws'], help="Server type to test (nginx or yaws)")
     parser.add_argument('--num_requests', type=int, default=500, help="Number of requests to send (default: 500)")
     parser.add_argument('--max_workers', type=int, default=None, help="Max workers for ThreadPoolExecutor (default: None, uses system default)")
@@ -318,6 +318,7 @@ def main():
     parser.add_argument('--output_csv', type=str, default=None, help="Output CSV file path (default: results_local/<server>.csv)")
     parser.add_argument('--output_json', type=str, default=None, help="Output JSON file name (default: output/<timestamp>.json)")
     parser.add_argument('--verbose', action='store_true', help="Enable verbose logging")
+    parser.add_argument('--measurement_type', type=str, default=None, help="Type of measurement (local, etc.)")
     
     args = parser.parse_args()
     if args.verbose:
@@ -390,8 +391,9 @@ def main():
     stop_local_server(args.server)
 
     total_energy, average_power, total_samples = parse_json_and_compute_energy(output_json, server_exe, runtime)
+    measurement_type = args.measurement_type or "local"
     save_results_to_csv(args.output_csv, results_counter, total_energy, average_power, runtime, requests_per_second, 
-                        total_samples, resource_results['cpu'], resource_results['mem'], args.server)
+                       total_samples, resource_results['cpu'], resource_results['mem'], args.server, measurement_type)
     print_summary(results_counter, total_energy, average_power, runtime, requests_per_second, 
                   resource_results['cpu'], resource_results['mem'], output_json, args.output_csv, args.server)
 

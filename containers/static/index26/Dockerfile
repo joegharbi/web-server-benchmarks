@@ -58,4 +58,3 @@ RUN erlc -o /app /app/hello.erl
 EXPOSE 8080
 
 # Start the server
-CMD ["erl", "-pa", "/app", "-noshell", "-run", "hello", "main", "start"]

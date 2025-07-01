@@ -40,7 +40,7 @@ import time
 
 async def test():
     try:
-        async with websockets.connect("ws://localhost:8001/ws") as ws:
+        async with websockets.connect("ws://localhost:8080/ws") as ws:
             payload = "x" * (1024 * 1024)  # 1MB
             start_time = time.time()
             while time.time() - start_time < 10:  # 10 seconds

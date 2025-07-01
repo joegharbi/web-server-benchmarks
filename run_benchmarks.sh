@@ -10,10 +10,13 @@ ERLANG_PORT="8001:8080"  # For Erlang-based images exposing 8080
 # Define payloads for measure_docker.py and measure_local.py
 payloads=(100 1000 5000 8000 10000 15000 20000 30000 40000 50000 60000 70000 80000)
 
-# Define categories of images with their port mappings
+# Override arrays: authoritative for custom port mappings or exclusions
+# If an image/server is listed here, it is used with these settings
+# If not, auto-discover and use sensible defaults
+
 declare -A websocket_images=( 
     ["nginx_websocket"]="" 
-    ["nginx-java-websocket"]="" 
+    ["nginx-java-websocket"]="8080:8080" 
     ["nginx-tornado"]="" 
     ["yaws_websocket"]="" 
 )
@@ -39,6 +42,57 @@ declare -A local_servers=(
     ["nginx"]="" 
     ["yaws"]="" 
 )
+
+# Auto-discover images/servers not in the arrays
+# Returns a list of discovered names not present in the override array
+function discover_images() {
+    local search_dir="$1"
+    local -n arr_ref=$2
+    local discovered=()
+    for d in "$search_dir"/*/; do
+        [ -d "$d" ] || continue
+        if [ -f "$d/Dockerfile" ]; then
+            local name=$(basename "$d")
+            if [[ -z "${arr_ref[$name]+x}" ]]; then
+                discovered+=("$name")
+            fi
+        fi
+    done
+    echo "${discovered[@]}"
+}
+
+function discover_websocket_images() {
+    local search_dir="./web-socket"
+    local -n arr_ref=$1
+    local discovered=()
+    for d in "$search_dir"/*/; do
+        [ -d "$d" ] || continue
+        if [ -f "$d/Dockerfile" ]; then
+            local name=$(basename "$d")
+            if [[ -z "${arr_ref[$name]+x}" ]]; then
+                discovered+=("$name")
+            fi
+        fi
+    done
+    echo "${discovered[@]}"
+}
+
+# Optionally, discover local servers (e.g., scripts or configs in local/)
+function discover_local_servers() {
+    local search_dir="./local"
+    local -n arr_ref=$1
+    local discovered=()
+    for f in "$search_dir"/*; do
+        [ -f "$f" ] || continue
+        local name=$(basename "$f")
+        # Only add if not in array and is a known server script/config
+        # Example: skip measure_local.py, setup scripts, etc.
+        if [[ "$name" =~ ^[a-zA-Z0-9_-]+$ && -z "${arr_ref[$name]+x}" ]]; then
+            discovered+=("$name")
+        fi
+    done
+    echo "${discovered[@]}"
+}
 
 # Create a fixed parent directory for results
 RESULTS_PARENT_DIR="results"
@@ -81,7 +135,8 @@ run_websocket_tests() {
                 --size_mb "$size_mb" \
                 --interval_s 1 \
                 --duration_s 60 \
-                --output_csv "$RESULTS_DIR/websocket/$image-burst-${num_clients}clients-${size_mb}MB.csv" || echo "Burst mode failed for $image"
+                --output_csv "$RESULTS_DIR/websocket/${image}_burst.csv" \
+                --measurement_type websocket || echo "Burst mode failed for $image"
         done
     done
 
@@ -96,7 +151,8 @@ run_websocket_tests() {
                 --duration_s 60 \
                 --size_mb 0 \
                 --interval_s 0 \
-                --output_csv "$RESULTS_DIR/websocket/$image-streaming-${num_clients}clients-${rate_mb_s}MBps.csv" || echo "Streaming mode failed for $image"
+                --output_csv "$RESULTS_DIR/websocket/${image}_streaming.csv" \
+                --measurement_type websocket || echo "Streaming mode failed for $image"
         done
     done
 }
@@ -116,7 +172,8 @@ run_docker_tests() {
             --server_image "$image" \
             --num_requests "$payload" \
             --port_mapping "$port_mapping" \
-            --output_csv "$RESULTS_DIR/$category/$image.csv"
+            --output_csv "$RESULTS_DIR/$category/$image.csv" \
+            --measurement_type "$category"
     done
 }
 
@@ -133,36 +190,58 @@ run_local_tests() {
         (cd local && "$PYTHON_PATH" measure_local.py \
             --server "$server" \
             --num_requests "$payload" \
-            --output_csv "../$RESULTS_DIR/local/$server.csv")
+            --output_csv "../$RESULTS_DIR/local/$server.csv" \
+            --measurement_type local)
     done
 }
 
 # Main logic
 if [[ $RUN_ALL -eq 1 ]]; then
-    # Run all images in websocket_images, dynamic_images, static_images, and local_servers
-    for image in "${!websocket_images[@]}"; do
+    # WebSocket images: array + discovered
+    websocket_all=("${!websocket_images[@]}" $(discover_websocket_images websocket_images))
+    for image in "${websocket_all[@]}"; do
         run_websocket_tests "$image"
     done
-    for image in "${!dynamic_images[@]}"; do
-        run_docker_tests "$image" "${dynamic_images[$image]}" "dynamic"
+    # Dynamic images: array + discovered
+    dynamic_all=("${!dynamic_images[@]}" $(discover_images ./containers/dynamic dynamic_images))
+    for image in "${dynamic_all[@]}"; do
+        port_mapping="${dynamic_images[$image]:-$DEFAULT_PORT}"
+        run_docker_tests "$image" "$port_mapping" "dynamic"
     done
-    for image in "${!static_images[@]}"; do
-        run_docker_tests "$image" "${static_images[$image]}" "static"
+    # Static images: array + discovered
+    static_all=("${!static_images[@]}" $(discover_images ./containers/static static_images))
+    for image in "${static_all[@]}"; do
+        port_mapping="${static_images[$image]:-$DEFAULT_PORT}"
+        # Use ERLANG_PORT for erlang/erlindex/index images if not overridden
+        if [[ "$image" =~ ^(erlang|erlindex|index)[0-9]+$ ]] && [[ -z "${static_images[$image]+x}" ]]; then
+            port_mapping="$ERLANG_PORT"
+        fi
+        run_docker_tests "$image" "$port_mapping" "static"
     done
-    for server in "${!local_servers[@]}"; do
+    # Local servers: array + discovered
+    local_all=("${!local_servers[@]}" $(discover_local_servers local_servers))
+    for server in "${local_all[@]}"; do
         run_local_tests "$server"
     done
 else
     # Run specific type or images
     case "$TARGET_TYPE" in
         websocket)
-            for image in "${TARGET_IMAGES[@]}"; do
-                if [[ -v "websocket_images[$image]" ]]; then
-                    run_websocket_tests "$image"
-                else
-                    echo "Error: $image is not a valid WebSocket image"
-                fi
-            done
+            if [ ${#TARGET_IMAGES[@]} -eq 0 ]; then
+                # No image specified, run all subfolders in web-socket/
+                for dir in ./web-socket/*/; do
+                    folder_name=$(basename "$dir")
+                    run_websocket_tests "$folder_name"
+                done
+            else
+                for image in "${TARGET_IMAGES[@]}"; do
+                    if [[ -v "websocket_images[$image]" ]]; then
+                        run_websocket_tests "$image"
+                    else
+                        echo "Error: $image is not a valid WebSocket image"
+                    fi
+                done
+            fi
             ;;
         dynamic)
             for image in "${TARGET_IMAGES[@]}"; do

@@ -163,83 +163,102 @@ class GraphGeneratorApp:
                 messagebox.showwarning("Warning", "No columns selected!")
                 return
 
-            # Create a "graphs" folder in the current working directory
-            try:
-                graphs_folder = os.path.join(os.getcwd(), "graphs")
-                os.makedirs(graphs_folder, exist_ok=True)
-            except PermissionError:
-                # Fallback to a "graphs" folder in the user's home directory
-                graphs_folder = os.path.join(os.path.expanduser("~"), "graphs")
-                os.makedirs(graphs_folder, exist_ok=True)
-                messagebox.showwarning(
-                    "Permission Denied",
-                    f"Could not create 'graphs' folder in the current directory. "
-                    f"Graphs will be saved in {graphs_folder} instead."
-                )
+            graphs_root = os.path.join(os.getcwd(), "graphs")
+            os.makedirs(graphs_root, exist_ok=True)
 
-            # Predefined list of distinct colors and markers
             colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k']
             markers = ['o', 's', 'D', '^', 'v', '<', '>', 'p', '*', 'h', 'H', '+', 'x', '|', '_']
             color_marker_combinations = [(color, marker) for color in colors for marker in markers]
-
-            # Shuffle the combinations to mix colors and shapes
             import random
             random.shuffle(color_marker_combinations)
 
+            def ask_measurement_type():
+                import tkinter.simpledialog
+                return tkinter.simpledialog.askstring(
+                    "Measurement Type Required",
+                    "Could not infer measurement type from CSV path. Please enter one of: local, dynamic, static, websocket"
+                ) or "other"
+
             if self.merge_csv_var.get():
-                # Merge all CSV files into one graph
+                # Try to infer measurement type from all files
+                types_found = set()
+                server_names = set()
+                for file_path in self.csv_data.keys():
+                    for t in ["local", "dynamic", "static", "websocket"]:
+                        if f"/{t}/" in file_path or f"{os.sep}{t}{os.sep}" in file_path:
+                            types_found.add(t)
+                    server_names.add(os.path.basename(os.path.dirname(file_path)).replace("results_", ""))
+                if len(types_found) == 1:
+                    merged_type = types_found.pop()
+                else:
+                    merged_type = ask_measurement_type()
+                merged_folder = os.path.join(graphs_root, merged_type)
+                os.makedirs(merged_folder, exist_ok=True)
+                server_part = "_".join(sorted(server_names))
                 plt.figure(figsize=(10, 6))
                 for file_idx, (file_path, data) in enumerate(self.csv_data.items()):
                     folder_name = os.path.basename(os.path.dirname(file_path)).replace("results_", "")
-                    file_name = os.path.splitext(os.path.basename(file_path))[0]  # Remove .csv extension
+                    file_name = os.path.splitext(os.path.basename(file_path))[0]
                     for i, column in enumerate(selected_columns):
                         if column in data.columns:
                             color, marker = color_marker_combinations[(file_idx * len(selected_columns) + i) % len(color_marker_combinations)]
                             plt.plot(data.index, data[column], label=f"{folder_name}/{file_name} - {column}", color=color, marker=marker, linestyle='-')
-                plt.title(f"{folder_name}")  # Title uses folder name excluding results_
+                plt.title(f"Merged Graphs")
                 plt.xlabel("Number of Requests")
                 plt.ylabel(selected_columns[0] if len(selected_columns) == 1 else "Values")
-                plt.legend(framealpha=0.5)  # Set legend background transparency
+                plt.legend(framealpha=0.5)
                 plt.grid(True)
-                plt.savefig(os.path.join(graphs_folder, f"merged_{'_'.join(selected_columns)}.png"), dpi=300)
+                merged_path = os.path.join(merged_folder, f"merged_{server_part}_{'_'.join(selected_columns)}.png")
+                plt.savefig(merged_path, dpi=300)
+                print(f"Saved merged graph: {merged_path}")
                 plt.close()
             else:
                 for file_idx, (file_path, data) in enumerate(self.csv_data.items()):
-                    folder_name = os.path.basename(os.path.dirname(file_path)).replace("results_", "")
-                    file_name = os.path.splitext(os.path.basename(file_path))[0]  # Remove .csv extension
-                    file_graphs_folder = os.path.join(graphs_folder, folder_name, file_name)
+                    measurement_type = None
+                    for t in ["local", "dynamic", "static", "websocket"]:
+                        if f"/{t}/" in file_path or f"{os.sep}{t}{os.sep}" in file_path:
+                            measurement_type = t
+                            break
+                    if not measurement_type:
+                        measurement_type = ask_measurement_type()
+                    server_name = os.path.basename(os.path.dirname(file_path)).replace("results_", "")
+                    file_name = os.path.splitext(os.path.basename(file_path))[0]
+                    file_graphs_folder = os.path.join(graphs_root, measurement_type, server_name)
                     os.makedirs(file_graphs_folder, exist_ok=True)
 
                     if self.merge_columns_var.get():
-                        # Merge columns into one graph
                         plt.figure(figsize=(10, 6))
                         for i, column in enumerate(selected_columns):
                             if column in data.columns:
                                 color, marker = color_marker_combinations[(file_idx * len(selected_columns) + i) % len(color_marker_combinations)]
-                                plt.plot(data.index, data[column], label=f"{folder_name}/{file_name} - {column}", color=color, marker=marker, linestyle='-')
-                        plt.title(f"{folder_name}")
+                                plt.plot(data.index, data[column], label=f"{server_name}/{file_name} - {column}", color=color, marker=marker, linestyle='-')
+                        plt.title(f"{server_name}")
                         plt.xlabel("Number of Requests")
                         plt.ylabel("Values")
-                        plt.legend(framealpha=0.5)  # Set legend background transparency
+                        plt.legend(framealpha=0.5)
                         plt.grid(True)
-                        plt.savefig(os.path.join(file_graphs_folder, f"merged_columns.png"), dpi=300)
+                        save_path = os.path.join(file_graphs_folder, f"merged_columns.png")
+                        plt.savefig(save_path, dpi=300)
+                        print(f"Saved graph: {save_path}")
                         plt.close()
                     else:
-                        # Plot each column separately
                         for i, column in enumerate(selected_columns):
                             if column in data.columns:
                                 plt.figure(figsize=(10, 6))
                                 color, marker = color_marker_combinations[(file_idx * len(selected_columns) + i) % len(color_marker_combinations)]
-                                plt.plot(data.index, data[column], label=f"{folder_name}/{file_name} - {column}", color=color, marker=marker, linestyle='-')
-                                plt.title(f"{folder_name}")
+                                plt.plot(data.index, data[column], label=f"{server_name}/{file_name} - {column}", color=color, marker=marker, linestyle='-')
+                                plt.title(f"{server_name}")
                                 plt.xlabel("Number of Requests")
                                 plt.ylabel(column)
-                                plt.legend(framealpha=0.5)  # Set legend background transparency
+                                plt.legend(framealpha=0.5)
                                 plt.grid(True)
-                                plt.savefig(os.path.join(file_graphs_folder, f"{folder_name}_{file_name}_{column.replace(' ', '_')}.png"), dpi=300)
+                                safe_column = column.replace(' ', '_')
+                                save_path = os.path.join(file_graphs_folder, f"{file_name}_{safe_column}.png")
+                                plt.savefig(save_path, dpi=300)
+                                print(f"Saved graph: {save_path}")
                                 plt.close()
 
-            messagebox.showinfo("Success", f"Graphs saved in {graphs_folder}")
+            messagebox.showinfo("Success", f"Graphs saved in {graphs_root}")
         except Exception as e:
             print(f"An error occurred: {e}")
             messagebox.showerror("Error", f"An error occurred: {e}")

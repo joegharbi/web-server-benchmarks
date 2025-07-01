@@ -1,5 +1,6 @@
 package com.example;
 
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
 import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
@@ -14,10 +15,15 @@ public class WebSocketConfig implements WebSocketConfigurer {
         registry.addHandler(new EchoWebSocketHandler(), "/ws").setAllowedOrigins("*");
     }
 
+    // Mimic Python/Tornado: allow many concurrent sessions, large messages, long idle
+    @Bean
     public ServletServerContainerFactoryBean createWebSocketContainer() {
         ServletServerContainerFactoryBean container = new ServletServerContainerFactoryBean();
         container.setMaxTextMessageBufferSize(10 * 1024 * 1024); // 10MB
         container.setMaxBinaryMessageBufferSize(10 * 1024 * 1024); // 10MB
+        container.setMaxSessionIdleTimeout(600000L); // 10 minutes
+        container.setAsyncSendTimeout(30000L); // 30 seconds
+        // container.setMaxSessions(500); // Allow up to 500 concurrent sessions (method does not exist)
         return container;
     }
 }

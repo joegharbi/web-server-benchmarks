@@ -6,11 +6,11 @@ This project benchmarks the performance and energy efficiency of web servers run
 ## Table of Contents
 1. [Prerequisites](#prerequisites)
 2. [Directory Structure](#directory-structure)
-3. [Adding Dockerfiles](#adding-dockerfiles)
-4. [Installing Docker Images](#installing-docker-images)
-5. [Running Benchmarks](#running-benchmarks)
-6. [Local Webserver Baseline](#local-webserver-baseline)
-7. [WebSocket Implementation](#websocket-implementation)
+3. [Image/Server Naming and Auto-Discovery](#naming-and-auto-discovery)
+4. [Adding Dockerfiles and Servers](#adding-dockerfiles-and-servers)
+5. [Installing Docker Images](#installing-docker-images)
+6. [Running Benchmarks](#running-benchmarks)
+7. [CSV Output Format](#csv-output-format)
 8. [GUI Graph Generator](#gui-graph-generator)
 9. [Troubleshooting](#troubleshooting)
 
@@ -37,51 +37,62 @@ The project is organized as follows:
 
 ```
 web-server-benchmarks/
-├── containers/               # Dockerfiles for containerized web servers
-│   ├── static/               # Static web servers (e.g., Apache, Nginx)
-│   ├── dynamic/              # Dynamic web servers (e.g., Nginx with dynamic modules)
-├── local/                    # Local webserver baseline (e.g., Nginx, Yaws)
-│   ├── nginx/                # Configuration for running Nginx locally
-│   ├── yaws/                 # Configuration for running Yaws locally
-├── web-socket/               # WebSocket implementation and measurement scripts
-│   ├── measure_websocket.py  # Script to benchmark WebSocket servers
-├── logs/                     # Logs generated during benchmarking
-├── output/                   # Output files, such as temporary data or intermediate results
-├── results_docker/           # Results for Docker-based benchmarks
-├── results_local/            # Results for local webserver benchmarks
-├── results_websocket/        # Results for WebSocket benchmarks
+├── containers/
+│   ├── static/         # Static web servers (e.g., Apache, Nginx)
+│   │   └── <image_name>/Dockerfile
+│   ├── dynamic/        # Dynamic web servers (e.g., Nginx with dynamic modules)
+│   │   └── <image_name>/Dockerfile
+├── web-socket/
+│   └── <image_name>/Dockerfile  # WebSocket server images
+├── local/              # Local webserver scripts/configs (e.g., nginx, yaws)
+│   └── <server_name>   # Script or config file for local server
+├── logs/               # Logs generated during benchmarking
+├── output/             # Output files, such as temporary data or intermediate results
+├── results/            # Results for all benchmarks, organized by timestamp and type
 ├── install_benchmarks.sh     # Script to build Docker images for benchmarking
 ├── run_benchmarks.sh         # Main script to trigger all benchmarks
 ├── gui_graph_generator.py    # Script to generate graphs from benchmarking results
 └── README.md                 # Project documentation
 ```
 
-### Explanation of Folders and Files
-- **`containers/`**: Contains Dockerfiles for containerized web servers. Subfolders are divided into `static/` and `dynamic/` servers.
-- **`local/`**: Contains configurations and scripts for running local webservers (e.g., Nginx, Yaws) as a baseline for benchmarking.
-- **`web-socket/`**: Contains the WebSocket implementation and scripts for benchmarking WebSocket servers.
-- **`logs/`**: Stores logs generated during benchmarking, such as server logs or error messages.
-- **`output/`**: Stores temporary or intermediate files generated during benchmarking.
-- **`results_docker/`**: Stores results for Docker-based benchmarks in CSV format.
-- **`results_local/`**: Stores results for local webserver benchmarks in CSV format.
-- **`results_websocket/`**: Stores results for WebSocket benchmarks in CSV format.
-- **`install_benchmarks.sh`**: Script to build Docker images for benchmarking.
-- **`run_benchmarks.sh`**: Main script to trigger all benchmarks, including Docker, local, and WebSocket benchmarks.
-- **`gui_graph_generator.py`**: Script to generate visualizations (graphs) from benchmarking results.
-- **`README.md`**: Documentation for the project.
+---
+
+## Naming and Auto-Discovery
+
+- **Docker images (static, dynamic, websocket):**
+  - Place each image in its own folder under the appropriate directory (`containers/static/`, `containers/dynamic/`, or `web-socket/`).
+  - The folder name is the image name. The folder must contain a file named exactly `Dockerfile`.
+  - Example: `containers/static/nginx-deb/Dockerfile`, `web-socket/nginx_websocket/Dockerfile`
+
+- **Local servers:**
+  - Place a script or config file in `local/` named after the server (e.g., `local/nginx`, `local/yaws`).
+
+- **Override Arrays:**
+  - The benchmark runner uses associative arrays to specify custom port mappings or to override/exclude certain images/servers.
+  - If an image/server is listed in the array, its settings are used (and it will not be auto-discovered again).
+  - If not in the array, it is auto-discovered from the folder structure and run with sensible defaults.
 
 ---
 
-## Adding Dockerfiles
-To add a new Dockerfile:
-1. Create a directory under `containers/static/` or `containers/dynamic/` based on the server type.
-2. Place the `Dockerfile` in the directory. Optionally, name it `Dockerfile.<extension>` to differentiate configurations.
-3. Ensure the directory name matches the desired Docker image name.
+## Adding Dockerfiles and Servers
+To add a new Docker image or local server:
+
+### Static/Dynamic/WebSocket Images
+1. Create a directory under `containers/static/`, `containers/dynamic/`, or `web-socket/` using the desired image name.
+2. Place a file named `Dockerfile` in that directory.
 
 Example:
 ```bash
 mkdir -p containers/static/my-server
-touch containers/static/my-server/Dockerfile
+nano containers/static/my-server/Dockerfile
+```
+
+### Local Servers
+1. Place a script or config file in `local/` named after the server.
+
+Example:
+```bash
+touch local/myserver
 ```
 
 ---
@@ -91,78 +102,58 @@ Use the `install_benchmarks.sh` script to build Docker images:
 ```bash
 ./install_benchmarks.sh
 ```
-
-### Custom Directories
-To include additional directories:
-```bash
-./install_benchmarks.sh ./custom-dir1 ./custom-dir2
-```
-
-The script:
-- Searches for `Dockerfile` or `Dockerfile.<extension>` in each directory.
-- Builds images with names derived from the directory and Dockerfile.
+- The script auto-discovers all subfolders in `containers/static/`, `containers/dynamic/`, and (optionally) `web-socket/` that contain a file named exactly `Dockerfile` and builds them.
+- The image name is taken from the folder name.
 
 ---
 
 ## Running Benchmarks
-The `run_benchmarks.sh` script is the main entry point for running all benchmarks. It automatically triggers the corresponding measurement scripts for Docker, local, and WebSocket benchmarks.
+The `run_benchmarks.sh` script is the main entry point for running all benchmarks. It:
+- Uses override arrays for custom port mappings or exclusions.
+- Auto-discovers all other images/servers from the folder structure.
+- Passes the correct `--measurement_type` to each measurement script, ensuring the CSV output is consistent.
 
 ### Usage
 ```bash
-./run_benchmarks.sh [--name <target_name>]
+./run_benchmarks.sh
 ```
+Runs all benchmarks (static, dynamic, websocket, local).
 
-- `--name <target_name>`: Run benchmarks for a specific target (e.g., `nginx-deb`, `yaws`, `nginx_websocket`). If omitted, all benchmarks are run.
+To run only a specific type or image:
+```bash
+./run_benchmarks.sh static
+./run_benchmarks.sh dynamic
+./run_benchmarks.sh websocket
+./run_benchmarks.sh local
+```
 
 ---
 
-## Local Webserver Baseline
-The `local` folder contains scripts and configurations for running a local webserver as a baseline for benchmarking. This includes lightweight setups for servers like Nginx and Yaws, which are used to compare performance and energy efficiency against containerized web servers.
+## CSV Output Format
+All measurement scripts output CSV files with the following columns (first two columns always):
 
-You can directly run these local webservers without requiring Docker containers. For example:
-- **Nginx**: Use the provided configuration files in the `local/nginx/` directory to start the server locally.
-- **Yaws**: Follow the instructions and setup scripts in the `local/yaws/` directory to set up and run the Yaws webserver.
-
-These local setups serve as a baseline for comparison with containerized web servers.
-
----
-
-## WebSocket Implementation
-The `web-socket/` folder contains the implementation for benchmarking WebSocket servers. The main script, `measure_websocket.py`, is used to:
-1. Start a WebSocket server.
-2. Simulate WebSocket clients sending and receiving messages.
-3. Measure performance metrics such as latency, throughput, and resource usage.
-
-### Running the WebSocket Benchmark
-To benchmark a WebSocket server, use the following command:
-```bash
-python3 web-socket/measure_websocket.py --server_image <image_name> --num_clients <number>
 ```
-
-#### Example:
-```bash
-python3 web-socket/measure_websocket.py --server_image nginx_websocket --num_clients 10
+server_image,type,Total Requests,Successful Requests,Failed Requests,Execution Time (s),Requests/s,Total Energy (J),Avg Power (W),Samples,Avg CPU (%),Peak CPU (%),Total CPU (%),Avg Mem (MB),Peak Mem (MB),Total Mem (MB)
 ```
+- `server_image`: Name of the Docker image or local server.
+- `type`: Measurement type (`static`, `dynamic`, `websocket`, `local`).
+- The remaining columns are performance and resource metrics.
 
-#### Options:
-- `--server_image` (required): Docker image name of the WebSocket server.
-- `--num_clients`: Number of WebSocket clients to simulate (default: 5).
-- `--size_mb`: Payload size per message in burst mode (default: 10 MB).
-- `--interval_s`: Interval between bursts in seconds (default: 1.0).
-- `--rate_mb_s`: Streaming rate in MB/s per client (optional, for streaming mode).
-- `--duration_s`: Test duration in seconds (default: 30).
-- `--output_csv`: Path to save the results in CSV format (optional).
+This makes it easy to aggregate and compare results across all server types.
 
 ---
 
 ## GUI Graph Generator
 To visualize results, use the GUI graph generator:
-1. Ensure results are saved in CSV format.
-2. Run the graph generator script:
+1. Start the GUI with:
    ```bash
-   python3 gui_graph_generator.py --input_csv <path_to_csv> --output_graph <path_to_graph>
+   python3 gui_graph_generator.py
    ```
-3. Open the generated graph to analyze performance and energy efficiency.
+2. In the graphical window, use the buttons to select CSV files or folders containing your benchmark results.
+3. Choose the columns you want to plot and generate graphs interactively.
+4. Save or export the generated graphs as needed.
+
+> **Note:** All file selection and graph generation is done through the graphical interface. Do not use command-line arguments like `--input_csv` or `--output_graph` with this tool.
 
 ---
 
