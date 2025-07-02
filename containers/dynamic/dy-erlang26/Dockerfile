@@ -30,7 +30,8 @@ RUN echo '-module(hello).' > /app/hello.erl && \
     echo '    {{Y,Mo,D},{H,Mi,S}} = calendar:now_to_universal_time(erlang:now()),' >> /app/hello.erl && \
     echo '    TimeStr = io_lib:format("~4..0B-~2..0B-~2..0B ~2..0B:~2..0B:~2..0B", [Y,Mo,D,H,Mi,S]),' >> /app/hello.erl && \
     echo '    Msg = lists:flatten(io_lib:format("Hello, World! Dynamic time: ~s", [TimeStr])),' >> /app/hello.erl && \
-    echo '    gen_tcp:send(Conn, <<"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n", Msg/binary>>),' >> /app/hello.erl && \
+    echo '    MsgBin = unicode:characters_to_binary(Msg),' >> /app/hello.erl && \
+    echo '    gen_tcp:send(Conn, <<"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n", MsgBin/binary>>),' >> /app/hello.erl && \
     echo '    gen_tcp:close(Conn).' >> /app/hello.erl
 
 RUN erlc -o /app /app/hello.erl
