@@ -38,9 +38,11 @@ def send_request(url, request_num, verbose=False):
 def cleanup_existing_container(container_name, docker_path):
     subprocess.run(["sudo", docker_path, "stop", container_name], capture_output=True, text=True, check=False)
     subprocess.run(["sudo", docker_path, "rm", "-f", container_name], capture_output=True, text=True, check=False)
+    time.sleep(2)  # Ensure Docker/OS releases resources
 
 def cleanup_existing_scaphandre():
     subprocess.run(["sudo", "pkill", "-9", "scaphandre"], capture_output=True, text=True, check=False)
+    time.sleep(2)  # Ensure OS releases resources
 
 def start_scaphandre(output_json, scaphandre_path):
     os.makedirs("output", exist_ok=True)
@@ -54,6 +56,7 @@ def start_scaphandre(output_json, scaphandre_path):
 def stop_scaphandre(scaphandre_process):
     scaphandre_process.terminate()
     scaphandre_process.wait(timeout=5)
+    time.sleep(2)  # Ensure OS releases resources
 
 def check_container_health(url, retries=5, delay=1):
     for _ in range(retries):
@@ -78,6 +81,7 @@ def start_server_container(server_image, port_mapping, container_name, docker_pa
 def stop_server_container(container_name, docker_path):
     subprocess.run(["sudo", docker_path, "stop", container_name], capture_output=True, text=True, check=True)
     subprocess.run(["sudo", docker_path, "rm", container_name], capture_output=True, text=True, check=True)
+    time.sleep(2)  # Ensure Docker/OS releases resources
 
 def collect_resources(server_image, stop_event, num_cores, interval=0.5):
     cpu_usage = []

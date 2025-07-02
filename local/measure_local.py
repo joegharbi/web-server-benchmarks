@@ -51,16 +51,20 @@ def cleanup_existing_server(server):
     try:
         subprocess.run(["sudo", script_path, "stop"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         logger.debug(f"Stopped existing {server} process using {script_path} stop")
+        time.sleep(2)  # Ensure OS releases resources
     except subprocess.CalledProcessError:
         logger.debug(f"No existing {server} process found to stop")
+        time.sleep(2)
 
 def cleanup_existing_scaphandre():
     """Kill any existing scaphandre processes."""
     try:
         subprocess.run(["sudo", "pkill", "-9", "scaphandre"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         logger.debug("Killed existing scaphandre processes")
+        time.sleep(2)  # Ensure OS releases resources
     except subprocess.CalledProcessError:
         logger.debug("No existing scaphandre processes found to kill")
+        time.sleep(2)
 
 def start_scaphandre(output_json, scaphandre_path, step=None, step_nano=None, max_top_consumers=None):
     os.makedirs("output", exist_ok=True)
@@ -104,6 +108,7 @@ def stop_scaphandre(scaphandre_process):
         scaphandre_process.kill()
         scaphandre_process.wait(timeout=5)
     subprocess.run(["sudo", "pkill", "-9", "scaphandre"], check=False)
+    time.sleep(2)  # Ensure OS releases resources
 
 def check_server_health(url, retries=5, delay=2):
     """Check if the server is responsive."""
@@ -150,6 +155,7 @@ def stop_local_server(server):
     result = subprocess.run(["sudo", script_path, "stop"], capture_output=True, text=True)
     if result.returncode != 0:
         logger.debug(f"Warning: {server} stop returned non-zero exit code: {result.stderr}")
+    time.sleep(2)  # Ensure OS releases resources
 
 def collect_resources(server, stop_event, num_cores, interval=0.5):
     """Collect CPU and memory usage for all server processes using psutil."""

@@ -84,10 +84,13 @@ def cleanup_existing_container(container_name):
         container.stop()
         container.remove()
         logger.info(f"Removed existing container '{container_name}'")
+        time.sleep(2)  # Ensure Docker/OS releases resources
     except docker.errors.NotFound:
         logger.debug(f"No existing container '{container_name}' found")
+        time.sleep(2)
     except docker.errors.APIError as e:
         logger.error(f"Error cleaning up container '{container_name}': {e}")
+        time.sleep(2)
 
 def start_scaphandre(output_json, scaphandre_path):
     os.makedirs("output", exist_ok=True)
@@ -110,6 +113,7 @@ def stop_scaphandre(scaphandre_process):
         scaphandre_process.kill()
         scaphandre_process.wait(timeout=5)
     subprocess.run(["sudo", "pkill", "-9", "scaphandre"], check=False)
+    time.sleep(2)  # Ensure OS releases resources
 
 def collect_resources(container_name, stop_event, num_cores, interval=0.5):
     cpu_usage = []
