@@ -25,6 +25,9 @@ clean_benchmark_docker_images() {
             sudo docker rmi -f $img_name 2>/dev/null || true
         done
     done
+    # Prune all dangling and unused images
+    echo "Pruning dangling and unused Docker images..."
+    sudo docker image prune -a -f
     echo "Selected Docker containers and images have been cleaned."
 }
 
