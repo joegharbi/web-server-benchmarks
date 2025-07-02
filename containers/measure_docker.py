@@ -14,11 +14,12 @@ import psutil
 
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)  # Ensure debug logs are shown
 
 results_counter = Counter()
 
 def get_binary_path(binary_name):
-    result = subprocess.run(["sudo", "which", binary_name], capture_output=True, text=True, check=True)
+    result = subprocess.run(["which", binary_name], capture_output=True, text=True, check=True)
     return result.stdout.strip() or f"'{binary_name}' not found"
 
 def send_request(url, request_num, verbose=False):
@@ -36,8 +37,17 @@ def send_request(url, request_num, verbose=False):
         results_counter['total'] += 1
 
 def cleanup_existing_container(container_name, docker_path):
-    subprocess.run(["sudo", docker_path, "stop", container_name], capture_output=True, text=True, check=False)
-    subprocess.run(["sudo", docker_path, "rm", "-f", container_name], capture_output=True, text=True, check=False)
+    logger.info(f"Cleaning up any existing container named '{container_name}'...")
+    subprocess.run([docker_path, "stop", container_name], capture_output=True, text=True, check=False)
+    subprocess.run([docker_path, "rm", "-f", container_name], capture_output=True, text=True, check=False)
+    # Wait and check if container is really gone
+    for _ in range(5):
+        result = subprocess.run([docker_path, "ps", "-a", "--filter", f"name={container_name}", "--format", "{{{{.Names}}}}"], capture_output=True, text=True)
+        if container_name not in result.stdout:
+            break
+        time.sleep(1)
+    else:
+        logger.warning(f"Container '{container_name}' could not be removed after multiple attempts.")
     time.sleep(2)  # Ensure Docker/OS releases resources
 
 def cleanup_existing_scaphandre():
@@ -69,7 +79,7 @@ def check_container_health(url, retries=5, delay=1):
 
 def start_server_container(server_image, port_mapping, container_name, docker_path, network="bridge"):
     cleanup_existing_container(container_name, docker_path)
-    cmd = ["sudo", docker_path, "run", "-d", "--name", container_name]
+    cmd = [docker_path, "run", "-d", "--name", container_name]
     if network == "host":
         cmd.extend(["--network", "host"])
     else:
@@ -79,170 +89,106 @@ def start_server_container(server_image, port_mapping, container_name, docker_pa
     time.sleep(5)
 
 def stop_server_container(container_name, docker_path):
-    subprocess.run(["sudo", docker_path, "stop", container_name], capture_output=True, text=True, check=True)
-    subprocess.run(["sudo", docker_path, "rm", container_name], capture_output=True, text=True, check=True)
+    subprocess.run([docker_path, "stop", container_name], capture_output=True, text=True, check=True)
+    subprocess.run([docker_path, "rm", container_name], capture_output=True, text=True, check=True)
     time.sleep(2)  # Ensure Docker/OS releases resources
 
-def collect_resources(server_image, stop_event, num_cores, interval=0.5):
+def collect_resources_docker_stats(container_name, stop_event, interval=0.5):
+    import re
     cpu_usage = []
     mem_usage = []
-    server_name = server_image.split('/')[-1].split(':')[0].lower()
-    if "nginx" in server_name:
-        pgrep_pattern = "nginx"
-    elif "apache2" in server_name or "httpd" in server_name:
-        pgrep_pattern = "apache2|httpd"
-    elif "yaws" in server_name or "cowboy" in server_name:
-        pgrep_pattern = "beam.smp"
-    else:
-        pgrep_pattern = "beam.smp"
-    
+    sample_count = 0
     while not stop_event.is_set():
         try:
-            result = subprocess.run(["sudo", "pgrep", "-f", pgrep_pattern], capture_output=True, text=True, check=True)
-            pids_raw = result.stdout.strip().split('\n')
-            logger.debug(f"Raw PIDs from pgrep '{pgrep_pattern}': {pids_raw}")
-            if not pids_raw or pids_raw == ['']:
-                logger.debug(f"No PIDs found for {server_name} with sudo pgrep -f '{pgrep_pattern}'")
-            else:
-                logger.debug(f"Found {len(pids_raw)} PIDs for {server_name}")
-            
-            pids = []
-            for pid in pids_raw:
-                if not pid or pid == "0":
-                    continue
-                try:
-                    proc = psutil.Process(int(pid))
-                    cmd = " ".join(proc.cmdline())
-                    logger.debug(f"PID {pid} cmdline: '{cmd}'")
-                    if ("nginx" in server_name and "nginx" in cmd.lower()) or \
-                       (("apache2" in server_name or "httpd" in server_name) and ("apache" in cmd.lower() or "httpd" in cmd.lower())) or \
-                       (("yaws" in server_name or "cowboy" in server_name) and "beam.smp" in cmd.lower()):
-                        if "sudo" not in cmd and "grep" not in cmd:
-                            pids.append(pid)
-                except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
-                    logger.debug(f"Skipping PID {pid}: {e}")
-                    continue
-            
-            if not pids:
-                logger.debug(f"No valid {server_name} PIDs found after filtering pgrep results")
-                for proc in psutil.process_iter(['pid', 'cmdline', 'exe']):
-                    try:
-                        cmd = " ".join(proc.info['cmdline'] or [])
-                        exe = proc.info['exe'] or ""
-                        logger.debug(f"Scanning PID {proc.info['pid']} cmdline: '{cmd}', exe: '{exe}'")
-                        if ("nginx" in server_name and "nginx" in (cmd.lower() + exe.lower())) or \
-                           (("apache2" in server_name or "httpd" in server_name) and ("apache" in (cmd.lower() + exe.lower()) or "httpd" in (cmd.lower() + exe.lower()))) or \
-                           (("yaws" in server_name or "cowboy" in server_name) and "beam.smp" in (cmd.lower() + exe.lower())):
-                            if "sudo" not in cmd and "grep" not in cmd:
-                                pids.append(proc.info['pid'])
-                                logger.debug(f"Fallback found PID {proc.info['pid']} for {server_name}")
-                    except (psutil.NoSuchProcess, psutil.AccessDenied):
-                        continue
-            
-            if not pids:
-                logger.debug(f"No valid {server_name} PIDs found after fallback")
+            stats_format = "{{.CPUPerc}},{{.MemUsage}}"
+            cmd = [docker_path, "stats", container_name, "--no-stream", "--format", stats_format]
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            output = result.stdout.strip()
+            if not output:
                 cpu_usage.append(0.0)
                 mem_usage.append(0.0)
                 time.sleep(interval)
+                sample_count += 1
                 continue
-            
-            logger.debug(f"Monitoring PIDs {pids} for {server_name}")
-        
-        except subprocess.CalledProcessError as e:
-            logger.debug(f"pgrep failed for '{pgrep_pattern}': {e}")
+            cpu_str, mem_str = output.split(',')
+            cpu_val = float(cpu_str.strip().replace('%',''))
+            mem_usage_part = mem_str.strip().split('/')[0].strip()
+            mem_match = re.match(r"([\d.]+)([KMG]iB)", mem_usage_part)
+            mem_val = 0.0
+            if mem_match:
+                mem_num = float(mem_match.group(1))
+                mem_unit = mem_match.group(2)
+                if mem_unit == 'KiB':
+                    mem_val = mem_num / 1024
+                elif mem_unit == 'MiB':
+                    mem_val = mem_num
+                elif mem_unit == 'GiB':
+                    mem_val = mem_num * 1024
+            cpu_usage.append(cpu_val)
+            mem_usage.append(mem_val)
+        except Exception:
             cpu_usage.append(0.0)
             mem_usage.append(0.0)
-            time.sleep(interval)
-            continue
-
-        try:
-            cpu_total = 0.0
-            mem_total_mb = 0.0
-            pid_count = 0
-
-            for pid in pids:
-                try:
-                    proc = psutil.Process(int(pid))
-                    cpu_percent = proc.cpu_percent(interval=0.1)
-                    mem_info = proc.memory_info()
-                    mem_mb = mem_info.rss / (1024 * 1024)
-                    
-                    cpu_total += cpu_percent
-                    mem_total_mb += mem_mb
-                    pid_count += 1
-                    
-                    logger.debug(f"PID {pid} CPU usage: {cpu_percent:.2f}%")
-                    logger.debug(f"PID {pid} Memory usage: {mem_mb:.2f} MB")
-                except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
-                    logger.debug(f"Skipping PID {pid} during measurement: {e}")
-                    continue
-
-            avg_cpu = cpu_total / pid_count if pid_count > 0 else 0.0
-            avg_mem = mem_total_mb if pid_count > 0 else 0.0
-            
-            cpu_usage.append(avg_cpu)
-            mem_usage.append(avg_mem)
-            logger.debug(f"Cycle CPU usage (%): {avg_cpu:.2f}")
-            logger.debug(f"Cycle Memory usage (MB): {avg_mem:.2f}")
-        except Exception as e:
-            logger.debug(f"Error collecting stats: {e}")
-            cpu_usage.append(0.0)
-            mem_usage.append(0.0)
-        
         time.sleep(interval)
-    
-    total_system_capacity = num_cores * 100.0
-    cpu_system_pct = [cpu / total_system_capacity * 100.0 for cpu in cpu_usage]
-    
-    non_zero_cpu = [x for x in cpu_system_pct if x > 0.0]
+        sample_count += 1
+    # Only consider non-zero samples for averages
+    non_zero_cpu = [x for x in cpu_usage if x > 0.0]
     non_zero_mem = [x for x in mem_usage if x > 0.0]
-    
     cpu_avg = sum(non_zero_cpu) / len(non_zero_cpu) if non_zero_cpu else 0.0
-    cpu_peak = max(cpu_usage) / num_cores if cpu_usage else 0.0
+    cpu_peak = max(cpu_usage) if cpu_usage else 0.0
     cpu_total = sum(cpu_usage) if cpu_usage else 0.0
     mem_avg = sum(non_zero_mem) / len(non_zero_mem) if non_zero_mem else 0.0
     mem_peak = max(mem_usage) if mem_usage else 0.0
     mem_total = sum(mem_usage) if mem_usage else 0.0
-    
     return {'avg': cpu_avg, 'peak': cpu_peak, 'total': cpu_total}, \
            {'avg': mem_avg, 'peak': mem_peak, 'total': mem_total}
 
 def parse_json_and_compute_energy(file_name, container_name, runtime):
     with open(file_name, "r") as file:
         data = json.load(file)
-    
+
     total_power_microwatts = 0.0
     number_samples = 0
-    
+    found_containers = set()
     for entry in data:
         for consumer in entry.get("consumers", []):
             container = consumer.get("container")
+            if container:
+                found_containers.add(container.get("name"))
             if container and container.get("name") == container_name:
                 power = consumer.get("consumption", 0.0)
                 if power > 0:
                     total_power_microwatts += power
                     number_samples += 1
-    
+    if not found_containers:
+        logger.warning(f"No containers found in Scaphandre output {file_name}")
+    else:
+        logger.info(f"Containers found in Scaphandre output: {found_containers}")
+    if container_name not in found_containers:
+        logger.warning(f"Container '{container_name}' not found in Scaphandre output!")
     if number_samples == 0:
+        logger.warning(f"No energy samples found for container '{container_name}' in {file_name}")
         return 0.0, 0.0, 0
-    
     avg_power_watts = (total_power_microwatts / number_samples) * 1e-6
     total_energy_joules = avg_power_watts * runtime
     return total_energy_joules, avg_power_watts, number_samples
 
 def save_results_to_csv(filename, results, total_energy, average_power, runtime, requests_per_second, total_samples, 
-                       cpu_metrics, mem_metrics, num_cores, container_name, measurement_type):
+                       cpu_metrics, mem_metrics, num_cores, container_name, measurement_type, extra_fields=None):
     if filename is None:
         os.makedirs("results_docker", exist_ok=True)
         filename = os.path.join("results_docker", f"{container_name}.csv")
     
-    headers = ["container_name", "type", "Total Requests", "Successful Requests", "Failed Requests", "Execution Time (s)", "Requests/s",
+    headers = ["Container Name", "Type", "Total Requests", "Successful Requests", "Failed Requests", "Execution Time (s)", "Requests/s",
                "Total Energy (J)", "Avg Power (W)", "Samples", "Avg CPU (%)", "Peak CPU (%)", "Total CPU (%)",
                "Avg Mem (MB)", "Peak Mem (MB)", "Total Mem (MB)"]
     data = [[container_name, measurement_type, results['total'], results['success'], results['failure'], runtime, requests_per_second,
              total_energy, average_power, total_samples, cpu_metrics['avg'], cpu_metrics['peak'],
              cpu_metrics['total'], mem_metrics['avg'], mem_metrics['peak'], mem_metrics['total']]]
-
+    if extra_fields:
+        headers += list(extra_fields.keys())
+        for i, row in enumerate(data):
+            data[i] += list(extra_fields.values())
     with open(filename, mode='a', newline='') as file:
         writer = csv.writer(file)
         if not os.path.isfile(filename) or os.stat(filename).st_size == 0:
@@ -304,12 +250,15 @@ def main():
     stop_event = threading.Event()
     resource_results = {'cpu': {}, 'mem': {}}
     def collect():
-        cpu_metrics, mem_metrics = collect_resources(args.server_image, stop_event, num_cores)
+        cpu_metrics, mem_metrics = collect_resources_docker_stats(container_name, stop_event)
         resource_results['cpu'] = cpu_metrics
         resource_results['mem'] = mem_metrics
 
     resource_thread = threading.Thread(target=collect)
     resource_thread.start()
+
+    logger.info("Sleeping 1s to let docker stats stabilize...")
+    time.sleep(1)
 
     start_time = time.time()
     with ThreadPoolExecutor(max_workers=args.max_workers) as executor:

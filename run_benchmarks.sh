@@ -234,10 +234,9 @@ else
     case "$TARGET_TYPE" in
         websocket)
             if [ ${#TARGET_IMAGES[@]} -eq 0 ]; then
-                # No image specified, run all subfolders in web-socket/
-                for dir in ./web-socket/*/; do
-                    folder_name=$(basename "$dir")
-                    run_websocket_tests "$folder_name"
+                websocket_all=("${!websocket_images[@]}" $(discover_websocket_images websocket_images))
+                for image in "${websocket_all[@]}"; do
+                    run_websocket_tests "$image"
                 done
             else
                 for image in "${TARGET_IMAGES[@]}"; do
@@ -250,31 +249,58 @@ else
             fi
             ;;
         dynamic)
-            for image in "${TARGET_IMAGES[@]}"; do
-                if [[ -v "dynamic_images[$image]" ]]; then
-                    run_docker_tests "$image" "${dynamic_images[$image]}" "dynamic"
-                else
-                    echo "Error: $image is not a valid dynamic image"
-                fi
-            done
+            if [ ${#TARGET_IMAGES[@]} -eq 0 ]; then
+                dynamic_all=("${!dynamic_images[@]}" $(discover_images ./containers/dynamic dynamic_images))
+                for image in "${dynamic_all[@]}"; do
+                    port_mapping="${dynamic_images[$image]:-$DEFAULT_PORT}"
+                    run_docker_tests "$image" "$port_mapping" "dynamic"
+                done
+            else
+                for image in "${TARGET_IMAGES[@]}"; do
+                    if [[ -v "dynamic_images[$image]" ]]; then
+                        run_docker_tests "$image" "${dynamic_images[$image]}" "dynamic"
+                    else
+                        echo "Error: $image is not a valid dynamic image"
+                    fi
+                done
+            fi
             ;;
         static)
-            for image in "${TARGET_IMAGES[@]}"; do
-                if [[ -v "static_images[$image]" ]]; then
-                    run_docker_tests "$image" "${static_images[$image]}" "static"
-                else
-                    echo "Error: $image is not a valid static image"
-                fi
-            done
+            if [ ${#TARGET_IMAGES[@]} -eq 0 ]; then
+                static_all=("${!static_images[@]}" $(discover_images ./containers/static static_images))
+                for image in "${static_all[@]}"; do
+                    port_mapping="${static_images[$image]:-$DEFAULT_PORT}"
+                    # Use ERLANG_PORT for erlang/erlindex/index images if not overridden
+                    if [[ "$image" =~ ^(erlang|erlindex|index)[0-9]+$ ]] && [[ -z "${static_images[$image]+x}" ]]; then
+                        port_mapping="$ERLANG_PORT"
+                    fi
+                    run_docker_tests "$image" "$port_mapping" "static"
+                done
+            else
+                for image in "${TARGET_IMAGES[@]}"; do
+                    if [[ -v "static_images[$image]" ]]; then
+                        run_docker_tests "$image" "${static_images[$image]}" "static"
+                    else
+                        echo "Error: $image is not a valid static image"
+                    fi
+                done
+            fi
             ;;
         local)
-            for server in "${TARGET_IMAGES[@]}"; do
-                if [[ -v "local_servers[$server]" ]]; then
+            if [ ${#TARGET_IMAGES[@]} -eq 0 ]; then
+                local_all=("${!local_servers[@]}" $(discover_local_servers local_servers))
+                for server in "${local_all[@]}"; do
                     run_local_tests "$server"
-                else
-                    echo "Error: $server is not a valid local server"
-                fi
-            done
+                done
+            else
+                for server in "${TARGET_IMAGES[@]}"; do
+                    if [[ -v "local_servers[$server]" ]]; then
+                        run_local_tests "$server"
+                    else
+                        echo "Error: $server is not a valid local server"
+                    fi
+                done
+            fi
             ;;
         *)
             echo "Error: Unknown type $TARGET_TYPE. Valid types are: websocket, dynamic, static, local."
