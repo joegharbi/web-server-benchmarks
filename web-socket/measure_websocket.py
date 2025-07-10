@@ -374,7 +374,7 @@ def main():
     header = [
         "Container Name", "Type", "Num CPUs", "Total Requests", "Successful Requests", "Failed Requests", "Execution Time (s)", "Requests/s",
         "Total Energy (J)", "Avg Power (W)", "Samples", "Avg CPU (%)", "Peak CPU (%)", "Total CPU (%)",
-        "Avg CPU (%) / CPU", "Peak CPU (%) / CPU", "Total CPU (%) / CPU",
+
         "Avg Mem (MB)", "Peak Mem (MB)", "Total Mem (MB)",
         "Mode", "Num Clients", "Chunk Size (MB or MB/s)", "Interval (s)", "Duration (s)"
     ]

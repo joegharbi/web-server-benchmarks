@@ -180,7 +180,6 @@ def save_results_to_csv(filename, results, total_energy, average_power, runtime,
     
     headers = ["Container Name", "Type", "Num CPUs", "Total Requests", "Successful Requests", "Failed Requests", "Execution Time (s)", "Requests/s",
                "Total Energy (J)", "Avg Power (W)", "Samples", "Avg CPU (%)", "Peak CPU (%)", "Total CPU (%)",
-               "Avg CPU (%) / CPU", "Peak CPU (%) / CPU", "Total CPU (%) / CPU",
                "Avg Mem (MB)", "Peak Mem (MB)", "Total Mem (MB)"]
     # Ensure num_cores is an int and not None
     num_cores_csv = int(num_cores) if num_cores is not None else 1
@@ -199,9 +198,6 @@ def save_results_to_csv(filename, results, total_energy, average_power, runtime,
         float(cpu_metrics['avg']),
         float(cpu_metrics['peak']),
         float(cpu_metrics['total']),
-        float(cpu_metrics['avg'])/int(num_cores_csv) if num_cores_csv else 0.0,
-        float(cpu_metrics['peak'])/int(num_cores_csv) if num_cores_csv else 0.0,
-        float(cpu_metrics['total'])/int(num_cores_csv) if num_cores_csv else 0.0,
         float(mem_metrics['avg']),
         float(mem_metrics['peak']),
         float(mem_metrics['total'])

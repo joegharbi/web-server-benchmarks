@@ -1,0 +1,4 @@
+Container Name,Type,Num CPUs,Total Requests,Successful Requests,Failed Requests,Execution Time (s),Requests/s,Total Energy (J),Avg Power (W),Samples,Avg CPU (%),Peak CPU (%),Total CPU (%),Avg Mem (MB),Peak Mem (MB),Total Mem (MB)
+st-nginx-deb,static,8,100,100,0,0.1538395881652832,650.0277411855869,0.0,0.0,0,0.16,0.16,0.16,6.374,6.391,19.122
+st-nginx-deb,static,8,1000,1000,0,1.137709617614746,878.9589052578638,0.0,0.0,0,0.535,0.89,1.07,6.349333333333334,6.352,19.048000000000002
+st-nginx-deb,static,8,5000,5000,0,5.745246648788452,870.2846554123819,0.2654427164299894,0.04620214459999999,10,7.035,10.65,28.14,6.3804,6.578,31.902

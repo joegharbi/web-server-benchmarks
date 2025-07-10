@@ -239,11 +239,9 @@ def collect_resources(server, stop_event, num_cores, interval=0.5):
         
         time.sleep(interval)
     
-    total_system_capacity = num_cores * 100.0
-    cpu_system_pct = [cpu / total_system_capacity * 100.0 for cpu in cpu_usage]
-    
-    cpu_avg = sum(cpu_system_pct) / len(cpu_system_pct) if cpu_system_pct else 0.0
-    cpu_peak = max(cpu_usage) / num_cores if cpu_usage else 0.0
+    # CPU values are already percentages, no need for complex calculations
+    cpu_avg = sum(cpu_usage) / len(cpu_usage) if cpu_usage else 0.0
+    cpu_peak = max(cpu_usage) if cpu_usage else 0.0
     cpu_total = sum(cpu_usage) if cpu_usage else 0.0
     mem_avg = sum(mem_usage) / len(mem_usage) if mem_usage else 0.0
     mem_peak = max(mem_usage) if mem_usage else 0.0
@@ -291,7 +289,6 @@ def save_results_to_csv(filename, results, total_energy, average_power, runtime,
     
     headers = ["Server Name", "Type", "Num CPUs", "Total Requests", "Successful Requests", "Failed Requests", "Execution Time (s)", "Requests/s",
                "Total Energy (J)", "Avg Power (W)", "Samples", "Avg CPU (%)", "Peak CPU (%)", "Total CPU (%)",
-               "Avg CPU (%) / CPU", "Peak CPU (%) / CPU", "Total CPU (%) / CPU",
                "Avg Mem (MB)", "Peak Mem (MB)", "Total Mem (MB)"]
     # Ensure num_cores is an int and not None
     num_cores_csv = int(num_cores) if num_cores is not None else 1
@@ -310,9 +307,6 @@ def save_results_to_csv(filename, results, total_energy, average_power, runtime,
         float(cpu_metrics['avg']),
         float(cpu_metrics['peak']),
         float(cpu_metrics['total']),
-        float(cpu_metrics['avg'])/int(num_cores_csv) if num_cores_csv else 0.0,
-        float(cpu_metrics['peak'])/int(num_cores_csv) if num_cores_csv else 0.0,
-        float(cpu_metrics['total'])/int(num_cores_csv) if num_cores_csv else 0.0,
         float(mem_metrics['avg']),
         float(mem_metrics['peak']),
         float(mem_metrics['total'])

@@ -268,7 +268,7 @@ class GraphGeneratorApp:
                                 plt.figure(figsize=(10, 6))
                                 color, marker = color_marker_combinations[(file_idx * len(selected_columns) + i) % len(color_marker_combinations)]
                                 plt.plot(data.index, data[actual_col], label=f"{server_name}/{os.path.splitext(os.path.basename(file_path))[0]} - {actual_col}", color=color, marker=marker, linestyle='-')
-                                plt.title(f"{server_name}")
+                                plt.title(f"{server_name} - {actual_col}")
                                 plt.xlabel("Number of Requests")
                                 plt.ylabel(actual_col)
                                 plt.legend(framealpha=0.5)
