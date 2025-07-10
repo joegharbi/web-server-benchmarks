@@ -362,16 +362,19 @@ def main():
         "Interval (s)": interval_s,
         "Duration (s)": duration_s
     }
+    # Ensure num_cores is an int and not None
+    num_cores_csv = int(num_cores) if num_cores is not None else 1
     result_row = [
-        args.server_image, measurement_type, results_counter['total'], results_counter['success'], results_counter['failure'],
+        args.server_image, measurement_type, num_cores_csv, results_counter['total'], results_counter['success'], results_counter['failure'],
         runtime, throughput_mb_s, total_energy, average_power, total_samples,
         resource_results['cpu']['avg'], resource_results['cpu']['peak'], resource_results['cpu']['total'],
         resource_results['mem']['avg'], resource_results['mem']['peak'], resource_results['mem']['total'],
         mode, args.num_clients, chunk_size, interval_s, duration_s
     ]
     header = [
-        "Container Name", "Type", "Total Requests", "Successful Requests", "Failed Requests", "Execution Time (s)", "Requests/s",
+        "Container Name", "Type", "Num CPUs", "Total Requests", "Successful Requests", "Failed Requests", "Execution Time (s)", "Requests/s",
         "Total Energy (J)", "Avg Power (W)", "Samples", "Avg CPU (%)", "Peak CPU (%)", "Total CPU (%)",
+        "Avg CPU (%) / CPU", "Peak CPU (%) / CPU", "Total CPU (%) / CPU",
         "Avg Mem (MB)", "Peak Mem (MB)", "Total Mem (MB)",
         "Mode", "Num Clients", "Chunk Size (MB or MB/s)", "Interval (s)", "Duration (s)"
     ]

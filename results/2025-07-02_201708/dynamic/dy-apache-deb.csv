@@ -1,2 +1,0 @@
-container_name,type,Total Requests,Successful Requests,Failed Requests,Execution Time (s),Requests/s,Total Energy (J),Avg Power (W),Samples,Avg CPU (%),Peak CPU (%),Total CPU (%),Avg Mem (MB),Peak Mem (MB),Total Mem (MB)
-dy-apache-deb,dynamic,100,100,0,0.20600414276123047,485.4271310257348,0.0,0.0,0,0.0,0.0,0.0,0.0,0.0,0.0

@@ -14,7 +14,6 @@ import psutil
 
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)  # Ensure debug logs are shown
 
 results_counter = Counter()
 
@@ -179,12 +178,34 @@ def save_results_to_csv(filename, results, total_energy, average_power, runtime,
         os.makedirs("results_docker", exist_ok=True)
         filename = os.path.join("results_docker", f"{container_name}.csv")
     
-    headers = ["Container Name", "Type", "Total Requests", "Successful Requests", "Failed Requests", "Execution Time (s)", "Requests/s",
+    headers = ["Container Name", "Type", "Num CPUs", "Total Requests", "Successful Requests", "Failed Requests", "Execution Time (s)", "Requests/s",
                "Total Energy (J)", "Avg Power (W)", "Samples", "Avg CPU (%)", "Peak CPU (%)", "Total CPU (%)",
+               "Avg CPU (%) / CPU", "Peak CPU (%) / CPU", "Total CPU (%) / CPU",
                "Avg Mem (MB)", "Peak Mem (MB)", "Total Mem (MB)"]
-    data = [[container_name, measurement_type, results['total'], results['success'], results['failure'], runtime, requests_per_second,
-             total_energy, average_power, total_samples, cpu_metrics['avg'], cpu_metrics['peak'],
-             cpu_metrics['total'], mem_metrics['avg'], mem_metrics['peak'], mem_metrics['total']]]
+    # Ensure num_cores is an int and not None
+    num_cores_csv = int(num_cores) if num_cores is not None else 1
+    data = [[
+        str(container_name),
+        str(measurement_type),
+        int(num_cores_csv),
+        int(results['total']),
+        int(results['success']),
+        int(results['failure']),
+        float(runtime),
+        float(requests_per_second),
+        float(total_energy),
+        float(average_power),
+        int(total_samples),
+        float(cpu_metrics['avg']),
+        float(cpu_metrics['peak']),
+        float(cpu_metrics['total']),
+        float(cpu_metrics['avg'])/int(num_cores_csv) if num_cores_csv else 0.0,
+        float(cpu_metrics['peak'])/int(num_cores_csv) if num_cores_csv else 0.0,
+        float(cpu_metrics['total'])/int(num_cores_csv) if num_cores_csv else 0.0,
+        float(mem_metrics['avg']),
+        float(mem_metrics['peak']),
+        float(mem_metrics['total'])
+    ]]
     if extra_fields:
         headers += list(extra_fields.keys())
         for i, row in enumerate(data):

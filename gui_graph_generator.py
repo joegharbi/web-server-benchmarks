@@ -187,8 +187,8 @@ class GraphGeneratorApp:
                 for data in self.csv_data.values():
                     if 'container_name' in data.columns:
                         server_names.add(str(data['container_name'].iloc[0]))
-                    if 'type' in data.columns:
-                        types_found.add(str(data['type'].iloc[0]))
+                    if 'Type' in data.columns:
+                        types_found.add(str(data['Type'].iloc[0]))
                     if 'mode' in data.columns:
                         modes_found.add(str(data['mode'].iloc[0]))
                 # Determine merged type
@@ -205,21 +205,18 @@ class GraphGeneratorApp:
                 if merged_mode:
                     merged_folder = os.path.join(merged_folder, merged_mode)
                 os.makedirs(merged_folder, exist_ok=True)
-                server_part = "_".join(sorted(server_names))
-                plt.figure(figsize=(10, 6))
-                for file_idx, (file_path, data) in enumerate(self.csv_data.items()):
-                    folder_name = data['container_name'].iloc[0] if 'container_name' in data.columns else os.path.basename(os.path.dirname(file_path))
-                    file_name = os.path.splitext(os.path.basename(file_path))[0]
-                    for i, column in enumerate(selected_columns):
-                        if column in data.columns:
-                            color, marker = color_marker_combinations[(file_idx * len(selected_columns) + i) % len(color_marker_combinations)]
-                            plt.plot(data.index, data[column], label=f"{folder_name}/{file_name} - {column}", color=color, marker=marker, linestyle='-')
-                plt.title(f"Merged Graphs")
-                plt.xlabel("Number of Requests")
-                plt.ylabel(selected_columns[0] if len(selected_columns) == 1 else "Values")
-                plt.legend(framealpha=0.5)
-                plt.grid(True)
-                merged_filename = f"{server_part}.png"
+                # Updated naming convention for merged graphs: preview-first-2-servers_Nservers_type_hash.png
+                import hashlib
+                server_names_sorted = sorted(server_names)
+                servers_concat = ",".join(server_names_sorted)
+                hash_digest = hashlib.sha1(servers_concat.encode()).hexdigest()[:6]
+                n_servers = len(server_names_sorted)
+                n_types = len(types_found) if types_found else 1
+                preview = "-".join(server_names_sorted[:2])
+                if n_types == 1:
+                    merged_filename = f"{preview}_{n_servers}servers_{merged_type}_{hash_digest}.png"
+                else:
+                    merged_filename = f"{preview}_{n_servers}servers_{n_types}types_{hash_digest}.png"
                 merged_path = os.path.join(merged_folder, merged_filename)
                 plt.savefig(merged_path, dpi=300)
                 print(f"Saved merged graph: {merged_path}")
@@ -227,7 +224,10 @@ class GraphGeneratorApp:
             else:
                 for file_idx, (file_path, data) in enumerate(self.csv_data.items()):
                     # Extract metadata from CSV
-                    server_name = data['container_name'].iloc[0] if 'container_name' in data.columns else os.path.basename(os.path.dirname(file_path))
+                    if 'Server Name' in data.columns:
+                        server_name = str(data['Server Name'].iloc[0])
+                    else:
+                        server_name = os.path.basename(os.path.dirname(file_path))
                     measurement_type = data['type'].iloc[0] if 'type' in data.columns else None
                     mode = data['mode'].iloc[0] if 'mode' in data.columns else None
                     if not measurement_type:
@@ -241,10 +241,14 @@ class GraphGeneratorApp:
 
                     if self.merge_columns_var.get():
                         plt.figure(figsize=(10, 6))
+                        # For plotting, match columns case-insensitively
+                        data_columns_lower = {col.lower(): col for col in data.columns}
                         for i, column in enumerate(selected_columns):
-                            if column in data.columns:
+                            col_key = column.lower()
+                            if col_key in data_columns_lower:
+                                actual_col = data_columns_lower[col_key]
                                 color, marker = color_marker_combinations[(file_idx * len(selected_columns) + i) % len(color_marker_combinations)]
-                                plt.plot(data.index, data[column], label=f"{server_name}/{os.path.splitext(os.path.basename(file_path))[0]} - {column}", color=color, marker=marker, linestyle='-')
+                                plt.plot(data.index, data[actual_col], label=f"{server_name}/{os.path.splitext(os.path.basename(file_path))[0]} - {actual_col}", color=color, marker=marker, linestyle='-')
                         plt.title(f"{server_name}")
                         plt.xlabel("Number of Requests")
                         plt.ylabel("Values")
@@ -256,17 +260,25 @@ class GraphGeneratorApp:
                         plt.close()
                     else:
                         for i, column in enumerate(selected_columns):
-                            if column in data.columns:
+                            # For plotting, match columns case-insensitively
+                            data_columns_lower = {col.lower(): col for col in data.columns}
+                            col_key = column.lower()
+                            if col_key in data_columns_lower:
+                                actual_col = data_columns_lower[col_key]
                                 plt.figure(figsize=(10, 6))
                                 color, marker = color_marker_combinations[(file_idx * len(selected_columns) + i) % len(color_marker_combinations)]
-                                plt.plot(data.index, data[column], label=f"{server_name}/{os.path.splitext(os.path.basename(file_path))[0]} - {column}", color=color, marker=marker, linestyle='-')
+                                plt.plot(data.index, data[actual_col], label=f"{server_name}/{os.path.splitext(os.path.basename(file_path))[0]} - {actual_col}", color=color, marker=marker, linestyle='-')
                                 plt.title(f"{server_name}")
                                 plt.xlabel("Number of Requests")
-                                plt.ylabel(column)
+                                plt.ylabel(actual_col)
                                 plt.legend(framealpha=0.5)
                                 plt.grid(True)
-                                safe_column = column.replace(' ', '_')
-                                save_path = os.path.join(file_graphs_folder, f"{os.path.splitext(os.path.basename(file_path))[0]}_{safe_column}.png")
+                                # Updated naming convention for non-merged graphs: {server}_{column}_{hash}.png
+                                import hashlib
+                                hash_input = f"{server_name},{file_path}".encode()
+                                hash_digest = hashlib.sha1(hash_input).hexdigest()[:6]
+                                safe_column = actual_col.replace(' ', '_')
+                                save_path = os.path.join(file_graphs_folder, f"{server_name}_{safe_column}_{hash_digest}.png")
                                 plt.savefig(save_path, dpi=300)
                                 print(f"Saved graph: {save_path}")
                                 plt.close()

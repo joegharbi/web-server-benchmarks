@@ -1,0 +1,2 @@
+Container Name,Type,Num CPUs,Total Requests,Successful Requests,Failed Requests,Execution Time (s),Requests/s,Total Energy (J),Avg Power (W),Samples,Avg CPU (%),Peak CPU (%),Total CPU (%),Avg CPU (%) / CPU,Peak CPU (%) / CPU,Total CPU (%) / CPU,Avg Mem (MB),Peak Mem (MB),Total Mem (MB),Mode,Num Clients,Chunk Size (MB or MB/s),Interval (s),Duration (s)
+ws-yaws,websocket,8,10,10,0,62.81272315979004,1.5920341448277733,464.59336101936447,7.396484942031248,32,178.17888888888888,701.48,6414.44,4052.3992222222223,6909.952,145886.372,burst,10,10,1.0,60

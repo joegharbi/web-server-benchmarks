@@ -283,19 +283,40 @@ def parse_json_and_compute_energy(file_name, server_exe, runtime):
     return total_energy_joules, avg_power_watts, number_samples
 
 def save_results_to_csv(filename, results, total_energy, average_power, runtime, requests_per_second, total_samples, 
-                       cpu_metrics, mem_metrics, server, measurement_type):
+                       cpu_metrics, mem_metrics, num_cores, server, measurement_type):
     """Save results to a CSV file in results_local folder."""
     if filename is None:
         os.makedirs("results_local", exist_ok=True)
         filename = os.path.join("results_local", f"{server}.csv")
     
-    headers = ["container_name", "type", "Total Requests", "Successful Requests", "Failed Requests", "Execution Time (s)", "Requests/s",
+    headers = ["Server Name", "Type", "Num CPUs", "Total Requests", "Successful Requests", "Failed Requests", "Execution Time (s)", "Requests/s",
                "Total Energy (J)", "Avg Power (W)", "Samples", "Avg CPU (%)", "Peak CPU (%)", "Total CPU (%)",
+               "Avg CPU (%) / CPU", "Peak CPU (%) / CPU", "Total CPU (%) / CPU",
                "Avg Mem (MB)", "Peak Mem (MB)", "Total Mem (MB)"]
-    data = [[server, measurement_type, results['total'], results['success'], results['failure'], runtime, requests_per_second,
-             total_energy, average_power, total_samples, cpu_metrics['avg'], cpu_metrics['peak'],
-             cpu_metrics['total'], mem_metrics['avg'], mem_metrics['peak'], mem_metrics['total']]]
-
+    # Ensure num_cores is an int and not None
+    num_cores_csv = int(num_cores) if num_cores is not None else 1
+    data = [[
+        str(server),
+        str(measurement_type),
+        int(num_cores_csv),
+        int(results['total']),
+        int(results['success']),
+        int(results['failure']),
+        float(runtime),
+        float(requests_per_second),
+        float(total_energy),
+        float(average_power),
+        int(total_samples),
+        float(cpu_metrics['avg']),
+        float(cpu_metrics['peak']),
+        float(cpu_metrics['total']),
+        float(cpu_metrics['avg'])/int(num_cores_csv) if num_cores_csv else 0.0,
+        float(cpu_metrics['peak'])/int(num_cores_csv) if num_cores_csv else 0.0,
+        float(cpu_metrics['total'])/int(num_cores_csv) if num_cores_csv else 0.0,
+        float(mem_metrics['avg']),
+        float(mem_metrics['peak']),
+        float(mem_metrics['total'])
+    ]]
     with open(filename, mode='a', newline='') as file:
         writer = csv.writer(file)
         if not os.path.isfile(filename) or os.stat(filename).st_size == 0:
@@ -399,7 +420,7 @@ def main():
     total_energy, average_power, total_samples = parse_json_and_compute_energy(output_json, server_exe, runtime)
     measurement_type = args.measurement_type or "local"
     save_results_to_csv(args.output_csv, results_counter, total_energy, average_power, runtime, requests_per_second, 
-                       total_samples, resource_results['cpu'], resource_results['mem'], args.server, measurement_type)
+                       total_samples, resource_results['cpu'], resource_results['mem'], num_cores, args.server, measurement_type)
     print_summary(results_counter, total_energy, average_power, runtime, requests_per_second, 
                   resource_results['cpu'], resource_results['mem'], output_json, args.output_csv, args.server)
 
