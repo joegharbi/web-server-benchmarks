@@ -5,14 +5,16 @@ This project benchmarks the performance and energy efficiency of web servers run
 
 ## Table of Contents
 1. [Prerequisites](#prerequisites)
-2. [Directory Structure](#directory-structure)
-3. [Image/Server Naming and Auto-Discovery](#naming-and-auto-discovery)
-4. [Adding Dockerfiles and Servers](#adding-dockerfiles-and-servers)
-5. [Installing Docker Images](#installing-docker-images)
-6. [Running Benchmarks](#running-benchmarks)
-7. [CSV Output Format](#csv-output-format)
-8. [GUI Graph Generator](#gui-graph-generator)
-9. [Troubleshooting](#troubleshooting)
+2. [Quick Start](#quick-start)
+3. [Directory Structure](#directory-structure)
+4. [Image/Server Naming and Auto-Discovery](#naming-and-auto-discovery)
+5. [Adding Dockerfiles and Servers](#adding-dockerfiles-and-servers)
+6. [Installing Docker Images](#installing-docker-images)
+7. [Running Benchmarks](#running-benchmarks)
+8. [CSV Output Format](#csv-output-format)
+9. [GUI Graph Generator](#gui-graph-generator)
+10. [Testing](#testing)
+11. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -21,13 +23,54 @@ Before using the scripts, ensure the following are installed:
 - **Operating System**: Linux (Debian-based distributions recommended).
 - **Python 3**: Version 3.6 or higher.
 - **Docker**: Installed via `sudo apt install docker.io`.
-- **Scaphandre**: Installed via Rust’s Cargo (`cargo install scaphandre`) or pre-built binaries.
+- **Scaphandre**: Installed via Rust's Cargo (`cargo install scaphandre`) or pre-built binaries.
+- **Make**: Usually pre-installed on Linux systems.
 
 Verify installations:
 ```bash
 python3 --version
 docker --version
 scaphandre --version
+make --version
+```
+
+---
+
+## Quick Start
+
+### 1. Set up the environment
+```bash
+# Create and activate virtual environment (recommended)
+make setup-env
+source srv/bin/activate
+
+# Or use an existing virtual environment
+make ensure-env
+```
+
+### 2. Install dependencies
+```bash
+make install
+```
+
+### 3. Build Docker images
+```bash
+make build
+```
+
+### 4. Run a quick test
+```bash
+make quick-test
+```
+
+### 5. Run full benchmarks
+```bash
+make run-all
+```
+
+### 6. Generate graphs
+```bash
+make graph
 ```
 
 ---
@@ -42,13 +85,20 @@ web-server-benchmarks/
 │   │   └── <image_name>/Dockerfile
 │   ├── dynamic/        # Dynamic web servers (e.g., Nginx with dynamic modules)
 │   │   └── <image_name>/Dockerfile
+│   ├── measure_docker.py  # Docker container measurement script
+│   └── output/         # Docker benchmark results
 ├── web-socket/
-│   └── <image_name>/Dockerfile  # WebSocket server images
+│   ├── <image_name>/Dockerfile  # WebSocket server images
+│   └── measure_websocket.py     # WebSocket measurement script
 ├── local/              # Local webserver scripts/configs (e.g., nginx, yaws)
+│   ├── measure_local.py    # Local server measurement script
 │   └── <server_name>   # Script or config file for local server
 ├── logs/               # Logs generated during benchmarking
 ├── output/             # Output files, such as temporary data or intermediate results
 ├── results/            # Results for all benchmarks, organized by timestamp and type
+├── tests/              # Test suite for validation
+├── requirements.txt    # Python dependencies
+├── Makefile           # Build and automation commands
 ├── install_benchmarks.sh     # Script to build Docker images for benchmarking
 ├── run_benchmarks.sh         # Main script to trigger all benchmarks
 ├── gui_graph_generator.py    # Script to generate graphs from benchmarking results
@@ -59,13 +109,22 @@ web-server-benchmarks/
 
 ## Naming and Auto-Discovery
 
+The project uses an intelligent auto-discovery system that automatically finds and benchmarks all available servers:
+
 - **Docker images (static, dynamic, websocket):**
   - Place each image in its own folder under the appropriate directory (`containers/static/`, `containers/dynamic/`, or `web-socket/`).
-  - The folder name is the image name. The folder must contain a file named exactly `Dockerfile`.
-  - Example: `containers/static/nginx-deb/Dockerfile`, `web-socket/nginx_websocket/Dockerfile`
+  - The folder name becomes the image name. The folder must contain a file named exactly `Dockerfile`.
+  - Example: `containers/static/nginx-deb/Dockerfile`, `web-socket/ws-yaws/Dockerfile`
 
 - **Local servers:**
   - Place a script or config file in `local/` named after the server (e.g., `local/nginx`, `local/yaws`).
+
+- **Sensible Defaults:**
+  - Auto-discovered servers use sensible defaults for ports and test parameters.
+  - Static servers: port 8001:80, payloads: 100, 1000, 5000, 8000, 10000, 15000, 20000, 30000, 40000, 50000, 60000, 70000, 80000 requests
+  - Dynamic servers: port 8001:80, same payload range as static
+  - WebSocket servers: burst mode (10/20/50 clients, 10/50/100 MB payloads) and streaming mode (5/10/20 MB/s rates)
+  - Local servers: same payload range as static/dynamic
 
 - **Override Arrays:**
   - The benchmark runner uses associative arrays to specify custom port mappings or to override/exclude certain images/servers.
@@ -87,6 +146,8 @@ mkdir -p containers/static/my-server
 nano containers/static/my-server/Dockerfile
 ```
 
+The server will be automatically discovered and benchmarked with sensible defaults.
+
 ### Local Servers
 1. Place a script or config file in `local/` named after the server.
 
@@ -95,48 +156,78 @@ Example:
 touch local/myserver
 ```
 
+### Custom Configuration
+To override defaults, add entries to the appropriate arrays in `run_benchmarks.sh`:
+```bash
+# Example: Custom port and test parameters
+declare -A static_images=(
+    ["my-server"]="8080:80"
+)
+```
+
 ---
 
 ## Installing Docker Images
-Use the `install_benchmarks.sh` script to build Docker images:
+Use the Makefile or the install script to build Docker images:
+
 ```bash
+# Using Makefile (recommended)
+make build
+
+# Or using the install script directly
 ./install_benchmarks.sh
 ```
-- The script auto-discovers all subfolders in `containers/static/`, `containers/dynamic/`, and (optionally) `web-socket/` that contain a file named exactly `Dockerfile` and builds them.
-- The image name is taken from the folder name.
+
+Both methods auto-discover all subfolders in `containers/static/`, `containers/dynamic/`, and `web-socket/` that contain a file named exactly `Dockerfile` and build them.
 
 ---
 
 ## Running Benchmarks
-The `run_benchmarks.sh` script is the main entry point for running all benchmarks. It:
-- Uses override arrays for custom port mappings or exclusions.
-- Auto-discovers all other images/servers from the folder structure.
-- Passes the correct `--measurement_type` to each measurement script, ensuring the CSV output is consistent.
 
-### Usage
+### Using Makefile (Recommended)
 ```bash
-./run_benchmarks.sh
+# Run all benchmarks
+make run-all
+
+# Run specific benchmark types
+make run-static
+make run-dynamic  
+make run-websocket
+make run-local
+
+# Run a quick test (single server, reduced load)
+make quick-test
 ```
-Runs all benchmarks (static, dynamic, websocket, local).
 
-To run only a specific type or image:
+### Using Scripts Directly
 ```bash
+# Run all benchmarks
+./run_benchmarks.sh
+
+# Run specific types
 ./run_benchmarks.sh static
 ./run_benchmarks.sh dynamic
 ./run_benchmarks.sh websocket
 ./run_benchmarks.sh local
 ```
 
+The benchmark runner:
+- Uses override arrays for custom port mappings or exclusions.
+- Auto-discovers all other images/servers from the folder structure.
+- Passes the correct `--measurement_type` to each measurement script, ensuring the CSV output is consistent.
+
 ---
 
 ## CSV Output Format
-All measurement scripts output CSV files with the following columns (first two columns always):
+All measurement scripts output CSV files with the following columns:
 
 ```
-server_image,type,Total Requests,Successful Requests,Failed Requests,Execution Time (s),Requests/s,Total Energy (J),Avg Power (W),Samples,Avg CPU (%),Peak CPU (%),Total CPU (%),Avg Mem (MB),Peak Mem (MB),Total Mem (MB)
+Container Name,Type,Num CPUs,Total Requests,Successful Requests,Failed Requests,Execution Time (s),Requests/s,Total Energy (J),Avg Power (W),Samples,Avg CPU (%),Peak CPU (%),Total CPU (%),Avg Mem (MB),Peak Mem (MB),Total Mem (MB)
 ```
-- `server_image`: Name of the Docker image or local server.
-- `type`: Measurement type (`static`, `dynamic`, `websocket`, `local`).
+
+- `Container Name`: Name of the Docker image or local server.
+- `Type`: Measurement type (`static`, `dynamic`, `websocket`, `local`).
+- `Num CPUs`: Number of CPU cores detected.
 - The remaining columns are performance and resource metrics.
 
 This makes it easy to aggregate and compare results across all server types.
@@ -145,10 +236,16 @@ This makes it easy to aggregate and compare results across all server types.
 
 ## GUI Graph Generator
 To visualize results, use the GUI graph generator:
-1. Start the GUI with:
-   ```bash
-   python3 gui_graph_generator.py
-   ```
+
+```bash
+# Using Makefile
+make graph
+
+# Or directly
+python3 gui_graph_generator.py
+```
+
+1. Start the GUI with the command above.
 2. In the graphical window, use the buttons to select CSV files or folders containing your benchmark results.
 3. Choose the columns you want to plot and generate graphs interactively.
 4. Save or export the generated graphs as needed.
@@ -157,16 +254,108 @@ To visualize results, use the GUI graph generator:
 
 ---
 
+## Testing
+
+The project includes a basic test suite to validate the benchmarking system:
+
+```bash
+# Run all tests
+make test
+
+# Run specific test categories
+make test-config
+```
+
+### Test Categories
+- **Basic Tests**: Verify energy data parsing and auto-discovery system
+- **Configuration Tests**: Validate that no configuration files are needed (auto-discovery works)
+
+### Test Output
+Tests run using Python's unittest framework and provide clear pass/fail status for each component.
+
+---
+
+## Makefile Commands
+
+The project includes a comprehensive Makefile for easy automation:
+
+```bash
+# Environment setup
+make setup-env      # Create virtual environment
+make ensure-env     # Ensure virtual environment is active
+make install        # Install Python dependencies
+
+# Docker operations
+make build          # Build all Docker images
+make clean          # Remove Docker containers and images
+
+# Benchmarking
+make quick-test     # Run quick test
+make run-all        # Run all benchmarks
+make run-static     # Run static server benchmarks
+make run-dynamic    # Run dynamic server benchmarks
+make run-websocket  # Run WebSocket benchmarks
+make run-local      # Run local server benchmarks
+
+# Visualization
+make graph          # Start GUI graph generator
+
+# Testing
+make test           # Run basic test suite
+make test-config    # Test configuration (auto-discovery)
+
+# Development
+make setup-local    # Setup local servers (nginx, yaws)
+make check-deps     # Check if all dependencies are installed
+make validate       # Validate dependencies
+make dev-setup      # Complete development setup
+
+# Help
+make help           # Show all available commands
+```
+
+---
+
 ## Troubleshooting
+
 ### Common Issues
-- **No Energy Data**: Ensure Scaphandre is installed and your hardware supports RAPL.
-- **Health Check Fails**: Verify the server is running and accessible on the specified port.
-- **Docker Errors**: Check if the image exists using `docker images`.
+
+#### Virtual Environment
+- **"Virtual environment not found"**: Run `make setup-env` to create the environment
+- **"Wrong virtual environment"**: Ensure you're using the `srv` environment or update the Makefile
+
+#### Docker Issues
+- **Port conflicts**: Check for existing containers with `docker ps` and stop them with `docker stop <container_name>`
+- **Build failures**: Check Dockerfile syntax and base image availability
+- **Permission errors**: Ensure your user is in the docker group or use `sudo`
+
+#### Energy Measurement
+- **No Energy Data**: Ensure Scaphandre is installed and your hardware supports RAPL
+- **Zero energy values**: Check Scaphandre permissions and hardware compatibility
+
+#### Performance Issues
+- **Health Check Fails**: Verify the server is running and accessible on the specified port
+- **Timeout errors**: Increase timeout values in measurement scripts for slower servers
 
 ### Logs
 Check logs for detailed error messages:
 ```bash
+# Docker container logs
 docker logs <container_name>
+
+# Benchmark logs
+tail -f logs/run_*.log
+
+# Test logs
+make test  # Tests run with verbose output
+```
+
+### Debug Mode
+Enable verbose output for debugging:
+```bash
+# Set debug environment variable
+export DEBUG=1
+make quick-test
 ```
 
 ---
