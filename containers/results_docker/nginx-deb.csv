@@ -1,2 +1,0 @@
-Total Requests,Successful Requests,Failed Requests,Execution Time (s),Requests/s,Total Energy (J),Avg Power (W),Samples,Avg CPU (%),Peak CPU (%),Total CPU (%),Avg Mem (MB),Peak Mem (MB),Total Mem (MB)
-500,500,0,0.4625086784362793,1081.060795854636,0.0,0.0,0,0.9239583333333334,0.9239583333333333,7.391666666666667,53.45703125,55.10546875,106.9140625

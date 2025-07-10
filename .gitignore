@@ -7,6 +7,8 @@ venv/
 results_docker/
 results_local/ 
 results_websocket/
+results/
+graphs/
 *.json
 local/report.log
 TODO
