@@ -111,7 +111,20 @@ LOG_FILE="logs/run_${TIMESTAMP}.log"
 echo "Logging to $LOG_FILE"
 exec > >(tee -a "$LOG_FILE") 2>&1  # Redirect stdout and stderr to log file and console
 
-# Parse arguments
+# Benchmark matrix selection
+QUICK_BENCH=0
+# Remove --quick from arguments and set QUICK_BENCH if present
+args=()
+for arg in "$@"; do
+    if [[ "$arg" == "--quick" ]]; then
+        QUICK_BENCH=1
+    else
+        args+=("$arg")
+    fi
+done
+set -- "${args[@]}"
+
+# Parse arguments (must be after --quick removal)
 RUN_ALL=1
 TARGET_TYPE=""
 TARGET_IMAGES=()
@@ -123,6 +136,33 @@ if [[ $# -gt 0 ]]; then
     TARGET_IMAGES=("$@")
 fi
 
+# =====================
+# WebSocket Benchmark Parameter Explanations
+# =====================
+#
+# Burst Mode Parameters:
+#   --clients    : Number of concurrent WebSocket clients (connections) to the server.
+#   --size_kb    : Size of each WebSocket message sent (in kilobytes).
+#   --bursts     : Number of messages each client sends in a “burst” (as fast as possible, then waits).
+#   --interval   : Time (in seconds) to wait between each burst of messages.
+#
+# Streaming Mode Parameters:
+#   --clients    : Number of concurrent WebSocket clients (connections) to the server.
+#   --size_kb    : Size of each WebSocket message sent (in kilobytes).
+#   --rate       : Number of messages per second each client sends (streaming, not bursty).
+#   --duration   : Total time (in seconds) to run the streaming test.
+#
+# Other Inputs:
+#   --server_image     : The Docker image name of the WebSocket server to test.
+#   --pattern          : The test pattern: 'burst' (bursty traffic) or 'stream' (steady rate).
+#   --mode             : The WebSocket mode: usually 'echo' (server echoes back what it receives).
+#   --output_csv       : Path to the CSV file where results will be saved.
+#   --measurement_type : Label for the type of measurement (for your records).
+#
+# Example:
+#   Burst:   1 client, 8 KB messages, 3 bursts, 0.5s between bursts
+#   Stream:  1 client, 8 KB messages, 10 messages/sec, for 5 seconds
+# =====================
 # Function to run WebSocket tests (no port_mapping)
 run_websocket_tests() {
     local image=$1
@@ -131,34 +171,66 @@ run_websocket_tests() {
         return 1
     fi
 
-    # Burst mode with varying payloads
-    for num_clients in 10 20 50; do
-        for size_mb in 10 50 100; do
-            echo "Running measure_websocket.py for $image in burst mode with $num_clients clients and $size_mb MB payload"
-            "$PYTHON_PATH" ./web-socket/measure_websocket.py \
-                --server_image "$image" \
-                --num_clients "$num_clients" \
-                --size_mb "$size_mb" \
-                --interval_s 1 \
-                --duration_s 60 \
-                --output_csv "$RESULTS_DIR/websocket/${image}_burst.csv" \
-                --measurement_type websocket || echo "Burst mode failed for $image"
+    # Select parameter arrays based on QUICK_BENCH
+    if [[ $QUICK_BENCH -eq 1 ]]; then
+        burst_clients=(3)
+        burst_sizes=(8)
+        burst_bursts=(3)
+        burst_intervals=(0.5)
+        stream_clients=(3)
+        stream_sizes=(8)
+        stream_rates=(10)
+        stream_durations=(5)
+    else
+        burst_clients=(1 10 50 200)
+        burst_sizes=(1 8 64 256 1024 8192 65536)
+        burst_bursts=(10 50)
+        burst_intervals=(0.1 0.5 1)
+        stream_clients=(1 10 50 200)
+        stream_sizes=(1 8 64 256 1024)
+        stream_rates=(1 10 100 1000)
+        stream_durations=(10 60)
+    fi
+
+    # Burst mode
+    for num_clients in "${burst_clients[@]}"; do
+        for size_kb in "${burst_sizes[@]}"; do
+            for bursts in "${burst_bursts[@]}"; do
+                for interval in "${burst_intervals[@]}"; do
+                    echo "Running burst: clients=$num_clients, size_kb=$size_kb, bursts=$bursts, interval=$interval"
+                    "$PYTHON_PATH" ./web-socket/measure_websocket.py \
+                        --server_image "$image" \
+                        --clients "$num_clients" \
+                        --size_kb "$size_kb" \
+                        --pattern burst \
+                        --mode echo \
+                        --bursts "$bursts" \
+                        --interval "$interval" \
+                        --output_csv "$RESULTS_DIR/websocket/${image}_burst.csv" \
+                        --measurement_type websocket || echo "Burst mode failed for $image"
+                done
+            done
         done
     done
 
-    # Streaming mode with varying rates
-    for rate_mb_s in 5 10 20; do
-        for num_clients in 10 20 50; do
-            echo "Running measure_websocket.py for $image in streaming mode with $num_clients clients and $rate_mb_s MB/s rate"
-            "$PYTHON_PATH" ./web-socket/measure_websocket.py \
-                --server_image "$image" \
-                --num_clients "$num_clients" \
-                --rate_mb_s "$rate_mb_s" \
-                --duration_s 60 \
-                --size_mb 0 \
-                --interval_s 0 \
-                --output_csv "$RESULTS_DIR/websocket/${image}_streaming.csv" \
-                --measurement_type websocket || echo "Streaming mode failed for $image"
+    # Streaming mode
+    for num_clients in "${stream_clients[@]}"; do
+        for size_kb in "${stream_sizes[@]}"; do
+            for rate in "${stream_rates[@]}"; do
+                for duration in "${stream_durations[@]}"; do
+                    echo "Running stream: clients=$num_clients, size_kb=$size_kb, rate=$rate, duration=$duration"
+                    "$PYTHON_PATH" ./web-socket/measure_websocket.py \
+                        --server_image "$image" \
+                        --clients "$num_clients" \
+                        --size_kb "$size_kb" \
+                        --pattern stream \
+                        --mode echo \
+                        --rate "$rate" \
+                        --duration "$duration" \
+                        --output_csv "$RESULTS_DIR/websocket/${image}_streaming.csv" \
+                        --measurement_type websocket || echo "Streaming mode failed for $image"
+                done
+            done
         done
     done
 }

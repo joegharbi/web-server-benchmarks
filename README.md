@@ -218,6 +218,33 @@ The benchmark runner:
 
 ---
 
+## WebSocket Benchmark Parameter Explanations
+
+**Burst Mode Parameters:**
+- `--clients`    : Number of concurrent WebSocket clients (connections) to the server.
+- `--size_kb`    : Size of each WebSocket message sent (in kilobytes).
+- `--bursts`     : Number of messages each client sends in a “burst” (as fast as possible, then waits).
+- `--interval`   : Time (in seconds) to wait between each burst of messages.
+
+**Streaming Mode Parameters:**
+- `--clients`    : Number of concurrent WebSocket clients (connections) to the server.
+- `--size_kb`    : Size of each WebSocket message sent (in kilobytes).
+- `--rate`       : Number of messages per second each client sends (streaming, not bursty).
+- `--duration`   : Total time (in seconds) to run the streaming test.
+
+**Other Inputs:**
+- `--server_image`     : The Docker image name of the WebSocket server to test.
+- `--pattern`          : The test pattern: 'burst' (bursty traffic) or 'stream' (steady rate).
+- `--mode`             : The WebSocket mode: usually 'echo' (server echoes back what it receives).
+- `--output_csv`       : Path to the CSV file where results will be saved.
+- `--measurement_type` : Label for the type of measurement (for your records).
+
+**Example:**
+- Burst:   1 client, 8 KB messages, 3 bursts, 0.5s between bursts
+- Stream:  1 client, 8 KB messages, 10 messages/sec, for 5 seconds
+
+---
+
 ## CSV Output Format
 All measurement scripts output CSV files with the following columns:
 

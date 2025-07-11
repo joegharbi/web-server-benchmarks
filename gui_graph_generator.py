@@ -2,6 +2,8 @@ import os
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import pandas as pd
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend to avoid display issues
 import matplotlib.pyplot as plt
 import tkinter.ttk as ttk  # Import ttk for the scrollbar widget
 
@@ -17,6 +19,7 @@ class GraphGeneratorApp:
         self.column_checkboxes = {}
         self.csv_data = {}
         self.base_folder = None
+        self.select_all_var = tk.BooleanVar()
 
         # Separate buttons for folder and file selection
         self.open_folder_button = tk.Button(root, text="Open Folder", command=self.select_folder, font=("Arial", 12))
@@ -24,6 +27,25 @@ class GraphGeneratorApp:
 
         self.open_files_button = tk.Button(root, text="Open Files", command=self.select_files, font=("Arial", 12))
         self.open_files_button.pack(pady=5)
+
+        # Chart type selection frame
+        self.chart_type_frame = tk.Frame(root)
+        self.chart_type_frame.pack(pady=5)
+        
+        tk.Label(self.chart_type_frame, text="Chart Type:", font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=(0, 10))
+        
+        self.chart_type_var = tk.StringVar(value="auto")
+        self.auto_radio = tk.Radiobutton(self.chart_type_frame, text="Auto (Recommended)", 
+                                       variable=self.chart_type_var, value="auto", font=("Arial", 10))
+        self.auto_radio.pack(side=tk.LEFT, padx=(0, 10))
+        
+        self.bar_radio = tk.Radiobutton(self.chart_type_frame, text="Bar Chart", 
+                                      variable=self.chart_type_var, value="bar", font=("Arial", 10))
+        self.bar_radio.pack(side=tk.LEFT, padx=(0, 10))
+        
+        self.line_radio = tk.Radiobutton(self.chart_type_frame, text="Line Plot", 
+                                       variable=self.chart_type_var, value="line", font=("Arial", 10))
+        self.line_radio.pack(side=tk.LEFT)
 
         # Column selection with scrollable frame
         self.column_frame_container = tk.Frame(root)
@@ -52,18 +74,31 @@ class GraphGeneratorApp:
         self.select_all_checkbox = tk.Checkbutton(self.scrollable_frame, text="Select All", variable=self.select_all_var, command=self.toggle_select_all, font=("Arial", 10))
         self.select_all_checkbox.pack(anchor="w")
 
-        # Merge options
-        self.merge_csv_var = tk.BooleanVar()
-        self.merge_csv_checkbox = tk.Checkbutton(root, text="Merge CSV Files into One Graph", variable=self.merge_csv_var, font=("Arial", 10))
-        self.merge_csv_checkbox.pack(anchor="w", pady=5)
+        # Options frame
+        self.options_frame = tk.Frame(root)
+        self.options_frame.pack(pady=5)
 
-        self.merge_columns_var = tk.BooleanVar()
-        self.merge_columns_checkbox = tk.Checkbutton(root, text="Merge Columns into One Graph", variable=self.merge_columns_var, font=("Arial", 10))
-        self.merge_columns_checkbox.pack(anchor="w", pady=5)
+        # Merge CSV files option
+        self.merge_csv_var = tk.BooleanVar(value=True)
+        self.merge_csv_checkbox = tk.Checkbutton(self.options_frame, text="Merge CSV files", 
+                                               variable=self.merge_csv_var, font=("Arial", 10))
+        self.merge_csv_checkbox.pack(side=tk.LEFT, padx=(0, 20))
 
-        # Generate graphs button
-        self.generate_button = tk.Button(root, text="Generate Graphs", command=self.generate_graphs, font=("Arial", 12))
+        # Merge columns option
+        self.merge_columns_var = tk.BooleanVar(value=False)
+        self.merge_columns_checkbox = tk.Checkbutton(self.options_frame, text="Merge columns", 
+                                                   variable=self.merge_columns_var, font=("Arial", 10))
+        self.merge_columns_checkbox.pack(side=tk.LEFT)
+
+        # Generate button
+        self.generate_button = tk.Button(root, text="Generate Graphs", command=self.generate_graphs, 
+                                       font=("Arial", 12, "bold"), bg="#4CAF50", fg="white", 
+                                       relief=tk.RAISED, bd=3)
         self.generate_button.pack(pady=10)
+
+        # Status label
+        self.status_label = tk.Label(root, text="Ready", font=("Arial", 10), fg="gray")
+        self.status_label.pack(pady=5)
 
     def select_folder(self):
         # Allow the user to select a folder
@@ -105,11 +140,12 @@ class GraphGeneratorApp:
         self.file_list.clear()
 
         # Process CSV files in the selected folder
-        for root, _, files in os.walk(self.base_folder):
-            for file in files:
-                if file.endswith(".csv"):
-                    file_path = os.path.abspath(os.path.join(root, file))
-                    self.file_list.append(file_path)
+        if self.base_folder is not None:
+            for root, _, files in os.walk(self.base_folder):
+                for file in files:
+                    if file.endswith(".csv"):
+                        file_path = os.path.abspath(os.path.join(root, file))
+                        self.file_list.append(file_path)
 
         if not self.file_list:
             messagebox.showwarning("Warning", "No valid CSV files found in the selected folder!")
@@ -166,11 +202,27 @@ class GraphGeneratorApp:
             graphs_root = os.path.join(os.getcwd(), "graphs")
             os.makedirs(graphs_root, exist_ok=True)
 
-            colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k']
-            markers = ['o', 's', 'D', '^', 'v', '<', '>', 'p', '*', 'h', 'H', '+', 'x', '|', '_']
-            color_marker_combinations = [(color, marker) for color in colors for marker in markers]
-            import random
-            random.shuffle(color_marker_combinations)
+            # Modern, visually appealing color palette
+            colors = [
+                '#1f77b4',  # Blue
+                '#ff7f0e',  # Orange
+                '#2ca02c',  # Green
+                '#d62728',  # Red
+                '#9467bd',  # Purple
+                '#8c564b',  # Brown
+                '#e377c2',  # Pink
+                '#7f7f7f',  # Gray
+                '#bcbd22',  # Olive
+                '#17becf',  # Cyan
+                '#ff9896',  # Light Red
+                '#98df8a',  # Light Green
+                '#ffbb78',  # Light Orange
+                '#c5b0d5',  # Light Purple
+                '#c49c94',  # Light Brown
+            ]
+            
+            # Use only colors, no markers for cleaner bar charts
+            color_marker_combinations = [(color, '') for color in colors]
 
             def ask_measurement_type():
                 import tkinter.simpledialog
@@ -185,8 +237,10 @@ class GraphGeneratorApp:
                 types_found = set()
                 modes_found = set()
                 for data in self.csv_data.values():
-                    if 'container_name' in data.columns:
-                        server_names.add(str(data['container_name'].iloc[0]))
+                    # Look for specific container/server name columns
+                    container_cols = [col for col in data.columns if col.lower() in ['container name', 'server name', 'container_name', 'server_name', 'name']]
+                    if container_cols:
+                        server_names.add(str(data[container_cols[0]].iloc[0]))
                     if 'Type' in data.columns:
                         types_found.add(str(data['Type'].iloc[0]))
                     if 'mode' in data.columns:
@@ -205,27 +259,249 @@ class GraphGeneratorApp:
                 if merged_mode:
                     merged_folder = os.path.join(merged_folder, merged_mode)
                 os.makedirs(merged_folder, exist_ok=True)
-                # Updated naming convention for merged graphs: preview-first-2-servers_Nservers_type_hash.png
-                import hashlib
+                # Create descriptive filename with plot type
                 server_names_sorted = sorted(server_names)
-                servers_concat = ",".join(server_names_sorted)
-                hash_digest = hashlib.sha1(servers_concat.encode()).hexdigest()[:6]
                 n_servers = len(server_names_sorted)
-                n_types = len(types_found) if types_found else 1
-                preview = "-".join(server_names_sorted[:2])
-                if n_types == 1:
-                    merged_filename = f"{preview}_{n_servers}servers_{merged_type}_{hash_digest}.png"
+                
+                # Create short, readable server names
+                def create_short_name(server_name):
+                    """Create a short, readable name from server name"""
+                    # Remove common prefixes
+                    name = server_name
+                    prefixes = ['ws-', 'st-', 'dy-', 'local-']
+                    for prefix in prefixes:
+                        if name.startswith(prefix):
+                            name = name[len(prefix):]
+                            break
+                    
+                    # Take first part if it contains hyphens
+                    if '-' in name:
+                        name = name.split('-')[0]
+                    
+                    return name
+                
+                # Create plot type description from selected columns
+                def create_plot_type_name(columns):
+                    """Create a short, readable name for the plot type"""
+                    if len(columns) == 1:
+                        return columns[0].replace(' ', '_').replace('(', '').replace(')', '').replace('%', 'pct').replace('/', '_')
+                    elif len(columns) <= 3:
+                        # For 2-3 columns, use abbreviated names
+                        short_names = []
+                        for col in columns:
+                            # Create short version of column name
+                            short = col.replace(' ', '_').replace('(', '').replace(')', '').replace('%', 'pct').replace('/', '_')
+                            if len(short) > 15:  # Truncate long names
+                                short = short[:15]
+                            short_names.append(short)
+                        return "-".join(short_names)
+                    else:
+                        # For many columns, use count
+                        return f"{len(columns)}metrics"
+                
+                plot_type = create_plot_type_name(selected_columns)
+                
+                # Debug information
+                print(f"Debug - server_names: {server_names}")
+                print(f"Debug - server_names_sorted: {server_names_sorted}")
+                print(f"Debug - n_servers: {n_servers}")
+                print(f"Debug - merged_type: {merged_type}")
+                print(f"Debug - plot_type: {plot_type}")
+                
+                # Determine chart type for filename
+                chart_type = self.chart_type_var.get()
+                if chart_type == "auto":
+                    # Auto mode: bar charts for websocket, line plots for others
+                    chart_type_name = "bar" if merged_type.lower() == 'websocket' else "line"
+                elif chart_type == "bar":
+                    chart_type_name = "bar"
+                elif chart_type == "line":
+                    chart_type_name = "line"
                 else:
-                    merged_filename = f"{preview}_{n_servers}servers_{n_types}types_{hash_digest}.png"
+                    chart_type_name = "bar" if merged_type.lower() == 'websocket' else "line"  # fallback
+                
+                if n_servers == 0:
+                    # Fallback naming when no server names found
+                    merged_filename = f"unknown_{merged_type}_{plot_type}_{chart_type_name}.png"
+                elif n_servers <= 3:
+                    # For 3 or fewer servers, list them all
+                    short_names = [create_short_name(name) for name in server_names_sorted]
+                    server_part = "-".join(short_names)
+                    merged_filename = f"{server_part}_{merged_type}_{plot_type}_{chart_type_name}.png"
+                else:
+                    # For more than 3 servers, use count and first server
+                    first_server = create_short_name(server_names_sorted[0])
+                    merged_filename = f"{first_server}+{n_servers-1}more_{merged_type}_{plot_type}_{chart_type_name}.png"
+                
+                # Determine chart type based on user selection or measurement type
+                chart_type = self.chart_type_var.get()
+                if chart_type == "auto":
+                    # Auto mode: bar charts for websocket, line plots for others
+                    use_bar_chart = merged_type.lower() == 'websocket'
+                elif chart_type == "bar":
+                    use_bar_chart = True
+                elif chart_type == "line":
+                    use_bar_chart = False
+                else:
+                    use_bar_chart = merged_type.lower() == 'websocket'  # fallback
+                
+                print(f"Debug - Chart type: {'Bar Chart' if use_bar_chart else 'Line Plot'} for {merged_type} (user selection: {chart_type})")
+                
+                data_columns_lower = {}
+                for data in self.csv_data.values():
+                    data_columns_lower.update({col.lower(): col for col in data.columns})
+                
+                # Collect data for plotting
+                server_names_list = []
+                column_data = {}
+                
+                for file_idx, (file_path, data) in enumerate(self.csv_data.items()):
+                    # Get server name for this file
+                    container_cols = [col for col in data.columns if col.lower() in ['container name', 'server name', 'container_name', 'server_name', 'name']]
+                    if container_cols:
+                        server_name = str(data[container_cols[0]].iloc[0])
+                    else:
+                        server_name = os.path.basename(os.path.dirname(file_path))
+                    
+                    server_names_list.append(server_name)
+                    
+                    # Collect data for each selected column
+                    for i, column in enumerate(selected_columns):
+                        col_key = column.lower()
+                        print(f"Debug - Looking for column '{column}' (key: '{col_key}')")
+                        print(f"Debug - Available columns: {list(data_columns_lower.keys())}")
+                        
+                        if col_key in data_columns_lower:
+                            actual_col = data_columns_lower[col_key]
+                            print(f"Debug - Found actual column: '{actual_col}'")
+                            
+                            if actual_col in data.columns:  # Make sure column exists in this specific file
+                                if use_bar_chart:
+                                    # For bar charts: use first row (single value per server)
+                                    value = data[actual_col].iloc[0]
+                                    print(f"Debug - Column '{actual_col}' exists in data, value: {value}")
+                                else:
+                                    # For line plots: use all rows (time series)
+                                    values = data[actual_col].tolist()
+                                    print(f"Debug - Column '{actual_col}' exists in data, values: {values}")
+                                    value = values  # Store all values for line plot
+                                
+                                if actual_col not in column_data:
+                                    column_data[actual_col] = []
+                                column_data[actual_col].append(value)
+                            else:
+                                print(f"Debug - Column '{actual_col}' NOT found in data.columns: {list(data.columns)}")
+                        else:
+                            print(f"Debug - Column key '{col_key}' NOT found in data_columns_lower")
+                
+                # Create subplots for each column
+                print(f"Debug - column_data: {column_data}")
+                print(f"Debug - server_names_list: {server_names_list}")
+                
+                n_columns = len(column_data)
+                if n_columns == 0:
+                    plt.figure(figsize=(8, 6))
+                    plt.text(0.5, 0.5, 'No data to plot', ha='center', va='center', transform=plt.gca().transAxes)
+                else:
+                    if use_bar_chart:
+                        # Create bar chart for websocket data
+                        plt.figure(figsize=(12, 8))
+                        
+                        # Plot all data in one chart with different colors
+                        x_positions = list(range(len(server_names_list)))
+                        width = 0.8 / n_columns  # Adjust bar width based on number of columns
+                        
+                        # Use original order for color assignment within this graph
+                        for idx, (col_name, values) in enumerate(column_data.items()):
+                            if len(values) == len(server_names_list):  # Make sure we have matching data
+                                offset = (idx - n_columns/2 + 0.5) * width
+                                color_idx = idx % len(color_marker_combinations)
+                                selected_color = color_marker_combinations[color_idx][0]
+                                print(f"Debug - Metric '{col_name}' gets color index {color_idx}: {selected_color}")
+                                
+                                bars = plt.bar([x + offset for x in x_positions], values, 
+                                             width=width, 
+                                             label=col_name,
+                                             color=selected_color,
+                                             alpha=0.8,  # Slight transparency
+                                             edgecolor='black',  # Black edges
+                                             linewidth=0.5)  # Thin edge lines
+                                
+                                # Add value labels on bars with better styling
+                                for bar, value in zip(bars, values):
+                                    height = bar.get_height()
+                                    print(f"Debug - Adding label for {col_name}: {value} (formatted: {value:.2f})")
+                                    plt.text(bar.get_x() + bar.get_width()/2., height + height*0.01,
+                                           f'{value:.2f}', ha='center', va='bottom', fontsize=9, 
+                                           fontweight='bold', color='black')
+                        
+                        plt.xlabel('Servers', fontsize=12, fontweight='bold')
+                        plt.ylabel('Values', fontsize=12, fontweight='bold')
+                        plt.title(f"Server Comparison - {merged_type}", fontsize=14, fontweight='bold', pad=20)
+                        plt.xticks(x_positions, server_names_list, rotation=45, ha='right', fontsize=10)
+                        plt.yticks(fontsize=10)
+                        plt.legend(fontsize=10, framealpha=0.9, loc='best')
+                        plt.grid(axis='y', alpha=0.3, linestyle='--')  # Subtle grid
+                        plt.tight_layout()
+                    else:
+                        # Create line plot for time-series data (static, dynamic, local)
+                        plt.figure(figsize=(12, 8))
+                        
+                        # Define markers for better distinction
+                        markers = ['o', 's', '^', 'D', 'v', '<', '>', 'p', '*', 'h', 'H', '+', 'x', '|', '_']
+                        
+                        # Create a mapping of server names to consistent colors and markers
+                        server_color_map = {}
+                        server_marker_map = {}
+                        for server_idx, server_name in enumerate(server_names_list):
+                            color_idx = server_idx % len(color_marker_combinations)
+                            marker_idx = server_idx % len(markers)
+                            server_color_map[server_name] = color_marker_combinations[color_idx][0]
+                            server_marker_map[server_name] = markers[marker_idx]
+                            print(f"Debug - Server {server_name} assigned color: {server_color_map[server_name]}, marker: {server_marker_map[server_name]}")
+                        
+                        # Plot each metric with consistent server colors
+                        for idx, (col_name, values) in enumerate(column_data.items()):
+                            print(f"Debug - Processing metric '{col_name}' with {len(values)} server values")
+                            
+                            # Plot each server's data as a separate line with unique color and marker
+                            for server_idx, server_data in enumerate(values):
+                                if isinstance(server_data, list) and len(server_data) > 0:
+                                    server_name = server_names_list[server_idx]
+                                    selected_color = server_color_map[server_name]
+                                    selected_marker = server_marker_map[server_name]
+                                    
+                                    print(f"Debug - Server {server_name} using color: {selected_color}, marker: {selected_marker}")
+                                    
+                                    x_points = list(range(len(server_data)))
+                                    plt.plot(x_points, server_data, 
+                                           label=f"{server_name} - {col_name}",
+                                           color=selected_color,
+                                           marker=selected_marker,
+                                           markersize=6,
+                                           linewidth=2,
+                                           alpha=0.8)
+                        
+                        plt.xlabel('Data Points', fontsize=12, fontweight='bold')
+                        plt.ylabel('Values', fontsize=12, fontweight='bold')
+                        plt.title(f"Time Series Comparison - {merged_type}", fontsize=14, fontweight='bold', pad=20)
+                        plt.xticks(fontsize=10)
+                        plt.yticks(fontsize=10)
+                        plt.legend(fontsize=10, framealpha=0.9, loc='best')
+                        plt.grid(axis='y', alpha=0.3, linestyle='--')  # Subtle grid
+                        plt.tight_layout()
+                
                 merged_path = os.path.join(merged_folder, merged_filename)
-                plt.savefig(merged_path, dpi=300)
+                plt.savefig(merged_path, dpi=300, bbox_inches='tight')
                 print(f"Saved merged graph: {merged_path}")
                 plt.close()
             else:
                 for file_idx, (file_path, data) in enumerate(self.csv_data.items()):
                     # Extract metadata from CSV
-                    if 'Server Name' in data.columns:
-                        server_name = str(data['Server Name'].iloc[0])
+                    # Look for specific server/container name columns
+                    server_cols = [col for col in data.columns if col.lower() in ['container name', 'server name', 'container_name', 'server_name', 'name']]
+                    if server_cols:
+                        server_name = str(data[server_cols[0]].iloc[0])
                     else:
                         server_name = os.path.basename(os.path.dirname(file_path))
                     measurement_type = data['type'].iloc[0] if 'type' in data.columns else None
@@ -239,49 +515,132 @@ class GraphGeneratorApp:
                     file_graphs_folder = os.path.join(file_graphs_folder, server_name)
                     os.makedirs(file_graphs_folder, exist_ok=True)
 
+                    # Determine chart type for individual files
+                    chart_type = self.chart_type_var.get()
+                    if chart_type == "auto":
+                        # Auto mode: bar charts for websocket, line plots for others
+                        use_bar_chart = measurement_type.lower() == 'websocket'
+                    elif chart_type == "bar":
+                        use_bar_chart = True
+                    elif chart_type == "line":
+                        use_bar_chart = False
+                    else:
+                        use_bar_chart = measurement_type.lower() == 'websocket'  # fallback
+                    
                     if self.merge_columns_var.get():
+                        # For single data point, create a simple bar chart
                         plt.figure(figsize=(10, 6))
-                        # For plotting, match columns case-insensitively
                         data_columns_lower = {col.lower(): col for col in data.columns}
+                        columns_to_plot = []
+                        values_to_plot = []
+                        
+                        # Use original selection order for color assignment within this graph
                         for i, column in enumerate(selected_columns):
                             col_key = column.lower()
                             if col_key in data_columns_lower:
                                 actual_col = data_columns_lower[col_key]
-                                color, marker = color_marker_combinations[(file_idx * len(selected_columns) + i) % len(color_marker_combinations)]
-                                plt.plot(data.index, data[actual_col], label=f"{server_name}/{os.path.splitext(os.path.basename(file_path))[0]} - {actual_col}", color=color, marker=marker, linestyle='-')
-                        plt.title(f"{server_name}")
-                        plt.xlabel("Number of Requests")
-                        plt.ylabel("Values")
-                        plt.legend(framealpha=0.5)
-                        plt.grid(True)
-                        save_path = os.path.join(file_graphs_folder, f"merged_columns.png")
-                        plt.savefig(save_path, dpi=300)
+                                if actual_col in data.columns:
+                                    columns_to_plot.append(actual_col)
+                                    values_to_plot.append(data[actual_col].iloc[0])
+                        
+                        if columns_to_plot:
+                            try:
+                                bars = plt.bar(columns_to_plot, values_to_plot, 
+                                             color=[color_marker_combinations[i % len(color_marker_combinations)][0] for i in range(len(values_to_plot))],
+                                             alpha=0.8, edgecolor='black', linewidth=0.5)
+                                plt.title(f"{server_name} - All Metrics", fontsize=14, fontweight='bold', pad=20)
+                                plt.ylabel("Values", fontsize=12, fontweight='bold')
+                                plt.xticks(rotation=45, ha='right', fontsize=10)
+                                plt.yticks(fontsize=10)
+                                
+                                # Add value labels on bars with better styling
+                                for bar, value in zip(bars, values_to_plot):
+                                    height = bar.get_height()
+                                    plt.text(bar.get_x() + bar.get_width()/2., height + height*0.01,
+                                           f'{value:.2f}', ha='center', va='bottom', fontsize=9, 
+                                           fontweight='bold', color='black')
+                                
+                                plt.grid(axis='y', alpha=0.3, linestyle='--')
+                            except Exception as plot_error:
+                                print(f"Error plotting merged columns for {server_name}: {plot_error}")
+                                plt.text(0.5, 0.5, f'Plotting error: {plot_error}', ha='center', va='center', transform=plt.gca().transAxes)
+                        
+                        # Determine chart type name for filename
+                        chart_type = self.chart_type_var.get()
+                        if chart_type == "auto":
+                            chart_type_name = "bar" if measurement_type.lower() == 'websocket' else "line"
+                        elif chart_type == "bar":
+                            chart_type_name = "bar"
+                        elif chart_type == "line":
+                            chart_type_name = "line"
+                        else:
+                            chart_type_name = "bar" if measurement_type.lower() == 'websocket' else "line"  # fallback
+                        
+                        save_path = os.path.join(file_graphs_folder, f"merged_columns_{chart_type_name}.png")
+                        plt.savefig(save_path, dpi=300, bbox_inches='tight')
                         print(f"Saved graph: {save_path}")
                         plt.close()
                     else:
+                        # Use original selection order for color assignment within this graph
                         for i, column in enumerate(selected_columns):
                             # For plotting, match columns case-insensitively
                             data_columns_lower = {col.lower(): col for col in data.columns}
                             col_key = column.lower()
                             if col_key in data_columns_lower:
                                 actual_col = data_columns_lower[col_key]
-                                plt.figure(figsize=(10, 6))
-                                color, marker = color_marker_combinations[(file_idx * len(selected_columns) + i) % len(color_marker_combinations)]
-                                plt.plot(data.index, data[actual_col], label=f"{server_name}/{os.path.splitext(os.path.basename(file_path))[0]} - {actual_col}", color=color, marker=marker, linestyle='-')
-                                plt.title(f"{server_name} - {actual_col}")
-                                plt.xlabel("Number of Requests")
-                                plt.ylabel(actual_col)
-                                plt.legend(framealpha=0.5)
-                                plt.grid(True)
-                                # Updated naming convention for non-merged graphs: {server}_{column}_{hash}.png
-                                import hashlib
-                                hash_input = f"{server_name},{file_path}".encode()
-                                hash_digest = hashlib.sha1(hash_input).hexdigest()[:6]
-                                safe_column = actual_col.replace(' ', '_')
-                                save_path = os.path.join(file_graphs_folder, f"{server_name}_{safe_column}_{hash_digest}.png")
-                                plt.savefig(save_path, dpi=300)
-                                print(f"Saved graph: {save_path}")
-                                plt.close()
+                                if actual_col in data.columns:
+                                    plt.figure(figsize=(10, 6))
+                                    value = data[actual_col].iloc[0]
+                                    
+                                    if use_bar_chart:
+                                        # Create a bar chart for single value
+                                        bars = plt.bar([actual_col], [value], 
+                                                     color=color_marker_combinations[i % len(color_marker_combinations)][0],
+                                                     alpha=0.8, edgecolor='black', linewidth=0.5)
+                                    else:
+                                        # Create a line plot for single value (point plot)
+                                        plt.plot([actual_col], [value], 
+                                               color=color_marker_combinations[i % len(color_marker_combinations)][0],
+                                               marker='o', markersize=8, linewidth=2, alpha=0.8)
+                                        bars = None  # No bars for line plot
+                                    plt.title(f"{server_name} - {actual_col}", fontsize=14, fontweight='bold', pad=20)
+                                    plt.ylabel(actual_col, fontsize=12, fontweight='bold')
+                                    plt.xticks(rotation=45, ha='right', fontsize=10)
+                                    plt.yticks(fontsize=10)
+                                    
+                                    # Add value label with better styling
+                                    if use_bar_chart and bars:
+                                        bar = bars[0]
+                                        height = bar.get_height()
+                                        plt.text(bar.get_x() + bar.get_width()/2., height + height*0.01,
+                                               f'{value:.2f}', ha='center', va='bottom', fontsize=10, 
+                                               fontweight='bold', color='black')
+                                    else:
+                                        # For line plot, add text annotation
+                                        plt.text(0.5, 0.95, f'{value:.2f}', ha='center', va='top', 
+                                               transform=plt.gca().transAxes, fontsize=12, 
+                                               fontweight='bold', color='black',
+                                               bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.8))
+                                    
+                                    plt.grid(axis='y', alpha=0.3, linestyle='--')
+                                    
+                                    # Updated naming convention for non-merged graphs: {server}_{column}_{chart_type}.png
+                                    safe_column = actual_col.replace(' ', '_').replace('(', '').replace(')', '').replace('%', 'pct').replace('/', '_')
+                                    # Determine chart type name for filename
+                                    chart_type = self.chart_type_var.get()
+                                    if chart_type == "auto":
+                                        chart_type_name = "bar" if measurement_type.lower() == 'websocket' else "line"
+                                    elif chart_type == "bar":
+                                        chart_type_name = "bar"
+                                    elif chart_type == "line":
+                                        chart_type_name = "line"
+                                    else:
+                                        chart_type_name = "bar" if measurement_type.lower() == 'websocket' else "line"  # fallback
+                                    
+                                    save_path = os.path.join(file_graphs_folder, f"{server_name}_{safe_column}_{chart_type_name}.png")
+                                    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+                                    print(f"Saved graph: {save_path}")
+                                    plt.close()
 
             messagebox.showinfo("Success", f"Graphs saved in {graphs_root}")
         except Exception as e:

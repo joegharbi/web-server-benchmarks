@@ -53,7 +53,13 @@ class EchoWebSocket(tornado.websocket.WebSocketHandler):\n\
         print('WebSocket connection opened')\n\
 \n\
     def on_message(self, message):\n\
-        self.write_message(message)  # Echo back\n\
+        # Handle both text and binary messages\n\
+        if isinstance(message, bytes):\n\
+            # Binary message - echo back as binary\n\
+            self.write_message(message, binary=True)\n\
+        else:\n\
+            # Text message - echo back as text\n\
+            self.write_message(message)\n\
 \n\
     def on_close(self):\n\
         print('WebSocket connection closed')\n\

@@ -40,28 +40,10 @@ RUN mkdir -p /var/www/html && \
     echo "Nginx WebSocket Server" > /var/www/html/index.html
 
 # Create the app directory and Python WebSocket echo server
-RUN mkdir -p /app && \
-    echo "\
-import asyncio\n\
-import websockets\n\
-\n\
-async def echo(websocket, path):\n\
-    print('WebSocket connection established')\n\
-    try:\n\
-        async for message in websocket:\n\
-            print(f'Received: {message}')\n\
-            await websocket.send(message)\n\
-            print(f'Sent: {message}')\n\
-    except websockets.ConnectionClosed:\n\
-        print('WebSocket connection closed')\n\
-\n\
-async def main():\n\
-    async with websockets.serve(echo, '0.0.0.0', 8765, max_size=None):\n\
-        await asyncio.Future()  # Run forever\n\
-\n\
-if __name__ == '__main__':\n\
-    asyncio.run(main())\n\
-" > /app/websocket_server.py
+RUN mkdir -p /app
+
+# Copy the new websocket_server.py
+COPY websocket_server.py /app/websocket_server.py
 
 # Expose port
 EXPOSE 80
