@@ -41,7 +41,7 @@ make --version
 ### 1. Set up the environment
 ```bash
 # Create and activate virtual environment (recommended)
-make setup-env
+make setup
 source srv/bin/activate
 
 # Or use an existing virtual environment
@@ -281,13 +281,15 @@ The project includes a comprehensive Makefile for easy automation:
 
 ```bash
 # Environment setup
-make setup-env      # Create virtual environment
+make setup          # Create virtual environment
 make ensure-env     # Ensure virtual environment is active
 make install        # Install Python dependencies
 
 # Docker operations
 make build          # Build all Docker images
-make clean          # Remove Docker containers and images
+make clean          # Remove benchmark-related Docker containers and images (safe, uses install_benchmarks.sh)
+
+> Note: `make clean` only removes containers and images related to the discovered benchmark servers (websocket, static, dynamic). It does NOT remove all Docker containers or images, so your unrelated Docker resources are safe.
 
 # Benchmarking
 make quick-test     # Run quick test
@@ -305,7 +307,6 @@ make test           # Run basic test suite
 make test-config    # Test configuration (auto-discovery)
 
 # Development
-make setup-local    # Setup local servers (nginx, yaws)
 make check-deps     # Check if all dependencies are installed
 make validate       # Validate dependencies
 make dev-setup      # Complete development setup
@@ -321,7 +322,7 @@ make help           # Show all available commands
 ### Common Issues
 
 #### Virtual Environment
-- **"Virtual environment not found"**: Run `make setup-env` to create the environment
+- **"Virtual environment not found"**: Run `make setup` to create the environment
 - **"Wrong virtual environment"**: Ensure you're using the `srv` environment or update the Makefile
 
 #### Docker Issues

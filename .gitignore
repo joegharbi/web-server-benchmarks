@@ -11,4 +11,5 @@ results/
 graphs/
 *.json
 local/report.log
+local/localhost:8001.auth
 TODO
