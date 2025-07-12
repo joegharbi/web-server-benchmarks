@@ -4,7 +4,7 @@
 VENV_NAME ?= srv
 VENV_PATH = $(VENV_NAME)/bin/activate
 
-.PHONY: help install test clean-build clean-repo build run-all run-static run-dynamic run-websocket run-local setup quick-test graph validate
+.PHONY: help install clean-build clean-repo build run-all run-static run-dynamic run-websocket run-local setup quick-test graph validate
 
 help: ## Show this help message
 	@echo "Web Server Benchmarks - Available Commands:"
@@ -40,10 +40,6 @@ ensure-env: ## Ensure virtual environment is active
 install: check-env ## Install Python dependencies
 	@echo "Installing dependencies in virtual environment..."
 	@pip install -r requirements.txt
-
-test: check-env ## Run unit tests
-	@echo "Running tests in virtual environment..."
-	@python -m unittest discover tests/ -v
 
 build: ## Build all Docker images
 	./install_benchmarks.sh
