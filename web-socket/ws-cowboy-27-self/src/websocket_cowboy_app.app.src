@@ -1,0 +1,16 @@
+{application, websocket_cowboy_app,
+ [{description, "WebSocket Cowboy Server for Energy Benchmarking"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, {websocket_cowboy_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    cowboy
+   ]},
+  {env,[]},
+  {modules, []},
+
+  {licenses, ["Apache-2.0"]},
+  {links, []}
+ ]}. 

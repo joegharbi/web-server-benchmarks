@@ -4,7 +4,7 @@
 VENV_NAME ?= srv
 VENV_PATH = $(VENV_NAME)/bin/activate
 
-.PHONY: help install test clean build run-all run-static run-dynamic run-websocket run-local setup quick-test graph validate
+.PHONY: help install test clean-build clean-repo build run-all run-static run-dynamic run-websocket run-local setup quick-test graph validate
 
 help: ## Show this help message
 	@echo "Web Server Benchmarks - Available Commands:"
@@ -48,8 +48,11 @@ test: check-env ## Run unit tests
 build: ## Build all Docker images
 	./install_benchmarks.sh
 
-clean: ## Clean up Docker containers and images
+clean-build: ## Clean up Docker containers and images
 	./install_benchmarks.sh clean
+
+clean-repo: ## Clean repository to bare minimum (fresh clone state)
+	./run_benchmarks.sh clean
 
 run-all: ## Run all benchmarks
 	./run_benchmarks.sh

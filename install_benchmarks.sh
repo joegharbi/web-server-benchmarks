@@ -2,78 +2,34 @@
 
 # Install Docker images and run setup scripts for specified benchmark types
 
-clean_benchmark_docker_images() {
-    echo "Cleaning Docker containers and images for websocket, static, and dynamic benchmarks..."
-    # Collect image names from websocket
-    websocket_images=$(find ./web-socket -mindepth 1 -maxdepth 1 -type d | xargs -I{} basename {} | tr '[:upper:]' '[:lower:]' | tr '\n' ' ')
-    # Collect image names from static
-    static_images=$(find ./containers/static -mindepth 1 -maxdepth 1 -type d | xargs -I{} basename {} | tr '[:upper:]' '[:lower:]' | tr '\n' ' ')
-    # Collect image names from dynamic
-    dynamic_images=$(find ./containers/dynamic -mindepth 1 -maxdepth 1 -type d | xargs -I{} basename {} | tr '[:upper:]' '[:lower:]' | tr '\n' ' ')
-    all_images="$websocket_images $static_images $dynamic_images"
-    for image in $all_images; do
-        # Remove containers using this image (any tag)
-        container_ids=$(sudo docker ps -a --filter ancestor=$image --format "{{.ID}}")
-        if [[ ! -z "$container_ids" ]]; then
-            echo "Removing containers for image: $image"
-            sudo docker rm -f $container_ids
-        fi
-        # Force remove image by name and by name:latest
-        for tag in "" ":latest"; do
-            img_name="$image$tag"
-            echo "Force removing image: $img_name"
-            sudo docker rmi -f $img_name 2>/dev/null || true
-        done
-    done
-    # Prune all dangling and unused images
-    echo "Pruning dangling and unused Docker images..."
-    sudo docker image prune -a -f
-    echo "Selected Docker containers and images have been cleaned."
+# Remove all containers and images related to the benchmark (safe)
+function clean_benchmark_docker_images() {
+    echo "Cleaning up benchmark Docker containers and images..."
+    docker rm -f $(docker ps -aq --filter ancestor=ws-nginx --filter ancestor=ws-nginx-java --filter ancestor=ws-nginx-tornado --filter ancestor=ws-yaws --filter ancestor=ws-apache --filter ancestor=ws-cowboy --filter ancestor=st-nginx-deb --filter ancestor=st-apache-deb --filter ancestor=st-yaws-26 --filter ancestor=st-yaws-27 --filter ancestor=st-cowboy-27 --filter ancestor=st-erlang23 --filter ancestor=st-erlang26 --filter ancestor=st-erlang27 --filter ancestor=st-erlindex23 --filter ancestor=st-erlindex26 --filter ancestor=st-erlindex27 --filter ancestor=dy-nginx-deb --filter ancestor=dy-yaws-26 --filter ancestor=dy-yaws-27 --filter ancestor=dy-apache-deb --filter ancestor=dy-cowboy-27 --filter ancestor=dy-erlang23 --filter ancestor=dy-erlang26 --filter ancestor=dy-erlang27 --filter ancestor=dy-erlindex23 --filter ancestor=dy-erlindex26 --filter ancestor=dy-erlindex27) 2>/dev/null || true
+    docker rmi -f $(docker images --filter=reference='ws-*' --filter=reference='st-*' --filter=reference='dy-*' -q) 2>/dev/null || true
 }
 
-process_websocket() {
-    echo "Processing web-socket for Dockerfiles and setup scripts..."
-    find ./web-socket -mindepth 1 -maxdepth 1 -type d | while read -r dir; do
-        # Skip the "brainstorming" folder
-        if [[ "$dir" == *"brainstorming"* ]]; then
-            echo "Skipping directory: $dir"
-            continue
-        fi
-        echo "Processing directory: $dir"
-        if [[ -f "$dir/Dockerfile" ]]; then
-            image_name=$(basename "$dir" | tr '[:upper:]' '[:lower:]')
-            echo "Building Docker image for $dir/Dockerfile as $image_name"
-            sudo docker build -t "$image_name" -f "$dir/Dockerfile" "$dir"
-        else
-            echo "No Dockerfile found in $dir, skipping."
-            continue
-        fi
-        if [ -f "$dir/setup_nginx.sh" ]; then
-            echo "Running setup_nginx.sh in $dir with 'install' argument"
-            sudo bash "$dir/setup_nginx.sh" install
-        fi
-        if [ -f "$dir/setup_yaws.sh" ]; then
-            echo "Running setup_yaws.sh in $dir with 'install' argument"
-            sudo bash "$dir/setup_yaws.sh" install
+# Build WebSocket Docker images
+function process_websocket() {
+    for d in ./web-socket/*/; do
+        [ -d "$d" ] || continue
+        if [ -f "$d/Dockerfile" ]; then
+            local name=$(basename "$d")
+            echo "Building Docker image for $d/Dockerfile as $name"
+            docker build -t "$name" "$d"
         fi
     done
 }
 
-process_container_folder() {
-    folder="$1"
-    echo "Processing $folder for Dockerfiles..."
-    find "$folder" -mindepth 1 -maxdepth 1 -type d | while read -r dir; do
-        if [[ "$dir" == *"brainstorming"* ]]; then
-            echo "Skipping directory: $dir"
-            continue
-        fi
-        if [[ -f "$dir/Dockerfile" ]]; then
-            image_name=$(basename "$dir" | tr '[:upper:]' '[:lower:]')
-            echo "Building Docker image for $dir/Dockerfile as $image_name"
-            docker build -t "$image_name" -f "$dir/Dockerfile" "$dir"
-        else
-            echo "No Dockerfile found in $dir, skipping."
-            continue
+# Build Docker images for all discovered servers
+function process_container_folder() {
+    local folder="$1"
+    for d in "$folder"/*/; do
+        [ -d "$d" ] || continue
+        if [ -f "$d/Dockerfile" ]; then
+            local name=$(basename "$d")
+            echo "Building Docker image for $d/Dockerfile as $name"
+            docker build -t "$name" "$d"
         fi
     done
 }

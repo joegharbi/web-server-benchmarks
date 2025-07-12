@@ -1,0 +1,16 @@
+{application, simple_cowboy_app,
+ [{description, "Dynamic Cowboy Web Server for Energy Benchmarking"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, {simple_cowboy_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    cowboy
+   ]},
+  {env,[]},
+  {modules, []},
+
+  {licenses, ["Apache-2.0"]},
+  {links, []}
+ ]}. 

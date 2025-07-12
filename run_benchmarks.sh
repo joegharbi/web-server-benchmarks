@@ -19,11 +19,15 @@ declare -A websocket_images=(
     ["ws-nginx-java"]="8080:8080" 
     ["ws-nginx-tornado"]="" 
     ["ws-yaws"]="" 
+    ["ws-apache"]="" 
+    ["ws-cowboy"]="8080:8080" 
 )
 declare -A dynamic_images=( 
     ["dy-nginx-deb"]="$DEFAULT_PORT" 
-    ["dy-yaws-latest-deb"]="$DEFAULT_PORT" 
+    ["dy-yaws-26"]="$DEFAULT_PORT" 
+    ["dy-yaws-27"]="$DEFAULT_PORT" 
     ["dy-apache-deb"]="$DEFAULT_PORT" 
+    ["dy-cowboy-27"]="$ERLANG_PORT" 
     ["dy-erlang23"]="$ERLANG_PORT" 
     ["dy-erlang26"]="$ERLANG_PORT" 
     ["dy-erlang27"]="$ERLANG_PORT" 
@@ -33,10 +37,10 @@ declare -A dynamic_images=(
 )
 declare -A static_images=( 
     ["st-apache-deb"]="$DEFAULT_PORT" 
-    ["st-cowboy-play"]="$ERLANG_PORT" 
+    ["st-cowboy-27"]="$ERLANG_PORT" 
     ["st-nginx-deb"]="$DEFAULT_PORT" 
-    ["st-yaws-deb"]="$DEFAULT_PORT" 
-    ["st-yaws-latest-deb"]="$DEFAULT_PORT" 
+    ["st-yaws-26"]="$DEFAULT_PORT" 
+    ["st-yaws-27"]="$DEFAULT_PORT" 
     ["st-erlang23"]="$ERLANG_PORT" 
     ["st-erlang26"]="$ERLANG_PORT" 
     ["st-erlang27"]="$ERLANG_PORT" 
@@ -98,6 +102,14 @@ function discover_local_servers() {
         fi
     done
     echo "${discovered[@]}"
+}
+
+# Function to clean the repository to a bare minimum (fresh clone state)
+clean_repo() {
+  echo "Cleaning repository to bare minimum (fresh clone state)..."
+  git clean -xfd
+  git reset --hard
+  echo "Repository is now clean."
 }
 
 # Create a fixed parent directory for results
@@ -304,6 +316,10 @@ if [[ $RUN_ALL -eq 1 ]]; then
 else
     # Run specific type or images
     case "$TARGET_TYPE" in
+        clean)
+            clean_repo
+            exit 0
+            ;;
         websocket)
             if [ ${#TARGET_IMAGES[@]} -eq 0 ]; then
                 websocket_all=("${!websocket_images[@]}" $(discover_websocket_images websocket_images))
