@@ -16,9 +16,21 @@ class GraphGeneratorApp:
         self.root.title("Advanced Graph Generator")
         self.root.geometry("1200x800")  # Larger window for better usability
         
-        # Load configuration
-        self.config_file = "gui_config.json"
-        self.load_config()
+        # Initialize configuration (in-memory only, no JSON file)
+        self.config = {
+            'recent_folders': [],
+            'recent_files': [],
+            'chart_type': 'auto',
+            'color_palette': 'default',
+            'chart_size': 'medium',
+            'theme': 'light',
+            'export_format': 'png',
+            'export_dpi': 300,
+            'auto_select_common_columns': False,
+            'show_grid': True,
+            'merge_csv': True,
+            'merge_columns': False
+        }
         
         # Initialize variables
         self.file_list = []
@@ -45,39 +57,6 @@ class GraphGeneratorApp:
         
         # Apply theme
         self.apply_theme()
-
-    def load_config(self):
-        """Load saved configuration"""
-        self.config = {
-            'recent_folders': [],
-            'recent_files': [],
-            'chart_type': 'auto',
-            'color_palette': 'default',
-            'chart_size': 'medium',
-            'theme': 'light',
-            'export_format': 'png',
-            'export_dpi': 300,
-            'auto_select_common_columns': True,
-            'show_grid': True,
-            'merge_csv': True,
-            'merge_columns': False
-        }
-        
-        try:
-            if os.path.exists(self.config_file):
-                with open(self.config_file, 'r') as f:
-                    saved_config = json.load(f)
-                    self.config.update(saved_config)
-        except Exception as e:
-            print(f"Error loading config: {e}")
-
-    def save_config(self):
-        """Save current configuration"""
-        try:
-            with open(self.config_file, 'w') as f:
-                json.dump(self.config, f, indent=2)
-        except Exception as e:
-            print(f"Error saving config: {e}")
 
     def create_file_selection_tab(self):
         """Create the file selection tab"""
@@ -403,7 +382,6 @@ class GraphGeneratorApp:
             self.config['recent_folders'].remove(folder_path)
         self.config['recent_folders'].insert(0, folder_path)
         self.config['recent_folders'] = self.config['recent_folders'][:10]  # Keep only 10
-        self.save_config()
 
     def select_folder(self):
         """Enhanced folder selection with recent folders support"""
@@ -436,7 +414,6 @@ class GraphGeneratorApp:
                 self.config['recent_files'].remove(file_path)
             self.config['recent_files'].insert(0, file_path)
         self.config['recent_files'] = self.config['recent_files'][:20]  # Keep only 20
-        self.save_config()
 
     def process_folder(self):
         """Enhanced folder processing with better feedback"""
@@ -572,8 +549,6 @@ class GraphGeneratorApp:
             
             # Create checkbox with category color
             var = tk.BooleanVar()
-            if self.config['auto_select_common_columns'] and column in common_columns:
-                var.set(True)
             
             checkbox = ttk.Checkbutton(
                 self.scrollable_column_frame, 
@@ -652,7 +627,7 @@ class GraphGeneratorApp:
     def _generate_graphs_thread(self, selected_columns):
         """Generate graphs in background thread"""
         try:
-            # Save current configuration
+            # Update current configuration (in-memory only)
             self.config.update({
                 'chart_type': self.chart_type_var.get(),
                 'color_palette': self.color_palette_var.get(),
@@ -664,7 +639,6 @@ class GraphGeneratorApp:
                 'merge_csv': self.merge_csv_var.get(),
                 'merge_columns': self.merge_columns_var.get()
             })
-            self.save_config()
             
             # Apply theme
             self.apply_theme()
