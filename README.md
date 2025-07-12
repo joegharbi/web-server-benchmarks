@@ -13,7 +13,7 @@ This project benchmarks the performance and energy efficiency of web servers run
 7. [Running Benchmarks](#running-benchmarks)
 8. [CSV Output Format](#csv-output-format)
 9. [GUI Graph Generator](#gui-graph-generator)
-10. [Testing](#testing)
+10. [Repository Management](#repository-management)
 11. [Troubleshooting](#troubleshooting)
 
 ---
@@ -96,7 +96,6 @@ web-server-benchmarks/
 ├── logs/               # Logs generated during benchmarking
 ├── output/             # Output files, such as temporary data or intermediate results
 ├── results/            # Results for all benchmarks, organized by timestamp and type
-├── tests/              # Test suite for validation
 ├── requirements.txt    # Python dependencies
 ├── Makefile           # Build and automation commands
 ├── install_benchmarks.sh     # Script to build Docker images for benchmarking
@@ -223,7 +222,7 @@ The benchmark runner:
 **Burst Mode Parameters:**
 - `--clients`    : Number of concurrent WebSocket clients (connections) to the server.
 - `--size_kb`    : Size of each WebSocket message sent (in kilobytes).
-- `--bursts`     : Number of messages each client sends in a “burst” (as fast as possible, then waits).
+- `--bursts`     : Number of messages each client sends in a "burst" (as fast as possible, then waits).
 - `--interval`   : Time (in seconds) to wait between each burst of messages.
 
 **Streaming Mode Parameters:**
@@ -277,28 +276,45 @@ python3 gui_graph_generator.py
 3. Choose the columns you want to plot and generate graphs interactively.
 4. Save or export the generated graphs as needed.
 
-> **Note:** All file selection and graph generation is done through the graphical interface. Do not use command-line arguments like `--input_csv` or `--output_graph` with this tool.
+> **Note:** All file selection and graph generation is done through the graphical interface. No columns are pre-selected by default - you have full control over what gets plotted.
 
 ---
 
-## Testing
+## Repository Management
 
-The project includes a basic test suite to validate the benchmarking system:
+The project includes powerful repository management tools to maintain a clean development environment:
+
+### Cleaning Options
 
 ```bash
-# Run all tests
-make test
+# Clean Docker builds only (safe)
+make clean-build
 
-# Run specific test categories
-make test-config
+# Clean entire repository to bare minimum (nuclear option)
+make clean-repo
 ```
 
-### Test Categories
-- **Basic Tests**: Verify energy data parsing and auto-discovery system
-- **Configuration Tests**: Validate that no configuration files are needed (auto-discovery works)
+**`make clean-build`:**
+- Removes Docker containers and images related to benchmarks
+- Keeps your source code and local files
+- Safe for regular maintenance
 
-### Test Output
-Tests run using Python's unittest framework and provide clear pass/fail status for each component.
+**`make clean-repo`:**
+- Removes ALL untracked files and directories
+- Resets to fresh clone state
+- Removes Python virtual environment (`srv/`)
+- Removes all logs, results, and build artifacts
+- Perfect for getting a completely fresh start
+
+### When to Use Each
+
+- **`clean-build`**: When you want to rebuild Docker images or free up Docker space
+- **`clean-repo`**: When you want a completely clean repository (like after `git clone`)
+
+After `make clean-repo`, you'll need to:
+1. `make setup` - Recreate virtual environment
+2. `source srv/bin/activate` - Activate environment  
+3. `make install` - Install dependencies
 
 ---
 
@@ -314,9 +330,10 @@ make install        # Install Python dependencies
 
 # Docker operations
 make build          # Build all Docker images
-make clean          # Remove benchmark-related Docker containers and images (safe, uses install_benchmarks.sh)
+make clean-build    # Remove benchmark-related Docker containers and images
 
-> Note: `make clean` only removes containers and images related to the discovered benchmark servers (websocket, static, dynamic). It does NOT remove all Docker containers or images, so your unrelated Docker resources are safe.
+# Repository management
+make clean-repo     # Clean repository to bare minimum (fresh clone state)
 
 # Benchmarking
 make quick-test     # Run quick test
@@ -329,14 +346,8 @@ make run-local      # Run local server benchmarks
 # Visualization
 make graph          # Start GUI graph generator
 
-# Testing
-make test           # Run basic test suite
-make test-config    # Test configuration (auto-discovery)
-
-# Development
-make check-deps     # Check if all dependencies are installed
+# Validation
 make validate       # Validate dependencies
-make dev-setup      # Complete development setup
 
 # Help
 make help           # Show all available commands
@@ -373,9 +384,6 @@ docker logs <container_name>
 
 # Benchmark logs
 tail -f logs/run_*.log
-
-# Test logs
-make test  # Tests run with verbose output
 ```
 
 ### Debug Mode
