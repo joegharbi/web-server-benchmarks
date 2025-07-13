@@ -14,7 +14,7 @@ NC='\033[0m' # No Color
 TIMEOUT=30
 STARTUP_WAIT=10
 HTTP_TIMEOUT=10
-START_PORT=8001
+HOST_PORT=8001
 
 # Results tracking
 TOTAL_CONTAINERS=0
@@ -134,7 +134,7 @@ check_container_health() {
 main() {
     print_status "INFO" "Starting health check for all built containers..."
     print_status "INFO" "Timeout: ${TIMEOUT}s, Startup wait: ${STARTUP_WAIT}s, HTTP timeout: ${HTTP_TIMEOUT}s"
-    print_status "INFO" "Using automatic port assignment starting from port $START_PORT"
+    print_status "INFO" "Using fixed host port: $HOST_PORT"
     echo ""
     local images=($(docker images --format "{{.Repository}}" | grep -E "(st-|dy-|ws-)" | sort))
     if [ ${#images[@]} -eq 0 ]; then
@@ -144,12 +144,10 @@ main() {
     TOTAL_CONTAINERS=${#images[@]}
     print_status "INFO" "Found $TOTAL_CONTAINERS containers to test"
     echo ""
-    local current_port=$START_PORT
     for image in "${images[@]}"; do
         docker stop "health-check-${image}" > /dev/null 2>&1 || true
         docker rm "health-check-${image}" > /dev/null 2>&1 || true
-        check_container_health "$image" "$current_port"
-        current_port=$((current_port + 1))
+        check_container_health "$image" "$HOST_PORT"
         sleep 1
     done
     echo ""
@@ -188,7 +186,7 @@ case "${1:-}" in
         echo "  - WebSocket response (for WebSocket containers)"
         echo ""
         echo "Port assignment:"
-        echo "  - Automatic sequential assignment starting from port $START_PORT"
+        echo "  - Fixed host port: $HOST_PORT"
         echo "  - Container port determined from Dockerfile EXPOSE directive"
         echo "  - Default container port: 80"
         exit 0

@@ -3,8 +3,8 @@
 # Run measurement scripts for all Docker images and local servers based on args
 PYTHON_PATH="$(pwd)/srv/bin/python3"  # Absolute path from root directory
 
-# Simple port assignment - start from 8001 and increment for each container
-START_PORT=8001
+# Fixed port for all containers
+HOST_PORT=8001
 
 # Define payloads for measure_docker.py and measure_local.py
 payloads=(100 1000 5000 8000 10000 15000 20000 30000 40000 50000 60000 70000 80000)
@@ -215,22 +215,18 @@ main() {
         echo "Running all benchmarks..."
         echo "=== Static Container Tests ==="
         local static_containers=($(discover_containers "static"))
-        local current_port=$START_PORT
         for container in "${static_containers[@]}"; do
-            run_docker_tests "$container" "$current_port" "static"
-            current_port=$((current_port + 1))
+            run_docker_tests "$container" "$HOST_PORT" "static"
         done
         echo "=== Dynamic Container Tests ==="
         local dynamic_containers=($(discover_containers "dynamic"))
         for container in "${dynamic_containers[@]}"; do
-            run_docker_tests "$container" "$current_port" "dynamic"
-            current_port=$((current_port + 1))
+            run_docker_tests "$container" "$HOST_PORT" "dynamic"
         done
         echo "=== WebSocket Tests ==="
         local websocket_containers=($(discover_containers "websocket"))
         for container in "${websocket_containers[@]}"; do
-            run_websocket_tests "$container" "$current_port"
-            current_port=$((current_port + 1))
+            run_websocket_tests "$container" "$HOST_PORT"
         done
         echo "=== Local Server Tests ==="
         run_local_tests "nginx"
@@ -241,30 +237,24 @@ main() {
                 if [ ${#TARGET_IMAGES[@]} -eq 0 ]; then
                     TARGET_IMAGES=($(discover_containers "static"))
                 fi
-                local current_port=$START_PORT
                 for container in "${TARGET_IMAGES[@]}"; do
-                    run_docker_tests "$container" "$current_port" "static"
-                    current_port=$((current_port + 1))
+                    run_docker_tests "$container" "$HOST_PORT" "static"
                 done
                 ;;
             "dynamic")
                 if [ ${#TARGET_IMAGES[@]} -eq 0 ]; then
                     TARGET_IMAGES=($(discover_containers "dynamic"))
                 fi
-                local current_port=$START_PORT
                 for container in "${TARGET_IMAGES[@]}"; do
-                    run_docker_tests "$container" "$current_port" "dynamic"
-                    current_port=$((current_port + 1))
+                    run_docker_tests "$container" "$HOST_PORT" "dynamic"
                 done
                 ;;
             "websocket")
                 if [ ${#TARGET_IMAGES[@]} -eq 0 ]; then
                     TARGET_IMAGES=($(discover_containers "websocket"))
                 fi
-                local current_port=$START_PORT
                 for container in "${TARGET_IMAGES[@]}"; do
-                    run_websocket_tests "$container" "$current_port"
-                    current_port=$((current_port + 1))
+                    run_websocket_tests "$container" "$HOST_PORT"
                 done
                 ;;
             "local")
@@ -308,7 +298,7 @@ case "${1:-}" in
         echo "  $0 --quick static     # Quick static benchmarks"
         echo ""
         echo "Port Assignment:"
-        echo "  - Automatic sequential assignment starting from port $START_PORT"
+        echo "  - Fixed host port: $HOST_PORT"
         echo "  - Container port determined from Dockerfile EXPOSE directive"
         echo "  - Default container port: 80"
         exit 0
