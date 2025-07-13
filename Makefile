@@ -60,6 +60,8 @@ clean-repo: ## Clean repository to bare minimum (fresh clone state)
 run-all: ## Run all benchmarks
 	./run_benchmarks.sh
 
+run: run-all ## Alias for run-all
+
 run-static: ## Run static server benchmarks
 	./run_benchmarks.sh static
 
@@ -136,7 +138,5 @@ setup: ## Create the virtual environment and set up local servers
 	@echo "  2. Install dependencies: make install"
 	@echo "  3. Validate: make validate"
 
-quick-test: ## Quick test with minimal requests
-	./run_benchmarks.sh --quick static st-nginx-deb
-	./run_benchmarks.sh --quick dynamic dy-nginx-deb
-	./run_benchmarks.sh --quick websocket ws-nginx-python-websockets 
+run-quick: ## Quick test with minimal requests (all discovered containers)
+	./run_benchmarks.sh --quick 
