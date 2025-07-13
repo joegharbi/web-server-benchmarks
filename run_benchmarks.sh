@@ -3,8 +3,8 @@
 # Run measurement scripts for all Docker images and local servers based on args
 PYTHON_PATH="$(pwd)/srv/bin/python3"  # Absolute path from root directory
 
-# Fixed port for all containers
-HOST_PORT=8001
+# Fixed port for all containers (configurable via HOST_PORT env var)
+HOST_PORT=${HOST_PORT:-8001}
 
 # Define payloads for measure_docker.py and measure_local.py
 payloads=(100 1000 5000 8000 10000 15000 20000 30000 40000 50000 60000 70000 80000)
