@@ -14,7 +14,6 @@ RUN wget https://github.com/erlang/rebar3/releases/download/3.22.0/rebar3 && \
 RUN mkdir -p src
 COPY src/ /app/src/
 COPY rebar.config .
-COPY config/ /app/config/
 
 # Get dependencies and compile
 RUN rebar3 get-deps && \

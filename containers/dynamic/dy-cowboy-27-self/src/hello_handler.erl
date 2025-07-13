@@ -30,4 +30,4 @@ init(Req0, State) ->
                 <<"content-type">> => <<"text/plain">>
             }, <<"Not Found">>, Req0),
             {ok, Req, State}
-    end. 
+    end.

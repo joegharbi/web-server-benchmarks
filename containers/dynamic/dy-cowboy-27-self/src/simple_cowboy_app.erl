@@ -23,4 +23,4 @@ start(_StartType, _StartArgs) ->
 
 stop(_State) ->
     cowboy:stop_listener(http_listener),
-    ok. 
+    ok.

@@ -12,9 +12,15 @@ RUN echo '-module(hello).' > /app/hello.erl && \
     echo '    {ok, Sock} = gen_tcp:listen(8080, [{reuseaddr, true}]),' >> /app/hello.erl && \
     echo '    accept_loop(Sock).' >> /app/hello.erl && \
     echo 'accept_loop(Sock) ->' >> /app/hello.erl && \
-    echo '    {ok, Conn} = gen_tcp:accept(Sock),' >> /app/hello.erl && \
-    echo '    spawn(fun() -> handle(Conn) end),' >> /app/hello.erl && \
-    echo '    accept_loop(Sock).' >> /app/hello.erl && \
+    echo '    case gen_tcp:accept(Sock) of' >> /app/hello.erl && \
+    echo '        {ok, Conn} ->' >> /app/hello.erl && \
+    echo '            spawn(fun() -> handle(Conn) end),' >> /app/hello.erl && \
+    echo '            accept_loop(Sock);' >> /app/hello.erl && \
+    echo '        Error ->' >> /app/hello.erl && \
+    echo '            io:format("Accept error: ~p~n", [Error]),' >> /app/hello.erl && \
+    echo '            timer:sleep(1000),' >> /app/hello.erl && \
+    echo '            accept_loop(Sock)' >> /app/hello.erl && \
+    echo '    end.' >> /app/hello.erl && \
     echo 'handle(Conn) ->' >> /app/hello.erl && \
     echo '    {ok, Html} = file:read_file("/var/www/html/index.html"),' >> /app/hello.erl && \
     echo '    Response = <<<<"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n">>/binary, Html/binary>>,' >> /app/hello.erl && \
@@ -65,4 +71,4 @@ COPY --from=builder /app/hello.beam /app/hello.beam
 EXPOSE 8080
 
 # Start the server
-CMD ["erl", "-noshell", "-s", "hello", "main", "-s", "init", "stop"]
+CMD ["erl", "-noshell", "-pa", "/app", "-eval", "c:l(hello), hello:main([]), init:stop()."]

@@ -12,4 +12,4 @@ init([]) ->
                  intensity => 1,
                  period => 5},
     ChildSpecs = [],
-    {ok, {SupFlags, ChildSpecs}}. 
+    {ok, {SupFlags, ChildSpecs}}.

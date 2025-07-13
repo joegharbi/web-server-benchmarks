@@ -4,7 +4,7 @@
 VENV_NAME ?= srv
 VENV_PATH = $(VENV_NAME)/bin/activate
 
-.PHONY: help install clean-build clean-repo build run-all run-static run-dynamic run-websocket run-local setup quick-test graph validate
+.PHONY: help install clean-build clean-repo build run-all run-static run-dynamic run-websocket run-local setup quick-test graph validate check-health
 
 help: ## Show this help message
 	@echo "Web Server Benchmarks - Available Commands:"
@@ -64,6 +64,10 @@ run-websocket: ## Run WebSocket benchmarks
 
 run-local: ## Run local server benchmarks
 	./run_benchmarks.sh local
+
+check-health: ## Check health of all built containers (startup, HTTP response, stability)
+	@echo "Checking health of all built containers..."
+	@./check_health.sh
 
 graph: check-env ## Generate graphs from results
 	@python3 gui_graph_generator.py

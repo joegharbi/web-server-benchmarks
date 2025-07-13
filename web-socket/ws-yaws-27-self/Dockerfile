@@ -40,12 +40,12 @@ RUN echo '<!DOCTYPE html>\n\
 
 # Create Yaws configuration
 RUN echo 'logdir = /var/log/yaws\n\
-ebin_dir = /app\n\
-<server localhost>\n\
-    port = 80\n\
-    listen = 0.0.0.0\n\
+    ebin_dir = /app\n\
+    <server localhost>\n\
+        port = 80\n\
+        listen = 0.0.0.0\n\
     docroot = /var/www/html\n\
-    appmods = </ws, ws_handler>\n\
+        appmods = </ws, ws_handler>\n\
 </server>' > /etc/yaws/yaws.conf
 
 # Create startup script
