@@ -285,7 +285,7 @@ make run-websocket   # WebSocket containers only
 make run-local       # Local servers only
 
 # Quick testing
-make quick-test      # Reduced parameters for fast testing
+make run-quick       # Reduced parameters for fast testing (3 request counts: 1000, 5000, 10000)
 ```
 
 ### Using Scripts Directly
@@ -304,9 +304,18 @@ make quick-test      # Reduced parameters for fast testing
 ```
 
 ### Benchmark Parameters
-- **Static/Dynamic**: 13 payload sizes (100 to 80,000 requests)
-- **WebSocket**: Burst and streaming modes with various parameters
-- **Local**: Same payload range as static/dynamic
+
+#### HTTP Benchmarks (Static/Dynamic/Local)
+- **Full test**: 13 request counts (100, 1000, 5000, 8000, 10000, 15000, 20000, 30000, 40000, 50000, 60000, 70000, 80000)
+- **Quick test**: 3 request counts (1000, 5000, 10000)
+
+#### WebSocket Benchmarks
+- **Full test**: Comprehensive parameter combinations
+  - Burst mode: 4 client counts × 7 message sizes × 2 burst counts × 3 intervals
+  - Stream mode: 4 client counts × 7 message sizes × 3 rates × 3 durations
+- **Quick test**: Minimal parameter combinations
+  - Burst mode: 1 client × 1 message size × 1 burst count × 1 interval
+  - Stream mode: 1 client × 1 message size × 1 rate × 1 duration
 
 ---
 

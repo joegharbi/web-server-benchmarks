@@ -3,11 +3,63 @@
 # Run measurement scripts for all Docker images and local servers based on args
 PYTHON_PATH="$(pwd)/srv/bin/python3"  # Absolute path from root directory
 
+# Check for help first, before any other processing
+case "${1:-}" in
+    "help"|"--help"|"-h")
+        echo "Usage: $0 [TYPE] [IMAGES...] [OPTIONS]"
+        echo ""
+        echo "Types:"
+        echo "  static      Run static container benchmarks"
+        echo "  dynamic     Run dynamic container benchmarks"
+        echo "  websocket   Run WebSocket benchmarks"
+        echo "  local       Run local server benchmarks"
+        echo ""
+        echo "Options:"
+        echo "  --quick     Run quick benchmarks with reduced parameters"
+        echo "  clean       Clean repository to fresh state"
+        echo ""
+        echo "Examples:"
+        echo "  $0                    # Run all benchmarks"
+        echo "  $0 static             # Run all static containers"
+        echo "  $0 dynamic st-nginx   # Run specific container"
+        echo "  $0 --quick static     # Quick static benchmarks"
+        echo ""
+        echo "Port Assignment:"
+        echo "  - Fixed host port: ${HOST_PORT:-8001}"
+        echo "  - Container port determined from Dockerfile EXPOSE directive"
+        echo "  - Default container port: 80"
+        exit 0
+        ;;
+esac
+
 # Fixed port for all containers (configurable via HOST_PORT env var)
 HOST_PORT=${HOST_PORT:-8001}
 
-# Define payloads for measure_docker.py and measure_local.py
-payloads=(100 1000 5000 8000 10000 15000 20000 30000 40000 50000 60000 70000 80000)
+# Full test parameters for HTTP benchmarks (measure_docker.py and measure_local.py)
+full_http_requests=(100 1000 5000 8000 10000 15000 20000 30000 40000 50000 60000 70000 80000)
+
+# Quick test parameters for HTTP benchmarks
+quick_http_requests=(1000 5000 10000)
+
+# Full test parameters for WebSocket benchmarks
+full_ws_burst_clients=(1 10 50 200)
+full_ws_burst_sizes=(1 8 64 256 1024 8192 65536)
+full_ws_burst_bursts=(10 50)
+full_ws_burst_intervals=(0.1 0.5 1)
+full_ws_stream_clients=(1 10 50 200)
+full_ws_stream_sizes=(1 8 64 256 1024 8192 65536)
+full_ws_stream_rates=(10 100 1000)
+full_ws_stream_durations=(5 10 30)
+
+# Quick test parameters for WebSocket benchmarks
+quick_ws_burst_clients=(3)
+quick_ws_burst_sizes=(8)
+quick_ws_burst_bursts=(3)
+quick_ws_burst_intervals=(0.5)
+quick_ws_stream_clients=(3)
+quick_ws_stream_sizes=(8)
+quick_ws_stream_rates=(10)
+quick_ws_stream_durations=(5)
 
 # Function to get container port mapping based on Dockerfile EXPOSE directive
 get_container_port_mapping() {
@@ -115,23 +167,23 @@ run_websocket_tests() {
         return 1
     fi
     if [[ $QUICK_BENCH -eq 1 ]]; then
-        burst_clients=(3)
-        burst_sizes=(8)
-        burst_bursts=(3)
-        burst_intervals=(0.5)
-        stream_clients=(3)
-        stream_sizes=(8)
-        stream_rates=(10)
-        stream_durations=(5)
+        burst_clients=("${quick_ws_burst_clients[@]}")
+        burst_sizes=("${quick_ws_burst_sizes[@]}")
+        burst_bursts=("${quick_ws_burst_bursts[@]}")
+        burst_intervals=("${quick_ws_burst_intervals[@]}")
+        stream_clients=("${quick_ws_stream_clients[@]}")
+        stream_sizes=("${quick_ws_stream_sizes[@]}")
+        stream_rates=("${quick_ws_stream_rates[@]}")
+        stream_durations=("${quick_ws_stream_durations[@]}")
     else
-        burst_clients=(1 10 50 200)
-        burst_sizes=(1 8 64 256 1024 8192 65536)
-        burst_bursts=(10 50)
-        burst_intervals=(0.1 0.5 1)
-        stream_clients=(1 10 50 200)
-        stream_sizes=(1 8 64 256 1024 8192 65536)
-        stream_rates=(10 100 1000)
-        stream_durations=(5 10 30)
+        burst_clients=("${full_ws_burst_clients[@]}")
+        burst_sizes=("${full_ws_burst_sizes[@]}")
+        burst_bursts=("${full_ws_burst_bursts[@]}")
+        burst_intervals=("${full_ws_burst_intervals[@]}")
+        stream_clients=("${full_ws_stream_clients[@]}")
+        stream_sizes=("${full_ws_stream_sizes[@]}")
+        stream_rates=("${full_ws_stream_rates[@]}")
+        stream_durations=("${full_ws_stream_durations[@]}")
     fi
     echo "Running WebSocket tests for $image on port $host_port"
     local port_mapping=$(get_container_port_mapping $image $host_port)
@@ -190,21 +242,55 @@ run_docker_tests() {
     local container_name="bench-${image}"
     docker run -d --rm --name "$container_name" -p "$port_mapping" "$image" > /dev/null 2>&1
     sleep 10
-    $PYTHON_PATH ./containers/measure_docker.py \
-        --image "$image" \
-        --port "$host_port" \
-        --payloads "${payloads[*]}" \
-        --output "$RESULTS_DIR/$test_type/${image}.csv"
+    
+    if [[ $QUICK_BENCH -eq 1 ]]; then
+        # Quick test: run with 3 different request counts
+        for num_requests in "${quick_http_requests[@]}"; do
+            echo "  Testing with $num_requests requests"
+            $PYTHON_PATH ./containers/measure_docker.py \
+                --image "$image" \
+                --port "$host_port" \
+                --num_requests "$num_requests" \
+                --output "$RESULTS_DIR/$test_type/${image}_${num_requests}.csv"
+        done
+    else
+        # Full test: run with all request counts from the full_http_requests array
+        for num_requests in "${full_http_requests[@]}"; do
+            echo "  Testing with $num_requests requests"
+            $PYTHON_PATH ./containers/measure_docker.py \
+                --image "$image" \
+                --port "$host_port" \
+                --num_requests "$num_requests" \
+                --output "$RESULTS_DIR/$test_type/${image}_${num_requests}.csv"
+        done
+    fi
+    
     docker stop "$container_name" > /dev/null 2>&1 || true
 }
 
 run_local_tests() {
     local server=$1
     echo "Running local tests for $server"
-    $PYTHON_PATH ./local/measure_local.py \
-        --server "$server" \
-        --payloads "${payloads[*]}" \
-        --output "$RESULTS_DIR/local/${server}.csv"
+    
+    if [[ $QUICK_BENCH -eq 1 ]]; then
+        # Quick test: run with 3 different request counts
+        for num_requests in "${quick_http_requests[@]}"; do
+            echo "  Testing with $num_requests requests"
+            $PYTHON_PATH ./local/measure_local.py \
+                --server "$server" \
+                --num_requests "$num_requests" \
+                --output "$RESULTS_DIR/local/${server}_${num_requests}.csv"
+        done
+    else
+        # Full test: run with all request counts from the full_http_requests array
+        for num_requests in "${full_http_requests[@]}"; do
+            echo "  Testing with $num_requests requests"
+            $PYTHON_PATH ./local/measure_local.py \
+                --server "$server" \
+                --num_requests "$num_requests" \
+                --output "$RESULTS_DIR/local/${server}_${num_requests}.csv"
+        done
+    fi
 }
 
 main() {
@@ -276,37 +362,5 @@ main() {
     echo "Benchmarks completed at $(date)"
     echo "Results saved to: $RESULTS_DIR"
 }
-
-case "${1:-}" in
-    "help"|"--help"|"-h")
-        echo "Usage: $0 [TYPE] [IMAGES...] [OPTIONS]"
-        echo ""
-        echo "Types:"
-        echo "  static      Run static container benchmarks"
-        echo "  dynamic     Run dynamic container benchmarks"
-        echo "  websocket   Run WebSocket benchmarks"
-        echo "  local       Run local server benchmarks"
-        echo ""
-        echo "Options:"
-        echo "  --quick     Run quick benchmarks with reduced parameters"
-        echo "  clean       Clean repository to fresh state"
-        echo ""
-        echo "Examples:"
-        echo "  $0                    # Run all benchmarks"
-        echo "  $0 static             # Run all static containers"
-        echo "  $0 dynamic st-nginx   # Run specific container"
-        echo "  $0 --quick static     # Quick static benchmarks"
-        echo ""
-        echo "Port Assignment:"
-        echo "  - Fixed host port: $HOST_PORT"
-        echo "  - Container port determined from Dockerfile EXPOSE directive"
-        echo "  - Default container port: 80"
-        exit 0
-        ;;
-esac
-
-if [[ "${1:-}" == "help" ]] || [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
-    exit 0
-fi
 
 main "$@"
