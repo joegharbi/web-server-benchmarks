@@ -131,20 +131,67 @@ check_container_health() {
     return 0
 }
 
+# Auto-discover all containers in the framework
+function discover_containers() {
+    local discovered=()
+    
+    # Discover static containers
+    for d in ./containers/static/*/; do
+        [ -d "$d" ] || continue
+        if [ -f "$d/Dockerfile" ]; then
+            discovered+=("$(basename "$d")")
+        fi
+    done
+    
+    # Discover dynamic containers
+    for d in ./containers/dynamic/*/; do
+        [ -d "$d" ] || continue
+        if [ -f "$d/Dockerfile" ]; then
+            discovered+=("$(basename "$d")")
+        fi
+    done
+    
+    # Discover websocket containers
+    for d in ./web-socket/*/; do
+        [ -d "$d" ] || continue
+        if [ -f "$d/Dockerfile" ]; then
+            discovered+=("$(basename "$d")")
+        fi
+    done
+    
+    echo "${discovered[@]}"
+}
+
 main() {
     print_status "INFO" "Starting health check for all built containers..."
     print_status "INFO" "Timeout: ${TIMEOUT}s, Startup wait: ${STARTUP_WAIT}s, HTTP timeout: ${HTTP_TIMEOUT}s"
     print_status "INFO" "Using fixed host port: $HOST_PORT"
     echo ""
-    local images=($(docker images --format "{{.Repository}}" | grep -E "(st-|dy-|ws-)" | sort))
-    if [ ${#images[@]} -eq 0 ]; then
+    
+    # Discover all containers from directory structure
+    local discovered_containers=($(discover_containers))
+    if [ ${#discovered_containers[@]} -eq 0 ]; then
+        print_status "ERROR" "No containers found in benchmark directories. Check containers/static/, containers/dynamic/, and web-socket/ directories."
+        exit 1
+    fi
+    
+    # Filter to only built images
+    local built_images=()
+    for container in "${discovered_containers[@]}"; do
+        if docker images --format "{{.Repository}}" | grep -q "^${container}$"; then
+            built_images+=("$container")
+        fi
+    done
+    
+    if [ ${#built_images[@]} -eq 0 ]; then
         print_status "ERROR" "No built containers found. Run 'make build' first."
         exit 1
     fi
-    TOTAL_CONTAINERS=${#images[@]}
-    print_status "INFO" "Found $TOTAL_CONTAINERS containers to test"
+    
+    TOTAL_CONTAINERS=${#built_images[@]}
+    print_status "INFO" "Found $TOTAL_CONTAINERS built containers to test"
     echo ""
-    for image in "${images[@]}"; do
+    for image in "${built_images[@]}"; do
         docker stop "health-check-${image}" > /dev/null 2>&1 || true
         docker rm "health-check-${image}" > /dev/null 2>&1 || true
         check_container_health "$image" "$HOST_PORT"

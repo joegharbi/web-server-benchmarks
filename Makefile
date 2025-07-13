@@ -24,7 +24,9 @@ help: ## Show this help message
 	@echo ""
 	@echo "Auto-Discovery:"
 	@echo "  - Add new servers: create folder + Dockerfile in containers/static, containers/dynamic, or web-socket/"
-	@echo "  - Framework automatically detects and assigns ports based on Dockerfile EXPOSE directive"
+	@echo "  - Framework automatically detects, builds, tests, and benchmarks all containers"
+	@echo "  - No naming conventions required - any directory name works"
+	@echo "  - Port assignment based on Dockerfile EXPOSE directive"
 
 # Environment management
 check-env: ## Check if virtual environment is active

@@ -119,25 +119,33 @@ web-server-benchmarks/
 
 ## Container Auto-Discovery
 
-The framework automatically discovers all available servers from the directory structure:
-
-### Naming Convention
-- **Static containers**: `st-*` (e.g., `st-nginx-deb-self`)
-- **Dynamic containers**: `dy-*` (e.g., `dy-apache-deb-self`)
-- **WebSocket containers**: `ws-*` (e.g., `ws-cowboy-27-self`)
+The framework automatically discovers all available servers from the directory structure using **true autodiscovery** - no naming conventions required!
 
 ### Auto-Discovery Process
 1. **Directory Scanning**: Scans `containers/static/`, `containers/dynamic/`, and `web-socket/`
 2. **Dockerfile Detection**: Identifies directories containing `Dockerfile`
 3. **Port Detection**: Reads `EXPOSE` directive from Dockerfile for container port
 4. **Automatic Testing**: Runs health checks and benchmarks with sensible defaults
+5. **Dynamic Cleanup**: Removes all discovered containers and images during cleanup
+
+### Autodiscovery Implementation
+- ✅ **Build System** (`install_benchmarks.sh`): Discovers and builds all containers
+- ✅ **Health Checks** (`check_health.sh`): Tests all discovered containers
+- ✅ **Benchmark Runner** (`run_benchmarks.sh`): Runs benchmarks on all discovered containers
+- ✅ **Cleanup System**: Removes all discovered containers and images
 
 ### Example Structure
 ```bash
-containers/static/st-nginx-deb-self/Dockerfile  # Auto-discovered
-containers/dynamic/dy-apache-deb-self/Dockerfile  # Auto-discovered
-web-socket/ws-cowboy-27-self/Dockerfile  # Auto-discovered
+containers/static/my-nginx/Dockerfile      # Auto-discovered
+containers/dynamic/my-apache/Dockerfile    # Auto-discovered
+web-socket/my-websocket/Dockerfile         # Auto-discovered
 ```
+
+### Legacy Naming Convention (Optional)
+While not required, you can still use the legacy naming convention for organization:
+- **Static containers**: `st-*` (e.g., `st-nginx-deb-self`)
+- **Dynamic containers**: `dy-*` (e.g., `dy-apache-deb-self`)
+- **WebSocket containers**: `ws-*` (e.g., `ws-cowboy-27-self`)
 
 ---
 
@@ -230,11 +238,11 @@ EXPOSE 8080
 ## Adding New Servers
 
 ### Docker Containers
-1. **Create Directory**: Follow naming convention
+1. **Create Directory**: Any name works with autodiscovery
    ```bash
-   mkdir -p containers/static/st-my-server
-   mkdir -p containers/dynamic/dy-my-server
-   mkdir -p web-socket/ws-my-server
+   mkdir -p containers/static/my-server
+   mkdir -p containers/dynamic/my-server
+   mkdir -p web-socket/my-server
    ```
 
 2. **Add Dockerfile**: Include `EXPOSE` directive
@@ -245,7 +253,12 @@ EXPOSE 8080
    CMD ["nginx", "-g", "daemon off;"]
    ```
 
-3. **Auto-Discovery**: Container will be automatically found and tested
+3. **Auto-Discovery**: Container will be automatically found, built, tested, and benchmarked
+   ```bash
+   make build        # Automatically builds your new container
+   make check-health # Automatically tests your new container
+   make run-all      # Automatically benchmarks your new container
+   ```
 
 ### Local Servers
 1. **Add Configuration**: Place in `local/` directory
