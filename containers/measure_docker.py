@@ -16,6 +16,7 @@ logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger()
 
 results_counter = Counter()
+runtime_data = {}
 
 def get_binary_path(binary_name):
     result = subprocess.run(["which", binary_name], capture_output=True, text=True, check=True)
@@ -281,7 +282,7 @@ def main():
     with ThreadPoolExecutor(max_workers=args.max_workers) as executor:
         executor.map(lambda i: send_request(url, i, args.verbose), range(args.num_requests))
     runtime = time.time() - start_time
-    results_counter['runtime'] = runtime
+    runtime_data['runtime'] = runtime
 
     time.sleep(3)
     stop_event.set()
@@ -298,7 +299,7 @@ def main():
     total_energy, average_power, total_samples = parse_json_and_compute_energy(output_json, container_name, runtime)
     measurement_type = getattr(args, 'measurement_type', None) or "unknown"
     save_results_to_csv(args.output_csv, results_counter, total_energy, average_power, runtime, requests_per_second, 
-                       total_samples, resource_results['cpu'], resource_results['mem'], num_cores, args.server_image, measurement_type)
+                       int(total_samples), resource_results['cpu'], resource_results['mem'], num_cores, args.server_image, measurement_type)
     print_summary(results_counter, total_energy, average_power, runtime, requests_per_second, 
                   resource_results['cpu'], resource_results['mem'], num_cores, output_json, args.output_csv, container_name)
 

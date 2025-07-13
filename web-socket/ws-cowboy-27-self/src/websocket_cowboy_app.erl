@@ -5,7 +5,7 @@
 
 start(_StartType, _StartArgs) ->
     websocket_cowboy_sup:start_link(),
-    cowboy:start_clear(http, [{port, 8080}], #{env => #{dispatch => dispatch()}}).
+    cowboy:start_clear(http, [{port, 80}], #{env => #{dispatch => dispatch()}}).
 
 stop(_State) ->
     cowboy:stop_listener(http),

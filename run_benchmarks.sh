@@ -16,6 +16,7 @@ case "${1:-}" in
         echo ""
         echo "Options:"
         echo "  --quick     Run quick benchmarks with reduced parameters"
+        echo "  --super-quick Run super quick benchmarks with single test per type"
         echo "  clean       Clean repository to fresh state"
         echo ""
         echo "Examples:"
@@ -41,6 +42,9 @@ full_http_requests=(100 1000 5000 8000 10000 15000 20000 30000 40000 50000 60000
 # Quick test parameters for HTTP benchmarks
 quick_http_requests=(1000 5000 10000)
 
+# Super quick test parameters for HTTP benchmarks (single test)
+super_quick_http_requests=(1000)
+
 # Full test parameters for WebSocket benchmarks
 full_ws_burst_clients=(1 10 50 200)
 full_ws_burst_sizes=(1 8 64 256 1024 8192 65536)
@@ -60,6 +64,16 @@ quick_ws_stream_clients=(3)
 quick_ws_stream_sizes=(8)
 quick_ws_stream_rates=(10)
 quick_ws_stream_durations=(5)
+
+# Super quick test parameters for WebSocket benchmarks (single test)
+super_quick_ws_burst_clients=(1)
+super_quick_ws_burst_sizes=(8)
+super_quick_ws_burst_bursts=(2)
+super_quick_ws_burst_intervals=(0.5)
+super_quick_ws_stream_clients=(1)
+super_quick_ws_stream_sizes=(8)
+super_quick_ws_stream_rates=(10)
+super_quick_ws_stream_durations=(3)
 
 # Function to get container port mapping based on Dockerfile EXPOSE directive
 get_container_port_mapping() {
@@ -133,10 +147,13 @@ echo "Logging to $LOG_FILE"
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 QUICK_BENCH=0
+SUPER_QUICK_BENCH=0
 args=()
 for arg in "$@"; do
     if [[ "$arg" == "--quick" ]]; then
         QUICK_BENCH=1
+    elif [[ "$arg" == "--super-quick" ]]; then
+        SUPER_QUICK_BENCH=1
     else
         args+=("$arg")
     fi
@@ -166,7 +183,16 @@ run_websocket_tests() {
         echo "Error: ./web-socket/measure_websocket.py not found"
         return 1
     fi
-    if [[ $QUICK_BENCH -eq 1 ]]; then
+    if [[ $SUPER_QUICK_BENCH -eq 1 ]]; then
+        burst_clients=("${super_quick_ws_burst_clients[@]}")
+        burst_sizes=("${super_quick_ws_burst_sizes[@]}")
+        burst_bursts=("${super_quick_ws_burst_bursts[@]}")
+        burst_intervals=("${super_quick_ws_burst_intervals[@]}")
+        stream_clients=("${super_quick_ws_stream_clients[@]}")
+        stream_sizes=("${super_quick_ws_stream_sizes[@]}")
+        stream_rates=("${super_quick_ws_stream_rates[@]}")
+        stream_durations=("${super_quick_ws_stream_durations[@]}")
+    elif [[ $QUICK_BENCH -eq 1 ]]; then
         burst_clients=("${quick_ws_burst_clients[@]}")
         burst_sizes=("${quick_ws_burst_sizes[@]}")
         burst_bursts=("${quick_ws_burst_bursts[@]}")
@@ -188,9 +214,6 @@ run_websocket_tests() {
     echo "Running WebSocket tests for $image on port $host_port"
     local port_mapping=$(get_container_port_mapping $image $host_port)
     local container_port=$(echo $port_mapping | cut -d: -f2)
-    local container_name="bench-${image}"
-    docker run -d --rm --name "$container_name" -p "$port_mapping" "$image" > /dev/null 2>&1
-    sleep 10
     local ws_url="ws://localhost:$host_port/ws"
     for clients in "${burst_clients[@]}"; do
         for size_kb in "${burst_sizes[@]}"; do
@@ -230,7 +253,6 @@ run_websocket_tests() {
             done
         done
     done
-    docker stop "$container_name" > /dev/null 2>&1 || true
 }
 
 run_docker_tests() {
@@ -239,47 +261,60 @@ run_docker_tests() {
     local test_type=$3
     echo "Running $test_type tests for $image on port $host_port"
     local port_mapping=$(get_container_port_mapping $image $host_port)
-    local container_name="bench-${image}"
-    docker run -d --rm --name "$container_name" -p "$port_mapping" "$image" > /dev/null 2>&1
-    sleep 10
-    
-    if [[ $QUICK_BENCH -eq 1 ]]; then
+    if [[ $SUPER_QUICK_BENCH -eq 1 ]]; then
+        # Super quick test: run with single request count
+        for num_requests in "${super_quick_http_requests[@]}"; do
+            echo "  Testing with $num_requests requests"
+            $PYTHON_PATH ./containers/measure_docker.py \
+                --server_image "$image" \
+                --port_mapping "$port_mapping" \
+                --num_requests "$num_requests" \
+                --output_csv "$RESULTS_DIR/$test_type/${image}_${num_requests}.csv"
+        done
+    elif [[ $QUICK_BENCH -eq 1 ]]; then
         # Quick test: run with 3 different request counts
         for num_requests in "${quick_http_requests[@]}"; do
             echo "  Testing with $num_requests requests"
             $PYTHON_PATH ./containers/measure_docker.py \
-                --image "$image" \
-                --port "$host_port" \
+                --server_image "$image" \
+                --port_mapping "$port_mapping" \
                 --num_requests "$num_requests" \
-                --output "$RESULTS_DIR/$test_type/${image}_${num_requests}.csv"
+                --output_csv "$RESULTS_DIR/$test_type/${image}_${num_requests}.csv"
         done
     else
         # Full test: run with all request counts from the full_http_requests array
         for num_requests in "${full_http_requests[@]}"; do
             echo "  Testing with $num_requests requests"
             $PYTHON_PATH ./containers/measure_docker.py \
-                --image "$image" \
-                --port "$host_port" \
+                --server_image "$image" \
+                --port_mapping "$port_mapping" \
                 --num_requests "$num_requests" \
-                --output "$RESULTS_DIR/$test_type/${image}_${num_requests}.csv"
+                --output_csv "$RESULTS_DIR/$test_type/${image}_${num_requests}.csv"
         done
     fi
-    
-    docker stop "$container_name" > /dev/null 2>&1 || true
 }
 
 run_local_tests() {
     local server=$1
     echo "Running local tests for $server"
     
-    if [[ $QUICK_BENCH -eq 1 ]]; then
+    if [[ $SUPER_QUICK_BENCH -eq 1 ]]; then
+        # Super quick test: run with single request count
+        for num_requests in "${super_quick_http_requests[@]}"; do
+            echo "  Testing with $num_requests requests"
+            $PYTHON_PATH ./local/measure_local.py \
+                --server "$server" \
+                --num_requests "$num_requests" \
+                --output_csv "$RESULTS_DIR/local/${server}_${num_requests}.csv"
+        done
+    elif [[ $QUICK_BENCH -eq 1 ]]; then
         # Quick test: run with 3 different request counts
         for num_requests in "${quick_http_requests[@]}"; do
             echo "  Testing with $num_requests requests"
             $PYTHON_PATH ./local/measure_local.py \
                 --server "$server" \
                 --num_requests "$num_requests" \
-                --output "$RESULTS_DIR/local/${server}_${num_requests}.csv"
+                --output_csv "$RESULTS_DIR/local/${server}_${num_requests}.csv"
         done
     else
         # Full test: run with all request counts from the full_http_requests array
@@ -288,7 +323,7 @@ run_local_tests() {
             $PYTHON_PATH ./local/measure_local.py \
                 --server "$server" \
                 --num_requests "$num_requests" \
-                --output "$RESULTS_DIR/local/${server}_${num_requests}.csv"
+                --output_csv "$RESULTS_DIR/local/${server}_${num_requests}.csv"
         done
     fi
 }

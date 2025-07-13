@@ -48,7 +48,7 @@ WORKDIR /app
 COPY --from=builder /app/_build/prod/rel/websocket_cowboy_app /app/websocket_cowboy_app
 
 # Expose the default Cowboy port
-EXPOSE 8080
+EXPOSE 80
 
 # Run the Cowboy WebSocket server
 CMD ["/app/websocket_cowboy_app/bin/websocket_cowboy_app", "foreground"]

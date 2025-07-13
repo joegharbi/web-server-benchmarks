@@ -139,4 +139,7 @@ setup: ## Create the virtual environment and set up local servers
 	@echo "  3. Validate: make validate"
 
 run-quick: ## Quick test with minimal requests (all discovered containers)
-	./run_benchmarks.sh --quick 
+	./run_benchmarks.sh --quick
+
+run-super-quick: ## Super quick test with single request per container type
+	./run_benchmarks.sh --super-quick 

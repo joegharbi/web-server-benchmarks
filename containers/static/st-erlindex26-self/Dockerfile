@@ -9,7 +9,7 @@ WORKDIR /app
 RUN echo '-module(hello).' > /app/hello.erl && \
     echo '-export([main/1]).' >> /app/hello.erl && \
     echo 'main(_Args) ->' >> /app/hello.erl && \
-    echo '    {ok, Sock} = gen_tcp:listen(8080, [{reuseaddr, true}]),' >> /app/hello.erl && \
+    echo '    {ok, Sock} = gen_tcp:listen(80, [{reuseaddr, true}]),' >> /app/hello.erl && \
     echo '    accept_loop(Sock).' >> /app/hello.erl && \
     echo 'accept_loop(Sock) ->' >> /app/hello.erl && \
     echo '    case gen_tcp:accept(Sock) of' >> /app/hello.erl && \
@@ -68,7 +68,7 @@ RUN echo "<!DOCTYPE html>" > /var/www/html/index.html && \
 COPY --from=builder /app/hello.beam /app/hello.beam
 
 # Expose port 8080
-EXPOSE 8080
+EXPOSE 80
 
 # Start the server
 CMD ["erl", "-noshell", "-pa", "/app", "-eval", "c:l(hello), hello:main([]), init:stop()."]
