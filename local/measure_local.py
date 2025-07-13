@@ -45,7 +45,7 @@ def send_request(url, request_num, verbose=False):
 
 def cleanup_existing_server(server):
     """Stop any existing server process using the setup script."""
-    script_path = f"./setup_{server}.sh"
+    script_path = os.path.join(os.path.dirname(__file__), f"setup_{server}.sh")
     if not os.path.exists(script_path):
         raise FileNotFoundError(f"Setup script {script_path} not found")
     try:
@@ -126,7 +126,7 @@ def check_server_health(url, retries=5, delay=2):
 
 def start_local_server(server):
     """Start the local server using the setup script."""
-    script_path = f"./setup_{server}.sh"
+    script_path = os.path.join(os.path.dirname(__file__), f"setup_{server}.sh")
     if not os.path.exists(script_path):
         raise FileNotFoundError(f"Setup script {script_path} not found")
     
@@ -148,7 +148,7 @@ def start_local_server(server):
 
 def stop_local_server(server):
     """Stop the local server using the setup script."""
-    script_path = f"./setup_{server}.sh"
+    script_path = os.path.join(os.path.dirname(__file__), f"setup_{server}.sh")
     if not os.path.exists(script_path):
         raise FileNotFoundError(f"Setup script {script_path} not found")
     logger.debug(f"Stopping {server} server...")
@@ -399,7 +399,7 @@ def main():
     with ThreadPoolExecutor(max_workers=args.max_workers) as executor:
         executor.map(lambda i: send_request(url, i, args.verbose), range(args.num_requests))
     runtime = time.time() - start_time
-    results_counter['runtime'] = runtime
+    # results_counter['runtime'] = runtime  # Removed: runtime is used directly elsewhere
 
     logger.info("Waiting for Scaphandre to collect data...")
     time.sleep(10)
