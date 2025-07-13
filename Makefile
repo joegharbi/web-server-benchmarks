@@ -90,4 +90,4 @@ setup: ## Create the virtual environment and set up local servers
 quick-test: ## Quick test with minimal requests
 	./run_benchmarks.sh static st-nginx-deb
 	./run_benchmarks.sh dynamic dy-nginx-deb
-	./run_benchmarks.sh websocket ws-nginx 
+	./run_benchmarks.sh websocket ws-nginx-python-websockets 

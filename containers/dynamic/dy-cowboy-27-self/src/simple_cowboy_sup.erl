@@ -8,15 +8,8 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 init([]) ->
-    {ok, {{one_for_one, 10, 10}, [
-        {cowboy, {cowboy, start_clear, [http, [{port, 8080}], #{env => #{dispatch => dispatch()}}]}}
-    ]}}.
-
-dispatch() ->
-    cowboy_router:compile([
-        {'_', [
-            {"/", hello_handler, []},
-            {"/dynamic", dynamic_handler, []},
-            {"/api/status", status_handler, []}
-        ]}
-    ]). 
+    SupFlags = #{strategy => one_for_one,
+                 intensity => 1,
+                 period => 5},
+    ChildSpecs = [],
+    {ok, {SupFlags, ChildSpecs}}. 

@@ -82,16 +82,29 @@ EXPOSE 80
 # Startup script
 RUN echo "#!/bin/sh\n\
     echo \"Starting Nginx and Tornado WebSocket server...\"\n\
-    nginx -t && nginx -g 'daemon off;' > /dev/stdout 2>&1 &\n\
+    # Start Tornado server in background\n\
     python3 /app/websocket_server.py > /dev/stdout 2>&1 &\n\
-    sleep 1\n\
-    if [ \$? -eq 0 ]; then\n\
-        echo \"Nginx and Tornado server started\"\n\
-    else\n\
-        echo \"Startup failed\"\n\
+    TORNADO_PID=\$!\n\
+    # Wait a moment for Tornado to start\n\
+    sleep 3\n\
+    # Check if Tornado is running\n\
+    if ! kill -0 \$TORNADO_PID 2>/dev/null; then\n\
+        echo \"Tornado server failed to start\"\n\
         exit 1\n\
     fi\n\
-    sleep infinity" > /start.sh \
+    # Start Nginx\n\
+    nginx -t && nginx -g 'daemon off;' > /dev/stdout 2>&1 &\n\
+    NGINX_PID=\$!\n\
+    # Wait a moment for Nginx to start\n\
+    sleep 2\n\
+    # Check if Nginx is running\n\
+    if ! kill -0 \$NGINX_PID 2>/dev/null; then\n\
+        echo \"Nginx failed to start\"\n\
+        exit 1\n\
+    fi\n\
+    echo \"Both Nginx and Tornado server started successfully\"\n\
+    # Wait for either process to exit\n\
+    wait \$TORNADO_PID \$NGINX_PID" > /start.sh \
     && chmod +x /start.sh
 
 CMD ["/start.sh"]

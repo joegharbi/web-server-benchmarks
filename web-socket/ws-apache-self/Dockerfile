@@ -49,15 +49,29 @@ EXPOSE 80
 # Startup script to run Apache and Python WebSocket server
 RUN echo "#!/bin/sh\n\
     echo \"Starting Apache and WebSocket server...\"\n\
-    apache2ctl -D FOREGROUND > /dev/stdout 2>&1 &\n\
+    # Start Python WebSocket server in background\n\
     python3 /app/websocket_server.py > /dev/stdout 2>&1 &\n\
-    if [ \$? -eq 0 ]; then\n\
-        echo \"Apache and WebSocket server started\"\n\
-    else\n\
-        echo \"Startup failed\"\n\
+    PYTHON_PID=\$!\n\
+    # Wait a moment for Python server to start\n\
+    sleep 3\n\
+    # Check if Python server is running\n\
+    if ! kill -0 \$PYTHON_PID 2>/dev/null; then\n\
+        echo \"Python WebSocket server failed to start\"\n\
         exit 1\n\
     fi\n\
-    sleep infinity" > /start.sh \
+    # Start Apache\n\
+    apache2ctl -D FOREGROUND > /dev/stdout 2>&1 &\n\
+    APACHE_PID=\$!\n\
+    # Wait a moment for Apache to start\n\
+    sleep 2\n\
+    # Check if Apache is running\n\
+    if ! kill -0 \$APACHE_PID 2>/dev/null; then\n\
+        echo \"Apache failed to start\"\n\
+        exit 1\n\
+    fi\n\
+    echo \"Both Apache and Python WebSocket server started successfully\"\n\
+    # Wait for either process to exit\n\
+    wait \$PYTHON_PID \$APACHE_PID" > /start.sh \
     && chmod +x /start.sh
 
 CMD ["/start.sh"] 

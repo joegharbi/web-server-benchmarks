@@ -19,7 +19,7 @@ logger = logging.getLogger()
 # =====================
 def parse_args():
     parser = argparse.ArgumentParser(description="Measure WebSocket server energy with Scaphandre in Docker (echo burst/stream)")
-    parser.add_argument('--server_image', type=str, required=True, help="Docker image of the server (e.g., ws-nginx)")
+    parser.add_argument('--server_image', type=str, required=True, help="Docker image of the server (e.g., ws-nginx-python-websockets)")
     parser.add_argument('--container_name', type=str, default=None, help="Name of the Docker container (defaults to server_image)")
     parser.add_argument('--port_mapping', type=str, default='8001:80', help="Port mapping (default: 8001:80)")
     parser.add_argument('--network', type=str, default='bridge', choices=['bridge', 'host'], help="Network mode (default: bridge)")

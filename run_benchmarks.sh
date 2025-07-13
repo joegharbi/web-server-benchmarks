@@ -15,7 +15,7 @@ payloads=(100 1000 5000 8000 10000 15000 20000 30000 40000 50000 60000 70000 800
 # If not, auto-discover and use sensible defaults
 
 declare -A websocket_images=( 
-    ["ws-nginx"]="" 
+    ["ws-nginx-python-websockets"]="" 
     ["ws-nginx-java"]="8080:8080" 
     ["ws-nginx-tornado"]="" 
     ["ws-yaws"]="" 

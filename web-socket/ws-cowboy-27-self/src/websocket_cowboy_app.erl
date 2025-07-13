@@ -4,7 +4,17 @@
 -export([start/2, stop/1]).
 
 start(_StartType, _StartArgs) ->
-    websocket_cowboy_sup:start_link().
+    websocket_cowboy_sup:start_link(),
+    cowboy:start_clear(http, [{port, 8080}], #{env => #{dispatch => dispatch()}}).
 
 stop(_State) ->
-    ok. 
+    cowboy:stop_listener(http),
+    ok.
+
+dispatch() ->
+    cowboy_router:compile([
+        {'_', [
+            {"/", static_handler, []},
+            {"/ws", websocket_handler, []}
+        ]}
+    ]). 
