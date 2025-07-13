@@ -74,6 +74,10 @@ check-health: ## Check health of all built containers (startup, HTTP response, s
 	@echo "Checking health of all built containers..."
 	@./check_health.sh
 
+health: check-health ## Alias for check-health
+
+check: check-health ## Alias for check-health
+
 build-test-run: ## Build all containers, check health, and run all benchmarks
 	@echo "=== Building all containers ==="
 	@$(MAKE) build

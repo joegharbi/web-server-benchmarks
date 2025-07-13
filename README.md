@@ -65,7 +65,7 @@ make install
 make build
 
 # Run comprehensive health checks
-./check_health.sh
+make check-health
 ```
 
 ### 3. Run Benchmarks
@@ -154,10 +154,16 @@ The framework includes a comprehensive health check system that validates contai
 
 ### Running Health Checks
 ```bash
-# Check all built containers
+# Using Makefile (recommended)
+make check-health
+make health
+make check
+
+# Using script directly
 ./check_health.sh
 
 # Custom port
+HOST_PORT=9001 make check-health
 HOST_PORT=9001 ./check_health.sh
 
 # Custom timeouts
