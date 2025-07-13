@@ -1,30 +1,40 @@
-# Web Server Energy and Performance Benchmarking
+# Web Server Energy and Performance Benchmarking Framework
 
 ## Overview
-This project benchmarks the performance and energy efficiency of web servers running inside Docker containers, locally installed servers, and WebSocket servers. It includes scripts for building Docker images, running benchmarks, and generating visualizations of the results.
+A comprehensive benchmarking framework for evaluating the performance and energy efficiency of web servers running in Docker containers, local installations, and WebSocket servers. Features automatic container discovery, intelligent health checks, simplified port management, and extensive automation.
+
+## Key Features
+- **🔄 Auto-Discovery**: Automatically finds and benchmarks all containers from directory structure
+- **🏥 Intelligent Health Checks**: Comprehensive health validation before benchmarking
+- **🔧 Simplified Port Management**: Fixed host port with automatic container port detection
+- **📊 Multi-Modal Testing**: Static, dynamic, WebSocket, and local server benchmarks
+- **⚡ Energy Measurement**: Integrated Scaphandre for power consumption analysis
+- **📈 Visualization**: Interactive GUI for result analysis and graph generation
+- **🧹 Repository Management**: Powerful cleaning and maintenance tools
 
 ## Table of Contents
 1. [Prerequisites](#prerequisites)
 2. [Quick Start](#quick-start)
 3. [Directory Structure](#directory-structure)
-4. [Image/Server Naming and Auto-Discovery](#naming-and-auto-discovery)
-5. [Adding Dockerfiles and Servers](#adding-dockerfiles-and-servers)
-6. [Installing Docker Images](#installing-docker-images)
-7. [Running Benchmarks](#running-benchmarks)
-8. [CSV Output Format](#csv-output-format)
-9. [GUI Graph Generator](#gui-graph-generator)
-10. [Repository Management](#repository-management)
-11. [Troubleshooting](#troubleshooting)
+4. [Container Auto-Discovery](#container-auto-discovery)
+5. [Health Check System](#health-check-system)
+6. [Port Management](#port-management)
+7. [Adding New Servers](#adding-new-servers)
+8. [Running Benchmarks](#running-benchmarks)
+9. [WebSocket Testing](#websocket-testing)
+10. [Results and Visualization](#results-and-visualization)
+11. [Repository Management](#repository-management)
+12. [Makefile Commands](#makefile-commands)
+13. [Troubleshooting](#troubleshooting)
 
 ---
 
 ## Prerequisites
-Before using the scripts, ensure the following are installed:
-- **Operating System**: Linux (Debian-based distributions recommended).
-- **Python 3**: Version 3.6 or higher.
-- **Docker**: Installed via `sudo apt install docker.io`.
-- **Scaphandre**: Installed via Rust's Cargo (`cargo install scaphandre`) or pre-built binaries.
-- **Make**: Usually pre-installed on Linux systems.
+- **OS**: Linux (Debian-based recommended)
+- **Python 3**: 3.6+ with pip
+- **Docker**: `sudo apt install docker.io`
+- **Scaphandre**: `cargo install scaphandre` (for energy measurement)
+- **Make**: Usually pre-installed
 
 Verify installations:
 ```bash
@@ -38,146 +48,207 @@ make --version
 
 ## Quick Start
 
-### 1. Set up the environment
+### 1. Environment Setup
 ```bash
-# Create and activate virtual environment (recommended)
+# Create virtual environment and install dependencies
 make setup
 source srv/bin/activate
 
-# Or use an existing virtual environment
+# Or ensure existing environment
 make ensure-env
-```
-
-### 2. Install dependencies
-```bash
 make install
 ```
 
-### 3. Build Docker images
+### 2. Build and Validate
 ```bash
+# Build all Docker images
 make build
+
+# Run comprehensive health checks
+./check_health.sh
 ```
 
-### 4. Run a quick test
+### 3. Run Benchmarks
 ```bash
+# Quick test (single server, reduced load)
 make quick-test
-```
 
-### 5. Run full benchmarks
-```bash
+# Full benchmark suite
 make run-all
+
+# Specific benchmark types
+make run-static
+make run-dynamic
+make run-websocket
+make run-local
 ```
 
-### 6. Generate graphs
+### 4. Analyze Results
 ```bash
+# Generate interactive graphs
 make graph
 ```
 
 ---
 
 ## Directory Structure
-The project is organized as follows:
-
 ```
 web-server-benchmarks/
 ├── containers/
-│   ├── static/         # Static web servers (e.g., Apache, Nginx)
-│   │   └── <image_name>/Dockerfile
-│   ├── dynamic/        # Dynamic web servers (e.g., Nginx with dynamic modules)
-│   │   └── <image_name>/Dockerfile
-│   ├── measure_docker.py  # Docker container measurement script
-│   └── output/         # Docker benchmark results
-├── web-socket/
-│   ├── <image_name>/Dockerfile  # WebSocket server images
-│   └── measure_websocket.py     # WebSocket measurement script
-├── local/              # Local webserver scripts/configs (e.g., nginx, yaws)
-│   ├── measure_local.py    # Local server measurement script
-│   └── <server_name>   # Script or config file for local server
-├── logs/               # Logs generated during benchmarking
-├── output/             # Output files, such as temporary data or intermediate results
-├── results/            # Results for all benchmarks, organized by timestamp and type
-├── requirements.txt    # Python dependencies
-├── Makefile           # Build and automation commands
-├── install_benchmarks.sh     # Script to build Docker images for benchmarking
-├── run_benchmarks.sh         # Main script to trigger all benchmarks
-├── gui_graph_generator.py    # Script to generate graphs from benchmarking results
-└── README.md                 # Project documentation
+│   ├── static/         # Static web servers (Apache, Nginx, etc.)
+│   │   └── st-*/Dockerfile
+│   ├── dynamic/        # Dynamic web servers (with modules/scripts)
+│   │   └── dy-*/Dockerfile
+│   └── measure_docker.py
+├── web-socket/         # WebSocket servers
+│   ├── ws-*/Dockerfile
+│   └── measure_websocket.py
+├── local/              # Local server configurations
+│   ├── measure_local.py
+│   └── setup_*.sh
+├── results/            # Benchmark results (timestamped)
+├── logs/               # Execution logs
+├── check_health.sh     # Health check system
+├── run_benchmarks.sh   # Main benchmark runner
+├── gui_graph_generator.py
+├── Makefile           # Automation commands
+└── README.md
 ```
 
 ---
 
-## Naming and Auto-Discovery
+## Container Auto-Discovery
 
-The project uses an intelligent auto-discovery system that automatically finds and benchmarks all available servers:
+The framework automatically discovers all available servers from the directory structure:
 
-- **Docker images (static, dynamic, websocket):**
-  - Place each image in its own folder under the appropriate directory (`containers/static/`, `containers/dynamic/`, or `web-socket/`).
-  - The folder name becomes the image name. The folder must contain a file named exactly `Dockerfile`.
-  - Example: `containers/static/nginx-deb/Dockerfile`, `web-socket/ws-yaws/Dockerfile`
+### Naming Convention
+- **Static containers**: `st-*` (e.g., `st-nginx-deb-self`)
+- **Dynamic containers**: `dy-*` (e.g., `dy-apache-deb-self`)
+- **WebSocket containers**: `ws-*` (e.g., `ws-cowboy-27-self`)
 
-- **Local servers:**
-  - Place a script or config file in `local/` named after the server (e.g., `local/nginx`, `local/yaws`).
+### Auto-Discovery Process
+1. **Directory Scanning**: Scans `containers/static/`, `containers/dynamic/`, and `web-socket/`
+2. **Dockerfile Detection**: Identifies directories containing `Dockerfile`
+3. **Port Detection**: Reads `EXPOSE` directive from Dockerfile for container port
+4. **Automatic Testing**: Runs health checks and benchmarks with sensible defaults
 
-- **Sensible Defaults:**
-  - Auto-discovered servers use sensible defaults for ports and test parameters.
-  - Static servers: port 8001:80, payloads: 100, 1000, 5000, 8000, 10000, 15000, 20000, 30000, 40000, 50000, 60000, 70000, 80000 requests
-  - Dynamic servers: port 8001:80, same payload range as static
-  - WebSocket servers: burst mode (10/20/50 clients, 10/50/100 MB payloads) and streaming mode (5/10/20 MB/s rates)
-  - Local servers: same payload range as static/dynamic
-
-- **Override Arrays:**
-  - The benchmark runner uses associative arrays to specify custom port mappings or to override/exclude certain images/servers.
-  - If an image/server is listed in the array, its settings are used (and it will not be auto-discovered again).
-  - If not in the array, it is auto-discovered from the folder structure and run with sensible defaults.
-
----
-
-## Adding Dockerfiles and Servers
-To add a new Docker image or local server:
-
-### Static/Dynamic/WebSocket Images
-1. Create a directory under `containers/static/`, `containers/dynamic/`, or `web-socket/` using the desired image name.
-2. Place a file named `Dockerfile` in that directory.
-
-Example:
+### Example Structure
 ```bash
-mkdir -p containers/static/my-server
-nano containers/static/my-server/Dockerfile
+containers/static/st-nginx-deb-self/Dockerfile  # Auto-discovered
+containers/dynamic/dy-apache-deb-self/Dockerfile  # Auto-discovered
+web-socket/ws-cowboy-27-self/Dockerfile  # Auto-discovered
 ```
 
-The server will be automatically discovered and benchmarked with sensible defaults.
+---
+
+## Health Check System
+
+The framework includes a comprehensive health check system that validates containers before benchmarking:
+
+### Health Check Features
+- **Container Startup**: Verifies containers start successfully
+- **HTTP Response**: Tests for proper HTTP 200 responses
+- **WebSocket Handshake**: Validates WebSocket upgrade responses
+- **Stability Testing**: Ensures containers remain running
+- **Automatic Cleanup**: Stops and removes test containers
+
+### Running Health Checks
+```bash
+# Check all built containers
+./check_health.sh
+
+# Custom port
+HOST_PORT=9001 ./check_health.sh
+
+# Custom timeouts
+./check_health.sh --timeout 60 --startup 15
+```
+
+### Health Check Output
+```
+[INFO] Starting health check for all built containers...
+[INFO] Using fixed host port: 8001
+[INFO] Found 28 containers to test
+
+[INFO] Testing st-nginx-deb-self...
+[SUCCESS] st-nginx-deb-self: Healthy (ready for benchmarking)
+
+[INFO] Testing dy-apache-deb-self...
+[SUCCESS] dy-apache-deb-self: Healthy (ready for benchmarking)
+
+[INFO] === HEALTH CHECK SUMMARY ===
+[INFO] Total containers tested: 28
+[SUCCESS] Healthy containers: 28
+[SUCCESS] All containers are healthy! 🎉
+```
+
+---
+
+## Port Management
+
+The framework uses a simplified port management system:
+
+### Fixed Host Port
+- **Default**: All containers use host port `8001`
+- **Configurable**: Set `HOST_PORT` environment variable
+- **Container Port**: Automatically detected from Dockerfile `EXPOSE` directive
+
+### Port Configuration
+```bash
+# Default behavior
+./check_health.sh          # Uses port 8001
+./run_benchmarks.sh        # Uses port 8001
+
+# Custom port
+HOST_PORT=9001 ./check_health.sh
+HOST_PORT=9001 ./run_benchmarks.sh
+
+# Session-wide setting
+export HOST_PORT=9001
+./check_health.sh
+./run_benchmarks.sh
+```
+
+### Port Mapping Examples
+```dockerfile
+# Dockerfile with EXPOSE directive
+EXPOSE 80
+# Results in: 8001:80 mapping
+
+EXPOSE 8080
+# Results in: 8001:8080 mapping
+```
+
+---
+
+## Adding New Servers
+
+### Docker Containers
+1. **Create Directory**: Follow naming convention
+   ```bash
+   mkdir -p containers/static/st-my-server
+   mkdir -p containers/dynamic/dy-my-server
+   mkdir -p web-socket/ws-my-server
+   ```
+
+2. **Add Dockerfile**: Include `EXPOSE` directive
+   ```dockerfile
+   FROM nginx:alpine
+   COPY nginx.conf /etc/nginx/nginx.conf
+   EXPOSE 80
+   CMD ["nginx", "-g", "daemon off;"]
+   ```
+
+3. **Auto-Discovery**: Container will be automatically found and tested
 
 ### Local Servers
-1. Place a script or config file in `local/` named after the server.
+1. **Add Configuration**: Place in `local/` directory
+   ```bash
+   touch local/my-server
+   chmod +x local/my-server
+   ```
 
-Example:
-```bash
-touch local/myserver
-```
-
-### Custom Configuration
-To override defaults, add entries to the appropriate arrays in `run_benchmarks.sh`:
-```bash
-# Example: Custom port and test parameters
-declare -A static_images=(
-    ["my-server"]="8080:80"
-)
-```
-
----
-
-## Installing Docker Images
-Use the Makefile or the install script to build Docker images:
-
-```bash
-# Using Makefile (recommended)
-make build
-
-# Or using the install script directly
-./install_benchmarks.sh
-```
-
-Both methods auto-discover all subfolders in `containers/static/`, `containers/dynamic/`, and `web-socket/` that contain a file named exactly `Dockerfile` and build them.
+2. **Auto-Discovery**: Server will be included in local benchmarks
 
 ---
 
@@ -185,171 +256,166 @@ Both methods auto-discover all subfolders in `containers/static/`, `containers/d
 
 ### Using Makefile (Recommended)
 ```bash
-# Run all benchmarks
+# Complete benchmark suite
 make run-all
 
-# Run specific benchmark types
-make run-static
-make run-dynamic  
-make run-websocket
-make run-local
+# Specific benchmark types
+make run-static      # Static containers only
+make run-dynamic     # Dynamic containers only
+make run-websocket   # WebSocket containers only
+make run-local       # Local servers only
 
-# Run a quick test (single server, reduced load)
-make quick-test
+# Quick testing
+make quick-test      # Reduced parameters for fast testing
 ```
 
 ### Using Scripts Directly
 ```bash
-# Run all benchmarks
+# All benchmarks
 ./run_benchmarks.sh
 
-# Run specific types
+# Specific types
 ./run_benchmarks.sh static
 ./run_benchmarks.sh dynamic
 ./run_benchmarks.sh websocket
 ./run_benchmarks.sh local
+
+# Quick mode
+./run_benchmarks.sh --quick static
 ```
 
-The benchmark runner:
-- Uses override arrays for custom port mappings or exclusions.
-- Auto-discovers all other images/servers from the folder structure.
-- Passes the correct `--measurement_type` to each measurement script, ensuring the CSV output is consistent.
+### Benchmark Parameters
+- **Static/Dynamic**: 13 payload sizes (100 to 80,000 requests)
+- **WebSocket**: Burst and streaming modes with various parameters
+- **Local**: Same payload range as static/dynamic
 
 ---
 
-## WebSocket Benchmark Parameter Explanations
+## WebSocket Testing
 
-**Burst Mode Parameters:**
-- `--clients`    : Number of concurrent WebSocket clients (connections) to the server.
-- `--size_kb`    : Size of each WebSocket message sent (in kilobytes).
-- `--bursts`     : Number of messages each client sends in a "burst" (as fast as possible, then waits).
-- `--interval`   : Time (in seconds) to wait between each burst of messages.
+The framework includes comprehensive WebSocket benchmarking:
 
-**Streaming Mode Parameters:**
-- `--clients`    : Number of concurrent WebSocket clients (connections) to the server.
-- `--size_kb`    : Size of each WebSocket message sent (in kilobytes).
-- `--rate`       : Number of messages per second each client sends (streaming, not bursty).
-- `--duration`   : Total time (in seconds) to run the streaming test.
+### Test Modes
+1. **Burst Mode**: Rapid message bursts with intervals
+2. **Streaming Mode**: Continuous message streams at fixed rates
 
-**Other Inputs:**
-- `--server_image`     : The Docker image name of the WebSocket server to test.
-- `--pattern`          : The test pattern: 'burst' (bursty traffic) or 'stream' (steady rate).
-- `--mode`             : The WebSocket mode: usually 'echo' (server echoes back what it receives).
-- `--output_csv`       : Path to the CSV file where results will be saved.
-- `--measurement_type` : Label for the type of measurement (for your records).
+### Parameters
+```bash
+# Burst Mode
+--clients     # Concurrent WebSocket connections
+--size_kb     # Message size in kilobytes
+--bursts      # Number of messages per burst
+--interval    # Time between bursts (seconds)
 
-**Example:**
-- Burst:   1 client, 8 KB messages, 3 bursts, 0.5s between bursts
-- Stream:  1 client, 8 KB messages, 10 messages/sec, for 5 seconds
+# Streaming Mode
+--clients     # Concurrent WebSocket connections
+--size_kb     # Message size in kilobytes
+--rate        # Messages per second
+--duration    # Test duration (seconds)
+```
+
+### Example Test Scenarios
+```bash
+# Burst: 10 clients, 8KB messages, 50 bursts, 0.5s intervals
+# Stream: 50 clients, 64KB messages, 100 msg/s, 30s duration
+```
 
 ---
 
-## CSV Output Format
-All measurement scripts output CSV files with the following columns:
+## Results and Visualization
 
+### Results Structure
 ```
+results/
+└── 2024-01-15_143022/
+    ├── static/          # Static container results
+    ├── dynamic/         # Dynamic container results
+    ├── websocket/       # WebSocket results
+    └── local/           # Local server results
+```
+
+### CSV Output Format
+```csv
 Container Name,Type,Num CPUs,Total Requests,Successful Requests,Failed Requests,Execution Time (s),Requests/s,Total Energy (J),Avg Power (W),Samples,Avg CPU (%),Peak CPU (%),Total CPU (%),Avg Mem (MB),Peak Mem (MB),Total Mem (MB)
 ```
 
-- `Container Name`: Name of the Docker image or local server.
-- `Type`: Measurement type (`static`, `dynamic`, `websocket`, `local`).
-- `Num CPUs`: Number of CPU cores detected.
-- The remaining columns are performance and resource metrics.
-
-This makes it easy to aggregate and compare results across all server types.
-
----
-
-## GUI Graph Generator
-To visualize results, use the GUI graph generator:
-
+### Visualization
 ```bash
-# Using Makefile
+# Interactive graph generator
 make graph
 
 # Or directly
 python3 gui_graph_generator.py
 ```
 
-1. Start the GUI with the command above.
-2. In the graphical window, use the buttons to select CSV files or folders containing your benchmark results.
-3. Choose the columns you want to plot and generate graphs interactively.
-4. Save or export the generated graphs as needed.
-
-> **Note:** All file selection and graph generation is done through the graphical interface. No columns are pre-selected by default - you have full control over what gets plotted.
+Features:
+- **File Selection**: Browse and select CSV files/folders
+- **Column Selection**: Choose metrics to visualize
+- **Interactive Graphs**: Zoom, pan, and export capabilities
+- **Multi-Server Comparison**: Compare multiple servers simultaneously
 
 ---
 
 ## Repository Management
 
-The project includes powerful repository management tools to maintain a clean development environment:
-
 ### Cleaning Options
-
 ```bash
-# Clean Docker builds only (safe)
+# Safe cleaning (Docker only)
 make clean-build
 
-# Clean entire repository to bare minimum (nuclear option)
+# Complete reset (nuclear option)
 make clean-repo
 ```
 
-**`make clean-build`:**
-- Removes Docker containers and images related to benchmarks
-- Keeps your source code and local files
-- Safe for regular maintenance
+### Clean Operations
+- **`clean-build`**: Removes Docker containers/images, keeps source code
+- **`clean-repo`**: Complete repository reset to fresh clone state
 
-**`make clean-repo`:**
-- Removes ALL untracked files and directories
-- Resets to fresh clone state
-- Removes Python virtual environment (`srv/`)
-- Removes all logs, results, and build artifacts
-- Perfect for getting a completely fresh start
-
-### When to Use Each
-
-- **`clean-build`**: When you want to rebuild Docker images or free up Docker space
-- **`clean-repo`**: When you want a completely clean repository (like after `git clone`)
-
-After `make clean-repo`, you'll need to:
-1. `make setup` - Recreate virtual environment
-2. `source srv/bin/activate` - Activate environment  
-3. `make install` - Install dependencies
+### Post-Clean Setup
+After `make clean-repo`:
+```bash
+make setup
+source srv/bin/activate
+make install
+make build
+```
 
 ---
 
 ## Makefile Commands
 
-The project includes a comprehensive Makefile for easy automation:
-
+### Environment Management
 ```bash
-# Environment setup
 make setup          # Create virtual environment
-make ensure-env     # Ensure virtual environment is active
-make install        # Install Python dependencies
+make ensure-env     # Ensure environment is active
+make install        # Install dependencies
+make validate       # Validate all prerequisites
+```
 
-# Docker operations
+### Docker Operations
+```bash
 make build          # Build all Docker images
-make clean-build    # Remove benchmark-related Docker containers and images
+make clean-build    # Remove Docker containers/images
+```
 
-# Repository management
-make clean-repo     # Clean repository to bare minimum (fresh clone state)
+### Benchmarking
+```bash
+make quick-test     # Quick benchmark test
+make run-all        # Complete benchmark suite
+make run-static     # Static container benchmarks
+make run-dynamic    # Dynamic container benchmarks
+make run-websocket  # WebSocket benchmarks
+make run-local      # Local server benchmarks
+```
 
-# Benchmarking
-make quick-test     # Run quick test
-make run-all        # Run all benchmarks
-make run-static     # Run static server benchmarks
-make run-dynamic    # Run dynamic server benchmarks
-make run-websocket  # Run WebSocket benchmarks
-make run-local      # Run local server benchmarks
+### Visualization
+```bash
+make graph          # Launch graph generator
+```
 
-# Visualization
-make graph          # Start GUI graph generator
-
-# Validation
-make validate       # Validate dependencies
-
-# Help
+### Repository Management
+```bash
+make clean-repo     # Complete repository reset
 make help           # Show all available commands
 ```
 
@@ -359,40 +425,94 @@ make help           # Show all available commands
 
 ### Common Issues
 
-#### Virtual Environment
-- **"Virtual environment not found"**: Run `make setup` to create the environment
-- **"Wrong virtual environment"**: Ensure you're using the `srv` environment or update the Makefile
+#### Health Check Failures
+```bash
+# Check container logs
+docker logs health-check-<container-name>
+
+# Verify port availability
+netstat -tlnp | grep 8001
+
+# Test manual container startup
+docker run -d --rm -p 8001:80 <image-name>
+```
 
 #### Docker Issues
-- **Port conflicts**: Check for existing containers with `docker ps` and stop them with `docker stop <container_name>`
-- **Build failures**: Check Dockerfile syntax and base image availability
-- **Permission errors**: Ensure your user is in the docker group or use `sudo`
+```bash
+# Check Docker status
+docker info
+
+# Clean up containers
+docker stop $(docker ps -q)
+docker rm $(docker ps -aq)
+
+# Rebuild images
+make clean-build
+make build
+```
 
 #### Energy Measurement
-- **No Energy Data**: Ensure Scaphandre is installed and your hardware supports RAPL
-- **Zero energy values**: Check Scaphandre permissions and hardware compatibility
+```bash
+# Verify Scaphandre installation
+scaphandre --version
+
+# Check hardware support
+cat /sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj
+
+# Test energy measurement
+scaphandre -t 1
+```
 
 #### Performance Issues
-- **Health Check Fails**: Verify the server is running and accessible on the specified port
-- **Timeout errors**: Increase timeout values in measurement scripts for slower servers
-
-### Logs
-Check logs for detailed error messages:
 ```bash
-# Docker container logs
-docker logs <container_name>
+# Increase timeouts
+./check_health.sh --timeout 60 --startup 20
 
-# Benchmark logs
-tail -f logs/run_*.log
+# Check system resources
+htop
+free -h
+df -h
 ```
 
 ### Debug Mode
-Enable verbose output for debugging:
 ```bash
-# Set debug environment variable
+# Enable verbose output
 export DEBUG=1
 make quick-test
+
+# Check logs
+tail -f logs/run_*.log
 ```
+
+### Getting Help
+```bash
+# Show all Makefile commands
+make help
+
+# Script help
+./check_health.sh --help
+./run_benchmarks.sh help
+```
+
+---
+
+## Recent Improvements
+
+### v2.0 Enhancements
+- **Simplified Port Management**: Fixed host port with automatic container port detection
+- **Enhanced Health Checks**: Comprehensive validation with HTTP and WebSocket testing
+- **Auto-Discovery**: Intelligent container detection from directory structure
+- **Improved Automation**: Streamlined Makefile commands and script integration
+- **Better Error Handling**: Robust error detection and reporting
+- **Configurable Ports**: Environment variable support for custom ports
+
+### Key Changes
+- Removed complex port arrays and manual configuration
+- Added real HTTP response validation in health checks
+- Implemented WebSocket handshake testing
+- Enhanced container discovery and management
+- Improved repository cleaning and maintenance tools
+- Added comprehensive logging and error reporting
 
 ---
 
