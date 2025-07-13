@@ -306,10 +306,15 @@ def main():
     throughput_mb_s = (total_msgs * args.size_kb / 1024) / runtime if runtime > 0 else 0.0
     total_energy, avg_power, total_samples = parse_json_and_compute_energy(output_json, container_name, runtime)
 
-    headers = ["Container Name", "Type", "Num CPUs", "Total Requests", "Successful Requests", "Failed Requests", "Execution Time (s)", "Requests/s",
+    headers = ["Container Name", "Test Type", "Num CPUs", "Total Messages", "Successful Messages", "Failed Messages", "Execution Time (s)", "Messages/s", "Throughput (MB/s)",
+               "Avg Latency (ms)", "Min Latency (ms)", "Max Latency (ms)",
                "Total Energy (J)", "Avg Power (W)", "Samples", "Avg CPU (%)", "Peak CPU (%)", "Total CPU (%)",
                "Avg Mem (MB)", "Peak Mem (MB)", "Total Mem (MB)",
-               "WebSocket Mode", "Pattern Mode", "Num Clients", "Message Size (KB)", "Rate (msg/s)", "Bursts", "Interval (s)", "Duration (s)"]
+               "Pattern", "Num Clients", "Message Size (KB)", "Rate (msg/s)", "Bursts", "Interval (s)", "Duration (s)"]
+    # Calculate latency statistics
+    min_latency = min(all_latencies) if all_latencies else 0.0
+    max_latency = max(all_latencies) if all_latencies else 0.0
+    
     row = [
         container_name,
         args.measurement_type,
@@ -319,6 +324,10 @@ def main():
         total_fail,
         runtime,
         requests_per_second,
+        throughput_mb_s,
+        avg_latency,
+        min_latency,
+        max_latency,
         total_energy,
         avg_power,
         total_samples,
@@ -328,8 +337,7 @@ def main():
         resource_results['mem'].get('avg', 0.0),
         resource_results['mem'].get('peak', 0.0),
         resource_results['mem'].get('total', 0.0),
-        args.mode,  # WebSocket Mode (echo/push)
-        args.pattern,  # Pattern Mode (burst/stream)
+        args.pattern,  # Pattern (burst/stream)
         args.clients,
         args.size_kb,  # Message Size (KB)
         args.rate if args.pattern == 'stream' else '',  # Rate (msg/s) for stream mode

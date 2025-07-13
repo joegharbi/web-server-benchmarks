@@ -286,6 +286,7 @@ make run-local       # Local servers only
 
 # Quick testing
 make run-quick       # Reduced parameters for fast testing (3 request counts: 1000, 5000, 10000)
+make run-super-quick # Single test per container type (1 request count: 1000)
 ```
 
 ### Using Scripts Directly
@@ -308,14 +309,18 @@ make run-quick       # Reduced parameters for fast testing (3 request counts: 10
 #### HTTP Benchmarks (Static/Dynamic/Local)
 - **Full test**: 13 request counts (100, 1000, 5000, 8000, 10000, 15000, 20000, 30000, 40000, 50000, 60000, 70000, 80000)
 - **Quick test**: 3 request counts (1000, 5000, 10000)
+- **Super quick test**: 1 request count (1000) - fastest validation
 
 #### WebSocket Benchmarks
 - **Full test**: Comprehensive parameter combinations
   - Burst mode: 4 client counts × 7 message sizes × 2 burst counts × 3 intervals
   - Stream mode: 4 client counts × 7 message sizes × 3 rates × 3 durations
-- **Quick test**: Minimal parameter combinations
-  - Burst mode: 1 client × 1 message size × 1 burst count × 1 interval
-  - Stream mode: 1 client × 1 message size × 1 rate × 1 duration
+- **Quick test**: Moderate parameter combinations
+  - Burst mode: 2 client counts × 2 message sizes × 2 burst counts × 1 interval
+  - Stream mode: 2 client counts × 2 message sizes × 2 rates × 1 duration
+- **Super quick test**: Single parameter combination
+  - Burst mode: 1 client × 8KB × 1 burst × 0.5s interval
+  - Stream mode: 1 client × 8KB × 10 msg/s × 3s duration
 
 ---
 
@@ -356,16 +361,39 @@ The framework includes comprehensive WebSocket benchmarking:
 ```
 results/
 └── 2024-01-15_143022/
-    ├── static/          # Static container results
-    ├── dynamic/         # Dynamic container results
-    ├── websocket/       # WebSocket results
-    └── local/           # Local server results
+    ├── static/          # Static container results (grouped by container name)
+    ├── dynamic/         # Dynamic container results (grouped by container name)
+    ├── websocket/       # WebSocket results (grouped by container name)
+    └── local/           # Local server results (grouped by server name)
 ```
 
+**File Organization:**
+- **Before**: `st-apache-deb-self_1000.csv`, `st-apache-deb-self_5000.csv`, `st-apache-deb-self_10000.csv`
+- **After**: `st-apache-deb-self.csv` (single file with multiple rows for different request counts)
+
 ### CSV Output Format
+
+#### HTTP Containers (Static/Dynamic/Local)
+Results are grouped by container name with multiple rows per file:
 ```csv
 Container Name,Type,Num CPUs,Total Requests,Successful Requests,Failed Requests,Execution Time (s),Requests/s,Total Energy (J),Avg Power (W),Samples,Avg CPU (%),Peak CPU (%),Total CPU (%),Avg Mem (MB),Peak Mem (MB),Total Mem (MB)
 ```
+
+**Example:** `st-apache-deb-self.csv` contains:
+- Row 1: 1000 requests, results...
+- Row 2: 5000 requests, results...
+- Row 3: 10000 requests, results...
+
+#### WebSocket Containers
+WebSocket-specific metrics with latency and throughput data:
+```csv
+Container Name,Test Type,Num CPUs,Total Messages,Successful Messages,Failed Messages,Execution Time (s),Messages/s,Throughput (MB/s),Avg Latency (ms),Min Latency (ms),Max Latency (ms),Total Energy (J),Avg Power (W),Samples,Avg CPU (%),Peak CPU (%),Total CPU (%),Avg Mem (MB),Peak Mem (MB),Total Mem (MB),Pattern,Num Clients,Message Size (KB),Rate (msg/s),Bursts,Interval (s),Duration (s)
+```
+
+**Key WebSocket Metrics:**
+- **Latency**: Average, minimum, and maximum round-trip times
+- **Throughput**: Messages per second and data throughput in MB/s
+- **Pattern Configuration**: Burst or stream mode with specific parameters
 
 ### Visualization
 ```bash
@@ -525,6 +553,13 @@ make help
 ---
 
 ## Recent Improvements
+
+### v2.1 Enhancements
+- **CSV Result Grouping**: Results grouped by container name for easier analysis
+- **WebSocket-Specific Metrics**: Enhanced WebSocket CSV format with latency and throughput data
+- **Super Quick Testing**: New `run-super-quick` option for fastest validation
+- **Improved Local Scripts**: Fixed path resolution for local server setup scripts
+- **Enhanced Port Management**: All containers now use port 80 internally for consistency
 
 ### v2.0 Enhancements
 - **Simplified Port Management**: Fixed host port with automatic container port detection

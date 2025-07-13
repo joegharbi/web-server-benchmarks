@@ -56,19 +56,19 @@ full_ws_stream_rates=(10 100 1000)
 full_ws_stream_durations=(5 10 30)
 
 # Quick test parameters for WebSocket benchmarks
-quick_ws_burst_clients=(3)
-quick_ws_burst_sizes=(8)
-quick_ws_burst_bursts=(3)
+quick_ws_burst_clients=(1 3)
+quick_ws_burst_sizes=(8 64)
+quick_ws_burst_bursts=(3 10)
 quick_ws_burst_intervals=(0.5)
-quick_ws_stream_clients=(3)
-quick_ws_stream_sizes=(8)
-quick_ws_stream_rates=(10)
+quick_ws_stream_clients=(1 3)
+quick_ws_stream_sizes=(8 64)
+quick_ws_stream_rates=(10 100)
 quick_ws_stream_durations=(5)
 
 # Super quick test parameters for WebSocket benchmarks (single test)
 super_quick_ws_burst_clients=(1)
 super_quick_ws_burst_sizes=(8)
-super_quick_ws_burst_bursts=(2)
+super_quick_ws_burst_bursts=(1)
 super_quick_ws_burst_intervals=(0.5)
 super_quick_ws_stream_clients=(1)
 super_quick_ws_stream_sizes=(8)
@@ -228,7 +228,7 @@ run_websocket_tests() {
                         --size_kb $size_kb \
                         --bursts $bursts \
                         --interval $interval \
-                        --output_csv "$RESULTS_DIR/websocket/${image}_burst_${clients}_${size_kb}_${bursts}_${interval}.csv" \
+                        --output_csv "$RESULTS_DIR/websocket/${image}.csv" \
                         --measurement_type "burst_${clients}_${size_kb}_${bursts}_${interval}"
                 done
             done
@@ -247,7 +247,7 @@ run_websocket_tests() {
                         --size_kb $size_kb \
                         --rate $rate \
                         --duration $duration \
-                        --output_csv "$RESULTS_DIR/websocket/${image}_stream_${clients}_${size_kb}_${rate}_${duration}.csv" \
+                        --output_csv "$RESULTS_DIR/websocket/${image}.csv" \
                         --measurement_type "stream_${clients}_${size_kb}_${rate}_${duration}"
                 done
             done
@@ -269,7 +269,7 @@ run_docker_tests() {
                 --server_image "$image" \
                 --port_mapping "$port_mapping" \
                 --num_requests "$num_requests" \
-                --output_csv "$RESULTS_DIR/$test_type/${image}_${num_requests}.csv"
+                --output_csv "$RESULTS_DIR/$test_type/${image}.csv"
         done
     elif [[ $QUICK_BENCH -eq 1 ]]; then
         # Quick test: run with 3 different request counts
@@ -279,7 +279,7 @@ run_docker_tests() {
                 --server_image "$image" \
                 --port_mapping "$port_mapping" \
                 --num_requests "$num_requests" \
-                --output_csv "$RESULTS_DIR/$test_type/${image}_${num_requests}.csv"
+                --output_csv "$RESULTS_DIR/$test_type/${image}.csv"
         done
     else
         # Full test: run with all request counts from the full_http_requests array
@@ -289,7 +289,7 @@ run_docker_tests() {
                 --server_image "$image" \
                 --port_mapping "$port_mapping" \
                 --num_requests "$num_requests" \
-                --output_csv "$RESULTS_DIR/$test_type/${image}_${num_requests}.csv"
+                --output_csv "$RESULTS_DIR/$test_type/${image}.csv"
         done
     fi
 }
@@ -305,7 +305,7 @@ run_local_tests() {
             $PYTHON_PATH ./local/measure_local.py \
                 --server "$server" \
                 --num_requests "$num_requests" \
-                --output_csv "$RESULTS_DIR/local/${server}_${num_requests}.csv"
+                --output_csv "$RESULTS_DIR/local/${server}.csv"
         done
     elif [[ $QUICK_BENCH -eq 1 ]]; then
         # Quick test: run with 3 different request counts
@@ -314,7 +314,7 @@ run_local_tests() {
             $PYTHON_PATH ./local/measure_local.py \
                 --server "$server" \
                 --num_requests "$num_requests" \
-                --output_csv "$RESULTS_DIR/local/${server}_${num_requests}.csv"
+                --output_csv "$RESULTS_DIR/local/${server}.csv"
         done
     else
         # Full test: run with all request counts from the full_http_requests array
@@ -323,7 +323,7 @@ run_local_tests() {
             $PYTHON_PATH ./local/measure_local.py \
                 --server "$server" \
                 --num_requests "$num_requests" \
-                --output_csv "$RESULTS_DIR/local/${server}_${num_requests}.csv"
+                --output_csv "$RESULTS_DIR/local/${server}.csv"
         done
     fi
 }
