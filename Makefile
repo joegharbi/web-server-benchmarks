@@ -4,7 +4,7 @@
 VENV_NAME ?= srv
 VENV_PATH = $(VENV_NAME)/bin/activate
 
-.PHONY: help install clean-build clean-repo build run-all run-static run-dynamic run-websocket run-local setup quick-test graph validate check-health
+.PHONY: help install clean-build clean-repo build run-all run-static run-dynamic run-websocket run-local setup quick-test graph validate check-health build-test-run test-container
 
 help: ## Show this help message
 	@echo "Web Server Benchmarks - Available Commands:"
@@ -18,8 +18,13 @@ help: ## Show this help message
 	@echo "  2. Activate environment: source $(VENV_PATH)"
 	@echo "  3. Install dependencies: make install"
 	@echo ""
+	@echo "Quick Start:"
+	@echo "  make build-test-run    # Build, check health, and run all benchmarks"
+	@echo "  make test-container    # Test a specific container (usage: make test-container CONTAINER=st-nginx-deb)"
+	@echo ""
 	@echo "Auto-Discovery:"
 	@echo "  - Add new servers: create folder + Dockerfile in containers/static, containers/dynamic, or web-socket/"
+	@echo "  - Framework automatically detects and assigns ports based on Dockerfile EXPOSE directive"
 
 # Environment management
 check-env: ## Check if virtual environment is active
@@ -69,6 +74,40 @@ check-health: ## Check health of all built containers (startup, HTTP response, s
 	@echo "Checking health of all built containers..."
 	@./check_health.sh
 
+build-test-run: ## Build all containers, check health, and run all benchmarks
+	@echo "=== Building all containers ==="
+	@$(MAKE) build
+	@echo ""
+	@echo "=== Checking container health ==="
+	@$(MAKE) check-health
+	@echo ""
+	@echo "=== Running all benchmarks ==="
+	@$(MAKE) run-all
+
+test-container: ## Test a specific container (usage: make test-container CONTAINER=st-nginx-deb)
+	@if [ -z "$(CONTAINER)" ]; then \
+		echo "ERROR: CONTAINER variable not set"; \
+		echo "Usage: make test-container CONTAINER=<container-name>"; \
+		echo "Example: make test-container CONTAINER=st-nginx-deb"; \
+		exit 1; \
+	fi
+	@echo "Testing container: $(CONTAINER)"
+	@echo "=== Building container ==="
+	@docker build -t $(CONTAINER) ./containers/*/$(CONTAINER)/ 2>/dev/null || docker build -t $(CONTAINER) ./web-socket/$(CONTAINER)/ 2>/dev/null || (echo "ERROR: Container $(CONTAINER) not found" && exit 1)
+	@echo "=== Checking container health ==="
+	@./check_health.sh | grep -A 5 -B 5 "$(CONTAINER)" || echo "Container $(CONTAINER) health check completed"
+	@echo "=== Running container benchmark ==="
+	@if [[ "$(CONTAINER)" == ws-* ]]; then \
+		./run_benchmarks.sh websocket $(CONTAINER); \
+	elif [[ "$(CONTAINER)" == dy-* ]]; then \
+		./run_benchmarks.sh dynamic $(CONTAINER); \
+	elif [[ "$(CONTAINER)" == st-* ]]; then \
+		./run_benchmarks.sh static $(CONTAINER); \
+	else \
+		echo "ERROR: Unknown container type. Container name should start with ws-, dy-, or st-"; \
+		exit 1; \
+	fi
+
 graph: check-env ## Generate graphs from results
 	@python3 gui_graph_generator.py
 
@@ -92,6 +131,6 @@ setup: ## Create the virtual environment and set up local servers
 	@echo "  3. Validate: make validate"
 
 quick-test: ## Quick test with minimal requests
-	./run_benchmarks.sh static st-nginx-deb
-	./run_benchmarks.sh dynamic dy-nginx-deb
-	./run_benchmarks.sh websocket ws-nginx-python-websockets 
+	./run_benchmarks.sh --quick static st-nginx-deb
+	./run_benchmarks.sh --quick dynamic dy-nginx-deb
+	./run_benchmarks.sh --quick websocket ws-nginx-python-websockets 
