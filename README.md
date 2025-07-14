@@ -419,13 +419,24 @@ Features:
 # Safe cleaning (Docker only)
 make clean-build
 
+# Clean everything: Docker and local servers (autodiscovery)
+make clean-all
+
+# Uninstall all local servers (autodiscovery)
+make clean-local
+
 # Complete reset (nuclear option)
 make clean-repo
 ```
 
 ### Clean Operations
 - **`clean-build`**: Removes Docker containers/images, keeps source code
+- **`clean-local`**: Uninstalls all local servers that have a `setup_{server}.sh` script with uninstall support (autodiscovery)
+- **`clean-all`**: Runs both `clean-build` and `clean-local` for a full clean (Docker + local servers)
 - **`clean-repo`**: Complete repository reset to fresh clone state
+
+**Autodiscovery:**
+- `clean-local` will automatically find and uninstall any local server for which there is a `setup_{server}.sh` script in `local/` that defines and supports the uninstall command. This makes it easy to add new local servers—just provide a compatible setup script!
 
 ### Post-Clean Setup
 After `make clean-repo`:

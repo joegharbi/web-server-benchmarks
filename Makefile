@@ -51,8 +51,20 @@ install: check-env ## Install Python dependencies
 build: ## Build all Docker images
 	./install_benchmarks.sh
 
-clean-build: ## Clean up Docker containers and images
+clean-build: ## Clean up Docker containers and images (use 'make clean-all' to also clean local servers)
 	./install_benchmarks.sh clean
+
+clean-local: ## Uninstall all local servers with uninstall support
+	for script in ./local/setup_*.sh; do \
+		if grep -q 'uninstall_server()' $$script && grep -q 'uninstall") uninstall_server' $$script; then \
+			echo "Uninstalling with $$script"; \
+			sudo $$script uninstall; \
+		fi \
+	done
+
+clean-all: ## Clean up Docker containers/images and uninstall local servers
+	$(MAKE) clean-build
+	$(MAKE) clean-local
 
 clean-repo: ## Clean repository to bare minimum (fresh clone state)
 	./run_benchmarks.sh clean
