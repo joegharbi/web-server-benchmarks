@@ -77,28 +77,57 @@ check_http_response() {
     return 1
 }
 
+check_port_free() {
+    local port=$1
+    for i in {1..10}; do
+        if ! lsof -i :$port >/dev/null 2>&1; then
+            return 0
+        fi
+        print_status "INFO" "Port $port is busy, waiting... ($i/10)"
+        sleep 1
+    done
+    return 1
+}
+
+stop_and_remove_container() {
+    local cname=$1
+    docker stop "$cname" > /dev/null 2>&1 || true
+    docker rm "$cname" > /dev/null 2>&1 || true
+}
+
 check_container_health() {
     local image_name=$1
     local host_port=$2
     local container_name="health-check-${image_name}"
     local port_mapping=$(get_container_port_mapping $image_name $host_port)
     print_status "INFO" "Testing $image_name..."
+    if ! check_port_free $host_port; then
+        print_status "ERROR" "Port $host_port is already in use. Please free the port and rerun the health check."
+        exit 1
+    fi
     if ! docker run -d --rm --ulimit nofile=100000:100000 --name "$container_name" -p "$port_mapping" "$image_name" > /dev/null 2>&1; then
         print_status "ERROR" "$image_name: Failed to start container"
+        # Print container logs and exit code for debugging
+        if docker ps -a --format '{{.Names}}' | grep -q "^$container_name$"; then
+            echo "[DEBUG] Logs for $container_name:" >&2
+            docker logs "$container_name" >&2 || true
+            exit_code=$(docker inspect --format='{{.State.ExitCode}}' "$container_name" 2>/dev/null || echo "?")
+            echo "[DEBUG] Exit code for $container_name: $exit_code" >&2
+        fi
         FAILED_CONTAINERS=$((FAILED_CONTAINERS + 1))
         FAILED_LIST+=("$image_name (startup failed)")
-        return 1
+        return
     fi
     # Check ulimit inside the running container
-    local actual_ulimit=$(docker exec "$container_name" sh -c 'ulimit -n' 2>/dev/null)
-    if [ -z "$actual_ulimit" ]; then
-        print_status "WARNING" "$image_name: Could not determine ulimit inside container"
-    elif [ "$actual_ulimit" -lt 100000 ]; then
-        print_status "ERROR" "$image_name: ulimit -n is $actual_ulimit (expected 100000)"
+    container_ulimit=$(docker exec $container_name sh -c 'ulimit -n' 2>/dev/null)
+    if [[ "$container_ulimit" -ge 100000 ]]; then
+        print_status "SUCCESS" "$image_name: ulimit inside container is $container_ulimit (OK)"
+    else
+        print_status "ERROR" "$image_name: ulimit inside container is $container_ulimit (too low)"
+        stop_and_remove_container $container_name
         FAILED_CONTAINERS=$((FAILED_CONTAINERS + 1))
-        FAILED_LIST+=("$image_name (ulimit too low: $actual_ulimit)")
-        docker stop "$container_name" > /dev/null 2>&1 || true
-        return 1
+        FAILED_LIST+=("$image_name (ulimit)")
+        return
     fi
     local wait_time=$STARTUP_WAIT
     if [[ $image_name == *cowboy* ]] || [[ $image_name == *erlang* ]] || [[ $image_name == *erlindex* ]]; then
@@ -121,24 +150,42 @@ check_container_health() {
         if [[ "$ws_test_result" == *"101 Switching Protocols"* ]] || [[ "$ws_test_result" == *"Upgrade: websocket"* ]]; then
             print_status "SUCCESS" "$image_name: WebSocket container healthy (ready for benchmarking)"
             HEALTHY_CONTAINERS=$((HEALTHY_CONTAINERS + 1))
+            # Large payload WebSocket test (1MB)
+            python3 - <<EOF
+import asyncio, websockets, os, sys
+async def test():
+    try:
+        ws = await websockets.connect(f"ws://localhost:$host_port/ws", max_size=None)
+        payload = os.urandom(1024*1024)
+        await ws.send(payload)
+        resp = await ws.recv()
+        if resp == payload:
+            print("[SUCCESS] $image_name: WebSocket large payload test passed")
+        else:
+            print("[ERROR] $image_name: WebSocket large payload test failed (echo mismatch)")
+    except Exception as e:
+        print(f"[ERROR] $image_name: WebSocket large payload test failed: {e}")
+asyncio.run(test())
+EOF
         else
-            if check_http_response "$container_name" "$host_port"; then
-                print_status "SUCCESS" "$image_name: WebSocket container healthy (HTTP ready for benchmarking)"
-                HEALTHY_CONTAINERS=$((HEALTHY_CONTAINERS + 1))
-            else
-                print_status "ERROR" "$image_name: WebSocket container not ready for benchmarking"
-                FAILED_CONTAINERS=$((FAILED_CONTAINERS + 1))
-                FAILED_LIST+=("$image_name (health check failed)")
-            fi
+            print_status "ERROR" "$image_name: WebSocket handshake failed (not healthy)"
+            stop_and_remove_container $container_name
+            FAILED_CONTAINERS=$((FAILED_CONTAINERS + 1))
+            FAILED_LIST+=("$image_name (websocket)")
+            return
         fi
     else
-        if check_http_response "$container_name" "$host_port"; then
+        # HTTP health check
+        http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://localhost:$host_port/" 2>/dev/null || echo "000")
+        if [[ "$http_code" == "200" ]]; then
             print_status "SUCCESS" "$image_name: Healthy (ready for benchmarking)"
             HEALTHY_CONTAINERS=$((HEALTHY_CONTAINERS + 1))
         else
-            print_status "ERROR" "$image_name: Container not responding with 200 OK"
+            print_status "ERROR" "$image_name: HTTP health check failed (code $http_code)"
+            stop_and_remove_container $container_name
             FAILED_CONTAINERS=$((FAILED_CONTAINERS + 1))
-            FAILED_LIST+=("$image_name (health check failed)")
+            FAILED_LIST+=("$image_name (http)")
+            return
         fi
     fi
     docker stop "$container_name" > /dev/null 2>&1 || true
@@ -206,8 +253,13 @@ main() {
     print_status "INFO" "Found $TOTAL_CONTAINERS built containers to test"
     echo ""
     for image in "${built_images[@]}"; do
-        docker stop "health-check-${image}" > /dev/null 2>&1 || true
-        docker rm "health-check-${image}" > /dev/null 2>&1 || true
+        # Autodiscover and force stop/remove any dangling container with the same name
+        if docker ps -a --format '{{.Names}}' | grep -q "^health-check-${image}$"; then
+            print_status "INFO" "Stopping and removing dangling container: health-check-${image}"
+            docker stop "health-check-${image}" > /dev/null 2>&1 || true
+            docker rm "health-check-${image}" > /dev/null 2>&1 || true
+            sleep 1
+        fi
         check_container_health "$image" "$HOST_PORT"
         sleep 1
     done

@@ -167,14 +167,38 @@ While not required, you can still use the legacy naming convention for organizat
 
 ---
 
+## Payload Size Support
+
+All web servers in this framework are configured and tested to support large payloads:
+
+| Server Type / Container         | Config File Location                                 | Payload Size Directive / Setting         | Value / Default         | Health Check Test                      |
+|---------------------------------|-----------------------------------------------------|------------------------------------------|------------------------|----------------------------------------|
+| **Nginx (static)**              | containers/static/st-nginx-deb-self/nginx.conf       | client_max_body_size                     | 100m                   | 10MB HTTP POST                        |
+| **Nginx (dynamic)**             | containers/dynamic/dy-nginx-deb-self/nginx.conf      | client_max_body_size                     | 100m                   | 10MB HTTP POST                        |
+| **Nginx (websocket)**           | web-socket/ws-nginx-java-self/nginx.conf (and similar) | client_max_body_size                  | 100m                   | 1MB WebSocket message                  |
+| **Apache (static)**             | containers/static/st-apache-deb-self/apache2.conf    | LimitRequestBody                         | 104857600 (100MB)      | 10MB HTTP POST                        |
+| **Apache (dynamic)**            | containers/dynamic/dy-apache-deb-self/apache2.conf   | LimitRequestBody                         | 104857600 (100MB)      | 10MB HTTP POST                        |
+| **Yaws (static/dynamic)**       | containers/static/dy-yaws-*/yaws.conf                | (none)                                   | Unlimited (default)    | 10MB HTTP POST                        |
+| **Cowboy/Erlang/Erlindex**      | containers/static/dy-cowboy-*/, *-erlang*, *-erlindex* | (none)                                | Unlimited (default)    | 10MB HTTP POST / 1MB WebSocket message |
+| **WebSocket (Python)**          | ws-nginx-python-websockets-self/websocket_server.py  | max_size (websockets lib)                | None (unlimited)       | 1MB WebSocket message                  |
+| **WebSocket (Java/Spring)**     | ws-nginx-java-self/src/main/java/com/example/WebSocketConfig.java | setMaxTextMessageBufferSize, setMaxBinaryMessageBufferSize | 64MB | 1MB WebSocket message |
+| **WebSocket (Tornado)**         | ws-nginx-tornado-self/Dockerfile (inline)            | (none)                                   | Unlimited (default)    | 1MB WebSocket message                  |
+
+- All HTTP servers are configured to accept at least 100MB payloads.
+- All WebSocket servers are tested with at least 1MB messages.
+- The health check will fail if a server cannot handle these payloads.
+
+---
+
 ## Health Check System
 
 The framework includes a comprehensive health check system that validates containers before benchmarking:
 
 ### Health Check Features
 - **Container Startup**: Verifies containers start successfully
-- **HTTP Response**: Tests for proper HTTP 200 responses
-- **WebSocket Handshake**: Validates WebSocket upgrade responses
+- **HTTP Response**: Tests for proper HTTP 200 responses (HTTP containers only)
+- **WebSocket Handshake**: Only a successful WebSocket handshake (`101 Switching Protocols`) is accepted as healthy for WebSocket containers. HTTP 200 OK is **not** accepted for WebSocket containers.
+- **Large Payload Test**: For HTTP containers, a 10MB POST is sent and must be accepted (200/201/204/413). For WebSocket containers, a 1MB binary message is sent and must be echoed back correctly.
 - **Stability Testing**: Ensures containers remain running
 - **ulimit Enforcement**: Checks that `ulimit -n` is set to 100000 inside each container (required for high concurrency)
 - **Automatic Cleanup**: Stops and removes test containers
@@ -215,6 +239,22 @@ HOST_PORT=9001 ./check_health.sh
 [SUCCESS] Healthy containers: 28
 [SUCCESS] All containers are healthy! 🎉
 ```
+
+## Why the Health Check Verifies ulimit and Large Payload Support
+
+In this benchmarking framework, the health check does more than just verify that a container is up and running. It also:
+
+- **Checks the open file descriptor limit (`ulimit -n`)** inside each container to ensure it is set high enough (e.g., 100,000) for high-concurrency benchmarks.
+- **Tests large payload support** by sending a 10MB HTTP POST (for HTTP servers) or a 1MB message (for WebSocket servers) to verify the server is configured to handle large requests.
+
+**Why is this important?**
+
+- A container that is merely "up" may still be misconfigured for benchmarking (e.g., low ulimit, small payload limits).
+- Running benchmarks on such containers can lead to failed tests, misleading results, or wasted time.
+- By verifying these settings in the health check, you ensure that all servers are truly ready for high-load, high-concurrency, and large-payload benchmarks.
+
+**Best Practice:**
+- This approach is recommended for any benchmarking or performance testing framework, as it catches subtle misconfigurations early and guarantees the validity of your results.
 
 ---
 

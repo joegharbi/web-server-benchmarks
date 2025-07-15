@@ -67,22 +67,22 @@ full_ws_stream_rates=(10)
 full_ws_stream_durations=(5)
 
 # Quick test parameters for WebSocket benchmarks
-quick_ws_burst_clients=(5 50 100)
-quick_ws_burst_sizes=(8 64 512 1024 8192 65536)
+quick_ws_burst_clients=(5 50)
+quick_ws_burst_sizes=(8 1024 8192)
 quick_ws_burst_bursts=(3)
 quick_ws_burst_intervals=(0.5)
-quick_ws_stream_clients=(5 50 100)
-quick_ws_stream_sizes=(8 64 512 1024 8192 65536)
+quick_ws_stream_clients=(5 50)
+quick_ws_stream_sizes=(8 1024 8192)
 quick_ws_stream_rates=(10)
 quick_ws_stream_durations=(5)
 
 # Super quick test parameters for WebSocket benchmarks (single test)
 super_quick_ws_burst_clients=(5)
-super_quick_ws_burst_sizes=(8 64 512 1024 8192 65536)
+super_quick_ws_burst_sizes=(8 1024)
 super_quick_ws_burst_bursts=(3)
 super_quick_ws_burst_intervals=(0.5)
 super_quick_ws_stream_clients=(5)
-super_quick_ws_stream_sizes=(8 64 512 1024 8192 65536)
+super_quick_ws_stream_sizes=(8 1024)
 super_quick_ws_stream_rates=(10)
 super_quick_ws_stream_durations=(5)
 
@@ -194,6 +194,18 @@ if [[ $# -gt 0 ]]; then
     shift
     TARGET_IMAGES=("$@")
 fi
+
+check_port_free() {
+    local port=$1
+    for i in {1..10}; do
+        if ! lsof -i :$port >/dev/null 2>&1; then
+            return 0
+        fi
+        echo "[INFO] Port $port is busy, waiting... ($i/10)"
+        sleep 1
+    done
+    return 1
+}
 
 run_websocket_tests() {
     local image=$1
@@ -398,26 +410,92 @@ main() {
         echo "=== Static Container Tests ==="
         local static_containers=($(discover_containers "static"))
         for container in "${static_containers[@]}"; do
+            if ! check_port_free $HOST_PORT; then
+                echo "[ERROR] Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
+                exit 1
+            fi
+            # Before starting each container:
+            if docker ps -a --format '{{.Names}}' | grep -q "^$container$"; then
+                echo "[INFO] Stopping and removing dangling container: $container"
+                docker stop "$container" > /dev/null 2>&1 || true
+                docker rm "$container" > /dev/null 2>&1 || true
+                sleep 1
+            fi
             run_docker_tests "$container" "$HOST_PORT" "static"
+            sleep 1
         done
         echo "=== Dynamic Container Tests ==="
         local dynamic_containers=($(discover_containers "dynamic"))
         for container in "${dynamic_containers[@]}"; do
+            if ! check_port_free $HOST_PORT; then
+                echo "[ERROR] Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
+                exit 1
+            fi
+            # Before starting each container:
+            if docker ps -a --format '{{.Names}}' | grep -q "^$container$"; then
+                echo "[INFO] Stopping and removing dangling container: $container"
+                docker stop "$container" > /dev/null 2>&1 || true
+                docker rm "$container" > /dev/null 2>&1 || true
+                sleep 1
+            fi
             run_docker_tests "$container" "$HOST_PORT" "dynamic"
+            sleep 1
         done
         echo "=== WebSocket Tests ==="
         local websocket_containers=($(discover_containers "websocket"))
         for container in "${websocket_containers[@]}"; do
+            if ! check_port_free $HOST_PORT; then
+                echo "[ERROR] Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
+                exit 1
+            fi
+            # Before starting each container:
+            if docker ps -a --format '{{.Names}}' | grep -q "^$container$"; then
+                echo "[INFO] Stopping and removing dangling container: $container"
+                docker stop "$container" > /dev/null 2>&1 || true
+                docker rm "$container" > /dev/null 2>&1 || true
+                sleep 1
+            fi
             run_websocket_tests "$container" "$HOST_PORT"
+            sleep 1
         done
         # Also run sweeps for all websocket servers
         for container in "${websocket_containers[@]}"; do
+            if ! check_port_free $HOST_PORT; then
+                echo "[ERROR] Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
+                exit 1
+            fi
+            # Before starting each container:
+            if docker ps -a --format '{{.Names}}' | grep -q "^$container$"; then
+                echo "[INFO] Stopping and removing dangling container: $container"
+                docker stop "$container" > /dev/null 2>&1 || true
+                docker rm "$container" > /dev/null 2>&1 || true
+                sleep 1
+            fi
             run_concurrency_sweep "$container" "$HOST_PORT"
             run_payload_sweep "$container" "$HOST_PORT"
+            sleep 1
         done
         echo "=== Local Server Tests ==="
-        run_local_tests "nginx"
-        run_local_tests "yaws"
+        if ! check_port_free $HOST_PORT; then
+            echo "[ERROR] Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
+        else
+            # Before starting each local server:
+            if docker ps -a --format '{{.Names}}' | grep -q "^nginx$"; then
+                echo "[INFO] Stopping and removing dangling container: nginx"
+                docker stop "nginx" > /dev/null 2>&1 || true
+                docker rm "nginx" > /dev/null 2>&1 || true
+                sleep 1
+            fi
+            run_local_tests "nginx"
+            # Before starting each local server:
+            if docker ps -a --format '{{.Names}}' | grep -q "^yaws$"; then
+                echo "[INFO] Stopping and removing dangling container: yaws"
+                docker stop "yaws" > /dev/null 2>&1 || true
+                docker rm "yaws" > /dev/null 2>&1 || true
+                sleep 1
+            fi
+            run_local_tests "yaws"
+        fi
     else
         case $TARGET_TYPE in
             "static")
@@ -425,7 +503,19 @@ main() {
                     TARGET_IMAGES=($(discover_containers "static"))
                 fi
                 for container in "${TARGET_IMAGES[@]}"; do
+                    if ! check_port_free $HOST_PORT; then
+                        echo "[ERROR] Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
+                        exit 1
+                    fi
+                    # Before starting each container:
+                    if docker ps -a --format '{{.Names}}' | grep -q "^$container$"; then
+                        echo "[INFO] Stopping and removing dangling container: $container"
+                        docker stop "$container" > /dev/null 2>&1 || true
+                        docker rm "$container" > /dev/null 2>&1 || true
+                        sleep 1
+                    fi
                     run_docker_tests "$container" "$HOST_PORT" "static"
+                    sleep 1
                 done
                 ;;
             "dynamic")
@@ -433,7 +523,19 @@ main() {
                     TARGET_IMAGES=($(discover_containers "dynamic"))
                 fi
                 for container in "${TARGET_IMAGES[@]}"; do
+                    if ! check_port_free $HOST_PORT; then
+                        echo "[ERROR] Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
+                        exit 1
+                    fi
+                    # Before starting each container:
+                    if docker ps -a --format '{{.Names}}' | grep -q "^$container$"; then
+                        echo "[INFO] Stopping and removing dangling container: $container"
+                        docker stop "$container" > /dev/null 2>&1 || true
+                        docker rm "$container" > /dev/null 2>&1 || true
+                        sleep 1
+                    fi
                     run_docker_tests "$container" "$HOST_PORT" "dynamic"
+                    sleep 1
                 done
                 ;;
             "websocket")
@@ -441,7 +543,19 @@ main() {
                     TARGET_IMAGES=($(discover_containers "websocket"))
                 fi
                 for container in "${TARGET_IMAGES[@]}"; do
+                    if ! check_port_free $HOST_PORT; then
+                        echo "[ERROR] Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
+                        exit 1
+                    fi
+                    # Before starting each container:
+                    if docker ps -a --format '{{.Names}}' | grep -q "^$container$"; then
+                        echo "[INFO] Stopping and removing dangling container: $container"
+                        docker stop "$container" > /dev/null 2>&1 || true
+                        docker rm "$container" > /dev/null 2>&1 || true
+                        sleep 1
+                    fi
                     run_websocket_tests "$container" "$HOST_PORT"
+                    sleep 1
                 done
                 ;;
             "local")
@@ -449,7 +563,18 @@ main() {
                     TARGET_IMAGES=("nginx" "yaws")
                 fi
                 for server in "${TARGET_IMAGES[@]}"; do
-                    run_local_tests "$server"
+                    if ! check_port_free $HOST_PORT; then
+                        echo "[ERROR] Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
+                    else
+                        # Before starting each local server:
+                        if docker ps -a --format '{{.Names}}' | grep -q "^$server$"; then
+                            echo "[INFO] Stopping and removing dangling container: $server"
+                            docker stop "$server" > /dev/null 2>&1 || true
+                            docker rm "$server" > /dev/null 2>&1 || true
+                            sleep 1
+                        fi
+                        run_local_tests "$server"
+                    fi
                 done
                 ;;
             "concurrency-sweep")
@@ -458,7 +583,19 @@ main() {
                     TARGET_IMAGES=($(discover_containers "websocket"))
                 fi
                 for container in "${TARGET_IMAGES[@]}"; do
+                    if ! check_port_free $HOST_PORT; then
+                        echo "[ERROR] Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
+                        exit 1
+                    fi
+                    # Before starting each container:
+                    if docker ps -a --format '{{.Names}}' | grep -q "^$container$"; then
+                        echo "[INFO] Stopping and removing dangling container: $container"
+                        docker stop "$container" > /dev/null 2>&1 || true
+                        docker rm "$container" > /dev/null 2>&1 || true
+                        sleep 1
+                    fi
                     run_concurrency_sweep "$container" "$HOST_PORT"
+                    sleep 1
                 done
                 echo ""
                 echo "Concurrency sweep completed at $(date)"
@@ -471,7 +608,19 @@ main() {
                     TARGET_IMAGES=($(discover_containers "websocket"))
                 fi
                 for container in "${TARGET_IMAGES[@]}"; do
+                    if ! check_port_free $HOST_PORT; then
+                        echo "[ERROR] Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
+                        exit 1
+                    fi
+                    # Before starting each container:
+                    if docker ps -a --format '{{.Names}}' | grep -q "^$container$"; then
+                        echo "[INFO] Stopping and removing dangling container: $container"
+                        docker stop "$container" > /dev/null 2>&1 || true
+                        docker rm "$container" > /dev/null 2>&1 || true
+                        sleep 1
+                    fi
                     run_payload_sweep "$container" "$HOST_PORT"
+                    sleep 1
                 done
                 echo ""
                 echo "Payload sweep completed at $(date)"
