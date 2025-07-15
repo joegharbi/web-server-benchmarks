@@ -35,4 +35,4 @@ COPY yaws.conf /usr/local/etc/yaws/yaws.conf
 EXPOSE 80
 
 # Start Yaws as a daemon with the custom configuration file
-CMD ["/bin/sh", "-c", "yaws --daemon --conf /usr/local/etc/yaws/yaws.conf && sleep infinity"]
+CMD ["/bin/sh", "-c", "ulimit -n 100000 && yaws --daemon --conf /usr/local/etc/yaws/yaws.conf && sleep infinity"]

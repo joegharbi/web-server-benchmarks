@@ -71,4 +71,6 @@ COPY --from=builder /app/hello.beam /app/hello.beam
 EXPOSE 80
 
 # Start the server
-CMD ["erl", "-noshell", "-pa", "/app", "-eval", "c:l(hello), hello:main([]), init:stop()."]
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
+CMD ["/start.sh"]

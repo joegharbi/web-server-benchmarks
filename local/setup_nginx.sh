@@ -108,7 +108,7 @@ run_server() {
         echo -e "${RED}Nginx is not installed. Run './setup_nginx.sh install' first.${NC}"
         exit 1
     fi
-    sudo "$NGINX_BIN" -c "$NGINX_CONF"
+    sudo bash -c 'ulimit -n 100000; "$NGINX_BIN" -c "$NGINX_CONF"'
     sleep 2
     if ps aux | grep -v grep | grep '[n]ginx' > /dev/null; then
         echo -e "${GREEN}Server is running. Access it at http://localhost:8001${NC}"

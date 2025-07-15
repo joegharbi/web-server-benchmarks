@@ -31,6 +31,14 @@ case "${1:-}" in
         echo "  - Default container port: 80"
         exit 0
         ;;
+    "concurrency-sweep")
+        echo "Run concurrency sweep: test increasing client counts with fixed payload size."
+        exit 0
+        ;;
+    "payload-sweep")
+        echo "Run payload sweep: test increasing payload sizes with fixed client count."
+        exit 0
+        ;;
 esac
 
 # Fixed port for all containers (configurable via HOST_PORT env var)
@@ -46,34 +54,42 @@ quick_http_requests=(1000 5000 10000)
 super_quick_http_requests=(1000)
 
 # Full test parameters for WebSocket benchmarks
-full_ws_burst_clients=(1 10 50 200)
-full_ws_burst_sizes=(1 8 64 256 1024 8192 65536)
-full_ws_burst_bursts=(10 50)
-full_ws_burst_intervals=(0.1 0.5 1)
-full_ws_stream_clients=(1 10 50 200)
-full_ws_stream_sizes=(1 8 64 256 1024 8192 65536)
-full_ws_stream_rates=(10 100 1000)
-full_ws_stream_durations=(5 10 30)
+full_ws_burst_clients=(5 50 100)
+full_ws_burst_sizes=(8 64 512 1024 8192 65536)
+full_ws_burst_bursts=(3)
+full_ws_burst_intervals=(0.5)
+full_ws_stream_clients=(5 50 100)
+full_ws_stream_sizes=(8 64 512 1024 8192 65536)
+full_ws_stream_rates=(10)
+full_ws_stream_durations=(5)
 
 # Quick test parameters for WebSocket benchmarks
-quick_ws_burst_clients=(1 3)
-quick_ws_burst_sizes=(8 64)
-quick_ws_burst_bursts=(3 10)
+quick_ws_burst_clients=(5 50 100)
+quick_ws_burst_sizes=(8 64 512 1024 8192 65536)
+quick_ws_burst_bursts=(3)
 quick_ws_burst_intervals=(0.5)
-quick_ws_stream_clients=(1 3)
-quick_ws_stream_sizes=(8 64)
-quick_ws_stream_rates=(10 100)
+quick_ws_stream_clients=(5 50 100)
+quick_ws_stream_sizes=(8 64 512 1024 8192 65536)
+quick_ws_stream_rates=(10)
 quick_ws_stream_durations=(5)
 
 # Super quick test parameters for WebSocket benchmarks (single test)
-super_quick_ws_burst_clients=(1)
-super_quick_ws_burst_sizes=(8)
-super_quick_ws_burst_bursts=(1)
+super_quick_ws_burst_clients=(5)
+super_quick_ws_burst_sizes=(8 64 512 1024 8192 65536)
+super_quick_ws_burst_bursts=(3)
 super_quick_ws_burst_intervals=(0.5)
-super_quick_ws_stream_clients=(1)
-super_quick_ws_stream_sizes=(8)
+super_quick_ws_stream_clients=(5)
+super_quick_ws_stream_sizes=(8 64 512 1024 8192 65536)
 super_quick_ws_stream_rates=(10)
-super_quick_ws_stream_durations=(3)
+super_quick_ws_stream_durations=(5)
+
+# Concurrency sweep parameters
+concurrency_sweep_clients=(100 500 1000 2000 5000 10000)
+concurrency_sweep_size=8
+
+# Payload sweep parameters
+payload_sweep_clients=5
+payload_sweep_sizes=(8 64 512 1024 8192 65536)
 
 # Function to get container port mapping based on Dockerfile EXPOSE directive
 get_container_port_mapping() {
@@ -328,6 +344,48 @@ run_local_tests() {
     fi
 }
 
+run_concurrency_sweep() {
+    local image=$1
+    local host_port=$2
+    echo "Running concurrency sweep for $image on port $host_port"
+    local port_mapping=$(get_container_port_mapping $image $host_port)
+    local ws_url="ws://localhost:$host_port/ws"
+    for clients in "${concurrency_sweep_clients[@]}"; do
+        echo "  Concurrency test: $clients clients, ${concurrency_sweep_size}KB payload"
+        $PYTHON_PATH ./web-socket/measure_websocket.py \
+            --server_image "$image" \
+            --pattern burst \
+            --mode echo \
+            --clients $clients \
+            --size_kb $concurrency_sweep_size \
+            --bursts 3 \
+            --interval 0.5 \
+            --output_csv "$RESULTS_DIR/websocket/${image}_concurrency_sweep.csv" \
+            --measurement_type "concurrency_${clients}_${concurrency_sweep_size}"
+    done
+}
+
+run_payload_sweep() {
+    local image=$1
+    local host_port=$2
+    echo "Running payload sweep for $image on port $host_port"
+    local port_mapping=$(get_container_port_mapping $image $host_port)
+    local ws_url="ws://localhost:$host_port/ws"
+    for size_kb in "${payload_sweep_sizes[@]}"; do
+        echo "  Payload test: $payload_sweep_clients clients, ${size_kb}KB payload"
+        $PYTHON_PATH ./web-socket/measure_websocket.py \
+            --server_image "$image" \
+            --pattern burst \
+            --mode echo \
+            --clients $payload_sweep_clients \
+            --size_kb $size_kb \
+            --bursts 3 \
+            --interval 0.5 \
+            --output_csv "$RESULTS_DIR/websocket/${image}_payload_sweep.csv" \
+            --measurement_type "payload_${payload_sweep_clients}_${size_kb}"
+    done
+}
+
 main() {
     echo "Starting benchmarks at $(date)"
     echo "Results will be saved to: $RESULTS_DIR"
@@ -348,6 +406,11 @@ main() {
         local websocket_containers=($(discover_containers "websocket"))
         for container in "${websocket_containers[@]}"; do
             run_websocket_tests "$container" "$HOST_PORT"
+        done
+        # Also run sweeps for all websocket servers
+        for container in "${websocket_containers[@]}"; do
+            run_concurrency_sweep "$container" "$HOST_PORT"
+            run_payload_sweep "$container" "$HOST_PORT"
         done
         echo "=== Local Server Tests ==="
         run_local_tests "nginx"
@@ -385,6 +448,32 @@ main() {
                 for server in "${TARGET_IMAGES[@]}"; do
                     run_local_tests "$server"
                 done
+                ;;
+            "concurrency-sweep")
+                TARGET_TYPE="websocket"
+                if [ ${#TARGET_IMAGES[@]} -eq 0 ]; then
+                    TARGET_IMAGES=($(discover_containers "websocket"))
+                fi
+                for container in "${TARGET_IMAGES[@]}"; do
+                    run_concurrency_sweep "$container" "$HOST_PORT"
+                done
+                echo ""
+                echo "Concurrency sweep completed at $(date)"
+                echo "Results saved to: $RESULTS_DIR"
+                exit 0
+                ;;
+            "payload-sweep")
+                TARGET_TYPE="websocket"
+                if [ ${#TARGET_IMAGES[@]} -eq 0 ]; then
+                    TARGET_IMAGES=($(discover_containers "websocket"))
+                fi
+                for container in "${TARGET_IMAGES[@]}"; do
+                    run_payload_sweep "$container" "$HOST_PORT"
+                done
+                echo ""
+                echo "Payload sweep completed at $(date)"
+                echo "Results saved to: $RESULTS_DIR"
+                exit 0
                 ;;
             *)
                 echo "Unknown target type: $TARGET_TYPE"

@@ -49,4 +49,6 @@ COPY --from=builder /app/_build/prod/rel/simple_cowboy_app /app/simple_cowboy_ap
 EXPOSE 80
 
 # Start the application
-CMD ["/app/simple_cowboy_app/bin/simple_cowboy_app", "foreground"]
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
+CMD ["/start.sh"]

@@ -50,6 +50,7 @@ EXPOSE 80
 
 # Startup script to run Nginx and Python WebSocket server, with logging
 RUN echo "#!/bin/sh\n\
+ulimit -n 100000\n\
     echo \"Starting Nginx and WebSocket server...\"\n\
     # Start Python WebSocket server in background\n\
     python3 /app/websocket_server.py > /dev/stdout 2>&1 &\n\

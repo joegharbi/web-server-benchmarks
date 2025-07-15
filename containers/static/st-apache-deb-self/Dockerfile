@@ -22,4 +22,6 @@ COPY apache2.conf /etc/apache2/apache2.conf
 
 EXPOSE 80
 
-CMD ["apachectl", "-D", "FOREGROUND", "-f", "/etc/apache2/apache2.conf"]
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
+CMD ["/start.sh"]

@@ -161,7 +161,7 @@ def cleanup_existing_container(container_name, docker_path):
 
 def start_server_container(server_image, port_mapping, container_name, docker_path, network="bridge"):
     cleanup_existing_container(container_name, docker_path)
-    cmd = [docker_path, "run", "-d", "--name", container_name]
+    cmd = [docker_path, "run", "-d", "--ulimit", "nofile=100000:100000", "--name", container_name]
     if network == "host":
         cmd.extend(["--network", "host"])
     else:

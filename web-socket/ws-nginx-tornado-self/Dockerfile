@@ -81,6 +81,7 @@ EXPOSE 80
 
 # Startup script
 RUN echo "#!/bin/sh\n\
+ulimit -n 100000\n\
     echo \"Starting Nginx and Tornado WebSocket server...\"\n\
     # Start Tornado server in background\n\
     python3 /app/websocket_server.py > /dev/stdout 2>&1 &\n\

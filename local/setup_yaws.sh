@@ -170,7 +170,7 @@ run_server() {
         echo -e "${RED}Yaws is not installed. Run './setup_yaws.sh install' first.${NC}"
         exit 1
     fi
-    sudo yaws --daemon --conf "$YAWS_CONF"
+    sudo bash -c 'ulimit -n 100000; yaws --daemon --conf "$YAWS_CONF"'
     sleep 2
     if ps aux | grep -v grep | grep '[y]aws' > /dev/null; then
         echo -e "${GREEN}Server is running. Access it at http://localhost:8001${NC}"

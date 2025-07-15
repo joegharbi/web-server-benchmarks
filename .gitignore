@@ -10,6 +10,8 @@ results_websocket/
 results/
 graphs/
 *.json
+localhost:8001.auth
+report.log
 local/report.log
 local/localhost:8001.auth
 TODO

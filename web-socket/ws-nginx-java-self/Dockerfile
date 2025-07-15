@@ -31,6 +31,7 @@ EXPOSE 80
 
 # Startup script to run Nginx and Java
 RUN echo "#!/bin/sh\n\
+ulimit -n 100000\n\
 echo \"Starting Java WebSocket server...\"\n\
 java -Xmx2g -Xms512m -jar /app/websocket-server.jar > /dev/stdout 2>&1 &\n\
 JAVA_PID=\$!\n\
