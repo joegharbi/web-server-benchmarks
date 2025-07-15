@@ -51,53 +51,40 @@ HOST_PORT=${HOST_PORT:-8001}
 # Full test parameters for HTTP benchmarks (measure_docker.py and measure_local.py)
 full_http_requests=(100 1000 5000 8000 10000 15000 20000 30000 40000 50000 60000 70000 80000)
 
-# Quick test parameters for HTTP benchmarks
-quick_http_requests=(1000 5000 10000)
+# Quick test parameters for HTTP benchmarks (was super quick)
+quick_http_requests=(1000)
 
-# Super quick test parameters for HTTP benchmarks (single test)
-super_quick_http_requests=(1000)
-
-# Full test parameters for WebSocket benchmarks
+# Full test parameters for WebSocket benchmarks (balanced set)
 full_ws_burst_clients=(5 50 100)
-full_ws_burst_sizes=(8 64 512 1024 8192 65536)
+full_ws_burst_sizes=(8 1024 65536)
 full_ws_burst_bursts=(3)
 full_ws_burst_intervals=(0.5)
 full_ws_stream_clients=(5 50 100)
-full_ws_stream_sizes=(8 64 512 1024 8192 65536)
+full_ws_stream_sizes=(8 1024 65536)
 full_ws_stream_rates=(10)
 full_ws_stream_durations=(5)
 
-# Quick test parameters for WebSocket benchmarks
-quick_ws_burst_clients=(5 50)
-quick_ws_burst_sizes=(8 1024 8192)
-quick_ws_burst_bursts=(3)
+# Quick test parameters for WebSocket benchmarks (was super quick)
+quick_ws_burst_clients=(5)
+quick_ws_burst_sizes=(8)
+quick_ws_burst_bursts=(1)
 quick_ws_burst_intervals=(0.5)
-quick_ws_stream_clients=(5 50)
-quick_ws_stream_sizes=(8 1024 8192)
-quick_ws_stream_rates=(10)
-quick_ws_stream_durations=(5)
+quick_ws_stream_clients=(5)
+quick_ws_stream_sizes=(8)
+quick_ws_stream_rates=(1)
+quick_ws_stream_durations=(1)
+quick_concurrency_sweep_clients=(100)
+quick_concurrency_sweep_size=8
+quick_payload_sweep_clients=5
+quick_payload_sweep_sizes=(8)
 
-# Super quick test parameters for WebSocket benchmarks (single test)
-super_quick_ws_burst_clients=(5)
-super_quick_ws_burst_sizes=(8)
-super_quick_ws_burst_bursts=(1)
-super_quick_ws_burst_intervals=(0.5)
-super_quick_ws_stream_clients=(5)
-super_quick_ws_stream_sizes=(8)
-super_quick_ws_stream_rates=(1)
-super_quick_ws_stream_durations=(1)
-super_quick_concurrency_sweep_clients=(100)
-super_quick_concurrency_sweep_size=8
-super_quick_payload_sweep_clients=5
-super_quick_payload_sweep_sizes=(8)
-
-# Concurrency sweep parameters
-concurrency_sweep_clients=(100 500 1000 2000 5000 10000)
+# Concurrency sweep parameters (balanced)
+concurrency_sweep_clients=(100 1000 5000)
 concurrency_sweep_size=8
 
-# Payload sweep parameters
+# Payload sweep parameters (balanced)
 payload_sweep_clients=5
-payload_sweep_sizes=(8 64 512 1024 8192 65536)
+payload_sweep_sizes=(8 1024 65536)
 
 # Color codes for output
 RED='\033[0;31m'
@@ -243,24 +230,24 @@ run_websocket_tests() {
             --server_image "$image" \
             --pattern burst \
             --mode echo \
-            --clients ${super_quick_ws_burst_clients[0]} \
-            --size_kb ${super_quick_ws_burst_sizes[0]} \
-            --bursts ${super_quick_ws_burst_bursts[0]} \
-            --interval ${super_quick_ws_burst_intervals[0]} \
+            --clients ${quick_ws_burst_clients[0]} \
+            --size_kb ${quick_ws_burst_sizes[0]} \
+            --bursts ${quick_ws_burst_bursts[0]} \
+            --interval ${quick_ws_burst_intervals[0]} \
             --output_csv "$RESULTS_DIR/websocket/${image}.csv" \
-            --measurement_type "burst_${super_quick_ws_burst_clients[0]}_${super_quick_ws_burst_sizes[0]}_${super_quick_ws_burst_bursts[0]}_${super_quick_ws_burst_intervals[0]}"
+            --measurement_type "burst_${quick_ws_burst_clients[0]}_${quick_ws_burst_sizes[0]}_${quick_ws_burst_bursts[0]}_${quick_ws_burst_intervals[0]}"
         print_csv_summary "$RESULTS_DIR/websocket/${image}.csv"
         echo -e "${BLUE}--- WebSocket Stream Test (Super Quick) ---${NC}"
         $PYTHON_PATH ./web-socket/measure_websocket.py \
             --server_image "$image" \
             --pattern stream \
             --mode echo \
-            --clients ${super_quick_ws_stream_clients[0]} \
-            --size_kb ${super_quick_ws_stream_sizes[0]} \
-            --rate ${super_quick_ws_stream_rates[0]} \
-            --duration ${super_quick_ws_stream_durations[0]} \
+            --clients ${quick_ws_stream_clients[0]} \
+            --size_kb ${quick_ws_stream_sizes[0]} \
+            --rate ${quick_ws_stream_rates[0]} \
+            --duration ${quick_ws_stream_durations[0]} \
             --output_csv "$RESULTS_DIR/websocket/${image}.csv" \
-            --measurement_type "stream_${super_quick_ws_stream_clients[0]}_${super_quick_ws_stream_sizes[0]}_${super_quick_ws_stream_rates[0]}_${super_quick_ws_stream_durations[0]}"
+            --measurement_type "stream_${quick_ws_stream_clients[0]}_${quick_ws_stream_sizes[0]}_${quick_ws_stream_rates[0]}_${quick_ws_stream_durations[0]}"
         print_csv_summary "$RESULTS_DIR/websocket/${image}.csv"
     else
         burst_clients=("${full_ws_burst_clients[@]}")
@@ -361,12 +348,12 @@ run_concurrency_sweep() {
             --server_image "$image" \
             --pattern burst \
             --mode echo \
-            --clients ${super_quick_concurrency_sweep_clients[0]} \
-            --size_kb $super_quick_concurrency_sweep_size \
+            --clients ${quick_concurrency_sweep_clients[0]} \
+            --size_kb $quick_concurrency_sweep_size \
             --bursts 1 \
             --interval 0.5 \
             --output_csv "$csv_file" \
-            --measurement_type "concurrency_${super_quick_concurrency_sweep_clients[0]}_${super_quick_concurrency_sweep_size}"
+            --measurement_type "concurrency_${quick_concurrency_sweep_clients[0]}_${quick_concurrency_sweep_size}"
         print_csv_summary "$csv_file"
         echo -e "${BLUE}Concurrency sweep completed for $image at $(date)${NC}"
         echo "Results saved to: $csv_file"
@@ -407,12 +394,12 @@ run_payload_sweep() {
             --server_image "$image" \
             --pattern burst \
             --mode echo \
-            --clients $super_quick_payload_sweep_clients \
-            --size_kb ${super_quick_payload_sweep_sizes[0]} \
+            --clients $quick_payload_sweep_clients \
+            --size_kb ${quick_payload_sweep_sizes[0]} \
             --bursts 1 \
             --interval 0.5 \
             --output_csv "$csv_file" \
-            --measurement_type "payload_${super_quick_payload_sweep_clients}_${super_quick_payload_sweep_sizes[0]}"
+            --measurement_type "payload_${quick_payload_sweep_clients}_${quick_payload_sweep_sizes[0]}"
         print_csv_summary "$csv_file"
         echo -e "${BLUE}Payload sweep completed for $image at $(date)${NC}"
         echo "Results saved to: $csv_file"
@@ -453,7 +440,7 @@ run_docker_tests() {
     local ntests=0
     local -a test_counts
     if [[ $SUPER_QUICK_BENCH -eq 1 ]]; then
-        test_counts=("${super_quick_http_requests[@]}")
+        test_counts=("${quick_http_requests[@]}")
     elif [[ $QUICK_BENCH -eq 1 ]]; then
         test_counts=("${quick_http_requests[@]}")
     else
@@ -480,7 +467,7 @@ run_local_tests() {
     local ntests=0
     local -a test_counts
     if [[ $SUPER_QUICK_BENCH -eq 1 ]]; then
-        test_counts=("${super_quick_http_requests[@]}")
+        test_counts=("${quick_http_requests[@]}")
     elif [[ $QUICK_BENCH -eq 1 ]]; then
         test_counts=("${quick_http_requests[@]}")
     else
