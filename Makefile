@@ -1,171 +1,233 @@
 # Web Server Benchmarks Makefile
 
+.SHELL := /bin/bash
+
 # Configuration
 VENV_NAME ?= srv
 VENV_PATH = $(VENV_NAME)/bin/activate
 
-.PHONY: help install clean-build clean-repo build run-all run-static run-dynamic run-websocket run-local setup quick-test graph validate check-health build-test-run test-container
+.PHONY: help install clean-build clean-repo build run run-static run-dynamic run-websocket run-local setup quick-test graph validate check-health build-test-run test-container
 
-help: ## Show this help message
-	@echo "Web Server Benchmarks - Available Commands:"
-	@echo ""
-	@echo "Environment: $(VENV_NAME) (change with VENV_NAME=name)"
-	@echo ""
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | grep -vE 'check-env|ensure-env' | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
-	@echo ""
-	@echo "Setup:"
-	@echo "  1. Create virtual environment: python -m venv $(VENV_NAME)"
-	@echo "  2. Activate environment: source $(VENV_PATH)"
-	@echo "  3. Install dependencies: make install"
-	@echo ""
-	@echo "Quick Start:"
-	@echo "  make build-test-run    # Build, check health, and run all benchmarks"
-	@echo "  make test-container    # Test a specific container (usage: make test-container CONTAINER=st-nginx-deb)"
-	@echo ""
-	@echo "Auto-Discovery:"
-	@echo "  - Add new servers: create folder + Dockerfile in containers/static, containers/dynamic, or web-socket/"
-	@echo "  - Framework automatically detects, builds, tests, and benchmarks all containers"
-	@echo "  - No naming conventions required - any directory name works"
-	@echo "  - Port assignment based on Dockerfile EXPOSE directive"
+# Color codes
+GREEN=\033[0;32m
+RED=\033[0;31m
+YELLOW=\033[1;33m
+NC=\033[0m
 
-# Environment management
-check-env: ## Check if virtual environment is active
-	@if [ -z "$$VIRTUAL_ENV" ]; then \
-		echo "ERROR: Virtual environment not active"; \
-		echo "Please run: source $(VENV_PATH)"; \
-		echo "Or use: make ensure-env"; \
+check-tools: ## Check for required tools (Python, pip, Docker, scaphandre)
+	@command -v python3 >/dev/null 2>&1 || { printf "${RED}ERROR:${NC} python3 not found\n"; exit 1; }
+	@command -v pip >/dev/null 2>&1 || { printf "${RED}ERROR:${NC} pip not found\n"; exit 1; }
+	@command -v docker >/dev/null 2>&1 || { printf "${RED}ERROR:${NC} docker not found\n"; exit 1; }
+	@command -v scaphandre >/dev/null 2>&1 || { printf "${YELLOW}WARNING:${NC} scaphandre not found (energy measurements will be skipped)\n"; }
+	@printf "${GREEN}All required tools found.${NC}\n"
+
+check-env:  ## Check if Python virtual environment exists
+	@if [ ! -d srv ]; then \
+		echo "ERROR: Python virtual environment not found"; \
+		echo "Please run: make setup"; \
 		exit 1; \
 	fi
-	@echo "Virtual environment active: $$VIRTUAL_ENV"
 
-ensure-env: ## Ensure virtual environment is active
-	@if [ -z "$$VIRTUAL_ENV" ]; then \
-		echo "Activating virtual environment: $(VENV_NAME)"; \
-		. $(VENV_PATH); \
-	fi
-
-install: check-env ## Install Python dependencies
-	@echo "Installing dependencies in virtual environment..."
+install: check-env ## Install Python dependencies in the active virtual environment
+	@printf "${YELLOW}Installing dependencies in virtual environment...${NC}\n"
 	@pip install -r requirements.txt
+	@printf "${GREEN}Dependencies installed!${NC}\n"
 
-build: ## Build all Docker images
-	./install_benchmarks.sh
+build: check-tools ## Build all Docker images for all discovered containers
+	@printf "${YELLOW}Building all Docker images...${NC}\n"
+	@bash install_benchmarks.sh
+	@printf "${GREEN}Docker images built!${NC}\n"
 
 clean-build: ## Clean up Docker containers and images (use 'make clean-all' to also clean local servers)
-	./install_benchmarks.sh clean
+	@bash install_benchmarks.sh clean
 
 clean-local: ## Uninstall all local servers with uninstall support
-	for script in ./local/setup_*.sh; do \
+	@for script in ./local/setup_*.sh; do \
 		if grep -q 'uninstall_server()' $$script && grep -q 'uninstall") uninstall_server' $$script; then \
-			echo "Uninstalling with $$script"; \
+			printf "Uninstalling with $$script\n"; \
 			sudo $$script uninstall; \
 		fi \
 	done
 
 clean-all: ## Clean up Docker containers/images and uninstall local servers
-	$(MAKE) clean-build
-	$(MAKE) clean-local
+	@$(MAKE) clean-build
+	@$(MAKE) clean-local
 
 clean-repo: ## Clean repository to bare minimum (fresh clone state)
-	./run_benchmarks.sh clean
+	@bash run_benchmarks.sh clean
 
-run-all: ## Run all benchmarks
-	./run_benchmarks.sh
+run:  ## Run all benchmarks (static, dynamic, websocket, local)
+	@for v in ./*/bin/activate; do \
+		if [ -f "$$v" ]; then . "$$v"; break; fi; \
+	done; \
+	bash run_benchmarks.sh
 
-run: run-all ## Alias for run-all
+run-quick:  ## Quick test with single request per container type
+	@for v in ./*/bin/activate; do \
+		if [ -f "$$v" ]; then . "$$v"; break; fi; \
+	done; \
+	bash run_benchmarks.sh --super-quick
 
-run-static: ## Run static server benchmarks
-	./run_benchmarks.sh static
+run-single:  ## Run a single server benchmark (usage: make run-single SERVER=dy-nginx-deb-self)
+	@for v in ./*/bin/activate; do \
+		if [ -f "$$v" ]; then . "$$v"; break; fi; \
+	done; \
+	bash run_benchmarks.sh --single $(SERVER)
 
-run-dynamic: ## Run dynamic server benchmarks
-	./run_benchmarks.sh dynamic
+run-static:  ## Run static server benchmarks only
+	@for v in ./*/bin/activate; do \
+		if [ -f "$$v" ]; then . "$$v"; break; fi; \
+	done; \
+	bash run_benchmarks.sh --static
 
-run-websocket: ## Run WebSocket benchmarks
-	./run_benchmarks.sh websocket
+run-dynamic:  ## Run dynamic server benchmarks only
+	@for v in ./*/bin/activate; do \
+		if [ -f "$$v" ]; then . "$$v"; break; fi; \
+	done; \
+	bash run_benchmarks.sh --dynamic
 
-run-local: ## Run local server benchmarks
-	./run_benchmarks.sh local
+run-websocket:  ## Run WebSocket server benchmarks only
+	@for v in ./*/bin/activate; do \
+		if [ -f "$$v" ]; then . "$$v"; break; fi; \
+	done; \
+	bash run_benchmarks.sh --websocket
 
-check-health: ## Check health of all built containers (startup, HTTP response, stability)
-	@echo "Checking health of all built containers..."
-	@bash check_health.sh
+run-local:  ## Run local server benchmarks only
+	@for v in ./*/bin/activate; do \
+		if [ -f "$$v" ]; then . "$$v"; break; fi; \
+	done; \
+	bash run_benchmarks.sh --local
 
-health: check-health ## Alias for check-health
+check-health:  ## Check health of all built containers (startup, HTTP response, stability)
+	@for v in ./*/bin/activate; do \
+		if [ -f "$$v" ]; then . "$$v"; break; fi; \
+	done; \
+	bash check_health.sh
 
-check: check-health ## Alias for check-health
-
-build-test-run: ## Build all containers, check health, and run all benchmarks
-	@echo "=== Building all containers ==="
+build-test-run: check-env ## Build all containers, check health, and run all benchmarks
+	@printf "${YELLOW}=== Building all containers ===${NC}\n"
 	@$(MAKE) build
-	@echo ""
-	@echo "=== Checking container health ==="
+	@printf "\n"
+	@printf "${YELLOW}=== Checking container health ===${NC}\n"
 	@$(MAKE) check-health
-	@echo ""
-	@echo "=== Running all benchmarks ==="
-	@$(MAKE) run-all
+	@printf "\n"
+	@printf "${YELLOW}=== Running all benchmarks ===${NC}\n"
+	@$(MAKE) run
 
-test-container: ## Test a specific container (usage: make test-container CONTAINER=st-nginx-deb)
-	@if [ -z "$(CONTAINER)" ]; then \
-		echo "ERROR: CONTAINER variable not set"; \
-		echo "Usage: make test-container CONTAINER=<container-name>"; \
-		echo "Example: make test-container CONTAINER=st-nginx-deb"; \
-		exit 1; \
-	fi
-	@echo "Testing container: $(CONTAINER)"
-	@echo "=== Building container ==="
-	@docker build -t $(CONTAINER) ./containers/*/$(CONTAINER)/ 2>/dev/null || docker build -t $(CONTAINER) ./web-socket/$(CONTAINER)/ 2>/dev/null || (echo "ERROR: Container $(CONTAINER) not found" && exit 1)
-	@echo "=== Checking container health ==="
-	@bash check_health.sh | grep -A 5 -B 5 "$(CONTAINER)" || echo "Container $(CONTAINER) health check completed"
-	@echo "=== Running container benchmark ==="
-	@if [[ "$(CONTAINER)" == ws-* ]]; then \
-		./run_benchmarks.sh websocket $(CONTAINER); \
-	elif [[ "$(CONTAINER)" == dy-* ]]; then \
-		./run_benchmarks.sh dynamic $(CONTAINER); \
-	elif [[ "$(CONTAINER)" == st-* ]]; then \
-		./run_benchmarks.sh static $(CONTAINER); \
+quick-test: check-env ## Quick test with minimal requests (all discovered containers)
+	@bash run_benchmarks.sh --quick
+
+setup:  ## Set up Python virtual environment and install dependencies
+	@if [ ! -d srv ]; then \
+		python3 -m venv srv; \
+		echo "[INFO] Created Python virtual environment in ./srv"; \
 	else \
-		echo "ERROR: Unknown container type. Container name should start with ws-, dy-, or st-"; \
-		exit 1; \
+		echo "[INFO] Python virtual environment already exists in ./srv"; \
 	fi
+	@for v in ./*/bin/activate; do \
+		if [ -f "$$v" ]; then . "$$v"; break; fi; \
+	done; \
+	pip install --upgrade pip && pip install -r requirements.txt
+	@echo "[INFO] Python environment is ready."
 
-graph: check-env ## Generate graphs from results
-	@python3 gui_graph_generator.py
-
-validate: check-env ## Check and validate all required dependencies
-	@echo "Checking dependencies..."
-	@python3 --version || echo "ERROR: Python 3 not found"
-	@docker --version || echo "ERROR: Docker not found"
-	@scaphandre --version || echo "ERROR: Scaphandre not found"
-	@echo "Validation complete"
-
-setup: ## Set up only the Python virtual environment (no servers)
-	@echo "Creating virtual environment: $(VENV_NAME)"
-	@python -m venv $(VENV_NAME)
-	@echo "Virtual environment created!"
-	@echo "Next steps:"
-	@echo "  1. Activate: source $(VENV_PATH)"
-	@echo "  2. Install dependencies: make install OR make set-env"
-	@echo "  3. Set up servers: make setup-local (local) or make setup-docker (docker)"
-	@echo "  4. Validate: make validate"
-
-set-env: ## Set up Python virtual environment and install dependencies
-	@echo "Creating virtual environment: $(VENV_NAME)"
-	@python -m venv $(VENV_NAME)
-	@echo "Activating virtual environment and installing dependencies..."
-	. $(VENV_PATH); pip install -r requirements.txt
-	@echo "Environment and dependencies ready!"
-
-setup-local: ## Install/setup all local servers (nginx, yaws, etc.)
+setup-local: check-env ## Install/setup all local servers (nginx, yaws, etc.)
 	sudo ./local/setup_nginx.sh install
 	sudo ./local/setup_yaws.sh install
-	@echo "Local servers installed."
+	@printf "${GREEN}Local servers installed.${NC}\n"
 
-setup-docker: ## Build all Docker images/containers
-	$(MAKE) build
-	@echo "Docker images built."
+# Aliases for backward compatibility (not shown in help)
+setup-docker: build
 
-run-quick: ## Quick test with minimal requests (all discovered containers)
-	./run_benchmarks.sh --quick
+test-container: run-single
 
-run-super-quick: ## Super quick test with single request per container type
-	bash run_benchmarks.sh --super-quick 
+# Set help as the default goal
+.DEFAULT_GOAL := concise-help
+
+# Color variables
+YELLOW=\033[1;33m
+CYAN=\033[1;36m
+GREEN=\033[1;32m
+NC=\033[0m
+
+concise-help:
+	@printf "${YELLOW}Web Server Benchmarks - Common Commands:${NC}\n\n"
+	@printf "${CYAN}Environment:${NC} srv (change with VENV_NAME=name)\n\n"
+	@printf "${YELLOW}Setup:${NC}\n"
+	@printf "  %-22s %s\n" "setup" "Set up Python virtual environment and install dependencies"
+	@printf "  %-22s %s\n" "build" "Build all Docker images for all discovered containers"
+	@printf "\n"
+	@printf "${YELLOW}Run Benchmarks:${NC}\n"
+	@printf "  %-22s %s\n" "run" "Run the full benchmark suite"
+	@printf "  %-22s %s\n" "run-quick" "Super quick test (single request per container type)"
+	@printf "\n"
+	@printf "${GREEN}Quick Start:${NC}\n"
+	@printf "  make setup            # Set up Python environment\n"
+	@printf "  source srv/bin/activate\n"
+	@printf "  make build-test-run   # Build, check health, and run all benchmarks\n"
+	@printf "\n"
+	@printf "For more commands, run: make help\n"
+
+help:  ## Show this help message
+	@printf "${YELLOW}Web Server Benchmarks - Available Commands:${NC}\n\n"
+	@printf "${CYAN}Environment:${NC} srv (change with VENV_NAME=name)\n\n"
+	@printf "${YELLOW}Setup:${NC}\n"
+	@printf "  %-22s %s\n" "init" "One-step setup: venv, install, build, local servers, validate (recommended for new users)"
+	@printf "  %-22s %s\n" "setup" "Set up Python virtual environment and install dependencies"
+	@printf "  %-22s %s\n" "setup-local" "Install/setup all local servers (nginx, yaws, etc.)"
+	@printf "  %-22s %s\n" "build" "Build all Docker images for all discovered containers"
+	@printf "\n"
+	@printf "${YELLOW}Run Benchmarks:${NC}\n"
+	@printf "  %-22s %s\n" "run" "Run the full benchmark suite"
+	@printf "  %-22s %s\n" "run-quick" "Super quick test with single request per container type"
+	@printf "  %-22s %s\n" "run-single" "Run a single server benchmark (SERVER=dy-nginx-deb-self)"
+	@printf "  %-22s %s\n" "run-static" "Run static server benchmarks only"
+	@printf "  %-22s %s\n" "run-dynamic" "Run dynamic server benchmarks only"
+	@printf "  %-22s %s\n" "run-websocket" "Run WebSocket server benchmarks only"
+	@printf "  %-22s %s\n" "run-local" "Run local server benchmarks only"
+	@printf "\n"
+	@printf "${YELLOW}Validation & Health:${NC}\n"
+	@printf "  %-22s %s\n" "check-tools" "Check for required tools (Python, pip, Docker, scaphandre)"
+	@printf "  %-22s %s\n" "check-env" "Check if virtual environment is active"
+	@printf "  %-22s %s\n" "check-health" "Check health of all built containers (startup, HTTP response, stability)"
+	@printf "  %-22s %s\n" "validate" "Check and validate all required dependencies and tools"
+	@printf "\n"
+	@printf "${YELLOW}Build & Clean:${NC}\n"
+	@printf "  %-22s %s\n" "build-test-run" "Build all containers, check health, and run all benchmarks"
+	@printf "  %-22s %s\n" "clean-build" "Clean up Docker containers and images (use 'make clean-all' to also clean local servers)"
+	@printf "  %-22s %s\n" "clean-local" "Uninstall all local servers with uninstall support"
+	@printf "  %-22s %s\n" "clean-all" "Clean up Docker containers/images and uninstall local servers"
+	@printf "  %-22s %s\n" "clean-repo" "Clean repository to bare minimum (fresh clone state)"
+	@printf "\n"
+	@printf "${YELLOW}Other:${NC}\n"
+	@printf "  %-22s %s\n" "graph" "Generate graphs from results in the output directory"
+	@printf "  %-22s %s\n" "help" "Show this help message"
+	@printf "\n"
+	@printf "${GREEN}Quick Start:${NC}\n"
+	@printf "  make init    # One-step setup for new users (recommended)\n"
+	@printf "  make run     # Run all benchmarks\n"
+	@printf "  make run-quick # Super quick test\n"
+	@printf "\n"
+	@printf "${CYAN}Auto-Discovery:${NC}\n"
+	@printf "  - Add new servers: create folder + Dockerfile in containers/static, containers/dynamic, or web-socket/\n"
+	@printf "  - Framework automatically detects, builds, tests, and benchmarks all containers\n"
+	@printf "  - No naming conventions required - any directory name works\n"
+	@printf "  - Port assignment based on Dockerfile EXPOSE directive\n"
+	@printf "\n"
+	@printf "${CYAN}Advanced:${NC}\n"
+	@printf "  %-22s %s\n" "install" "(Advanced) Install Python dependencies in the active virtual environment only" 
+
+init:  ## One-step setup: venv, install, build, local servers, validate
+	@if [ ! -d srv ]; then \
+		python3 -m venv srv; \
+		echo "[INFO] Created Python virtual environment in ./srv"; \
+	else \
+		echo "[INFO] Python virtual environment already exists in ./srv"; \
+	fi
+	@for v in ./*/bin/activate; do \
+		if [ -f "$$v" ]; then . "$$v"; break; fi; \
+	done; \
+	pip install --upgrade pip && pip install -r requirements.txt
+	@$(MAKE) build
+	@$(MAKE) setup-local
+	@$(MAKE) validate
+	@echo "[INFO] All setup complete! Your environment is ready to run benchmarks." 
