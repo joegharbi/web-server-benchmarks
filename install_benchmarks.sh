@@ -35,7 +35,9 @@ function process_websocket() {
         if [ -f "$d/Dockerfile" ]; then
             local name=$(basename "$d")
             echo "Building Docker image for $d/Dockerfile as $name"
-            docker build -t "$name" "$d"
+            if ! docker build -t "$name" "$d"; then
+                build_failures+=("$name")
+            fi
         fi
     done
 }
@@ -48,10 +50,15 @@ function process_container_folder() {
         if [ -f "$d/Dockerfile" ]; then
             local name=$(basename "$d")
             echo "Building Docker image for $d/Dockerfile as $name"
-            docker build -t "$name" "$d"
+            if ! docker build -t "$name" "$d"; then
+                build_failures+=("$name")
+            fi
         fi
     done
 }
+
+# Track build failures
+build_failures=()
 
 if [[ $# -gt 0 ]]; then
     for arg in "$@"; do
@@ -78,4 +85,14 @@ else
     process_websocket
     process_container_folder "./containers/static"
     process_container_folder "./containers/dynamic"
+fi
+
+# Print build summary
+if [ ${#build_failures[@]} -eq 0 ]; then
+    echo "\n[BUILD SUMMARY] All images built successfully."
+else
+    echo "\n[BUILD SUMMARY] The following images failed to build:"
+    for img in "${build_failures[@]}"; do
+        echo "  - $img"
+    done
 fi

@@ -246,6 +246,18 @@ def main():
     if output_csv_dir:
         os.makedirs(output_csv_dir, exist_ok=True)
 
+    # Port-in-use check before starting container
+    host_port = args.port_mapping.split(":")[0]
+    import subprocess
+    result = subprocess.run(["ss", "-ltn"], capture_output=True, text=True)
+    if f":{host_port} " in result.stdout:
+        logger.error(f"[ERROR] Port {host_port} is already in use. Please stop the process or container using it before running the benchmark.")
+        result2 = subprocess.run(["ss", "-ltnp"], capture_output=True, text=True)
+        logger.error("[INFO] The following processes are using port %s:\n%s", host_port, '\n'.join([line for line in result2.stdout.splitlines() if f":{host_port} " in line]))
+        result3 = subprocess.run(["docker", "ps", "--filter", f"publish={host_port}"], capture_output=True, text=True)
+        logger.error("[INFO] Docker containers using this port:\n%s", result3.stdout)
+        exit(1)
+
     cleanup_existing_scaphandre()
     logger.info(f"Starting container '{container_name}'...")
     start_server_container(args.server_image, args.port_mapping, container_name, docker_path, args.network)

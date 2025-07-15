@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # Set high open file descriptor limit for benchmarking session
 ulimit -n 100000
@@ -93,6 +94,24 @@ concurrency_sweep_size=8
 # Payload sweep parameters
 payload_sweep_clients=5
 payload_sweep_sizes=(8 64 512 1024 8192 65536)
+
+# Color codes for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+print_status() {
+    local status=$1
+    local message=$2
+    case $status in
+        "INFO") echo -e "${BLUE}[INFO]${NC} $message" ;;
+        "SUCCESS") echo -e "${GREEN}[SUCCESS]${NC} $message" ;;
+        "WARNING") echo -e "${YELLOW}[WARNING]${NC} $message" ;;
+        "ERROR") echo -e "${RED}[ERROR]${NC} $message" ;;
+    esac
+}
 
 # Function to get container port mapping based on Dockerfile EXPOSE directive
 get_container_port_mapping() {
@@ -286,87 +305,52 @@ run_websocket_tests() {
     done
 }
 
-run_docker_tests() {
-    local image=$1
-    local host_port=$2
-    local test_type=$3
-    echo "Running $test_type tests for $image on port $host_port"
-    local port_mapping=$(get_container_port_mapping $image $host_port)
-    if [[ $SUPER_QUICK_BENCH -eq 1 ]]; then
-        # Super quick test: run with single request count
-        for num_requests in "${super_quick_http_requests[@]}"; do
-            echo "  Testing with $num_requests requests"
-            $PYTHON_PATH ./containers/measure_docker.py \
-                --server_image "$image" \
-                --port_mapping "$port_mapping" \
-                --num_requests "$num_requests" \
-                --output_csv "$RESULTS_DIR/$test_type/${image}.csv"
-        done
-    elif [[ $QUICK_BENCH -eq 1 ]]; then
-        # Quick test: run with 3 different request counts
-        for num_requests in "${quick_http_requests[@]}"; do
-            echo "  Testing with $num_requests requests"
-            $PYTHON_PATH ./containers/measure_docker.py \
-                --server_image "$image" \
-                --port_mapping "$port_mapping" \
-                --num_requests "$num_requests" \
-                --output_csv "$RESULTS_DIR/$test_type/${image}.csv"
-        done
+# Helper to print a short summary from the last line of a CSV file
+print_csv_summary() {
+    local csv_file="$1"
+    [ -f "$csv_file" ] || return
+    local header last_row
+    header=$(head -1 "$csv_file")
+    last_row=$(tail -1 "$csv_file")
+    IFS=',' read -r -a cols <<EOF
+$header
+EOF
+    IFS=',' read -r -a vals <<EOF
+$last_row
+EOF
+    local total_idx=-1 fail_idx=-1 latency_idx=-1 throughput_idx=-1
+    for i in $(seq 0 $((${#cols[@]} - 1))); do
+        col="${cols[$i]}"
+        case "$col" in
+            Total\ Requests|Total\ Messages) total_idx=$i ;;
+            Failed\ Requests|Failed\ Messages) fail_idx=$i ;;
+            Avg\ Latency*) latency_idx=$i ;;
+            Throughput*) throughput_idx=$i ;;
+        esac
+    done
+    local total="-" fail="-" latency="-" throughput="-"
+    [ $total_idx -ge 0 ] && total="${vals[$total_idx]}"
+    [ $fail_idx -ge 0 ] && fail="${vals[$fail_idx]}"
+    [ $latency_idx -ge 0 ] && latency="${vals[$latency_idx]}"
+    [ $throughput_idx -ge 0 ] && throughput="${vals[$throughput_idx]}"
+    if [ "$total" = "$fail" ] && [ -n "$total" ]; then
+        echo "  -> WARNING: All failed ($fail/$total)"
     else
-        # Full test: run with all request counts from the full_http_requests array
-        for num_requests in "${full_http_requests[@]}"; do
-            echo "  Testing with $num_requests requests"
-            $PYTHON_PATH ./containers/measure_docker.py \
-                --server_image "$image" \
-                --port_mapping "$port_mapping" \
-                --num_requests "$num_requests" \
-                --output_csv "$RESULTS_DIR/$test_type/${image}.csv"
-        done
-    fi
-}
-
-run_local_tests() {
-    local server=$1
-    echo "Running local tests for $server"
-    
-    if [[ $SUPER_QUICK_BENCH -eq 1 ]]; then
-        # Super quick test: run with single request count
-        for num_requests in "${super_quick_http_requests[@]}"; do
-            echo "  Testing with $num_requests requests"
-            $PYTHON_PATH ./local/measure_local.py \
-                --server "$server" \
-                --num_requests "$num_requests" \
-                --output_csv "$RESULTS_DIR/local/${server}.csv"
-        done
-    elif [[ $QUICK_BENCH -eq 1 ]]; then
-        # Quick test: run with 3 different request counts
-        for num_requests in "${quick_http_requests[@]}"; do
-            echo "  Testing with $num_requests requests"
-            $PYTHON_PATH ./local/measure_local.py \
-                --server "$server" \
-                --num_requests "$num_requests" \
-                --output_csv "$RESULTS_DIR/local/${server}.csv"
-        done
-    else
-        # Full test: run with all request counts from the full_http_requests array
-        for num_requests in "${full_http_requests[@]}"; do
-            echo "  Testing with $num_requests requests"
-            $PYTHON_PATH ./local/measure_local.py \
-                --server "$server" \
-                --num_requests "$num_requests" \
-                --output_csv "$RESULTS_DIR/local/${server}.csv"
-        done
+        echo "  -> Success: $((total-fail))/$total, Avg Latency: $latency ms, Throughput: $throughput MB/s"
     fi
 }
 
 run_concurrency_sweep() {
     local image=$1
     local host_port=$2
-    echo "Running concurrency sweep for $image on port $host_port"
+    echo -e "${BLUE}\n=== WebSocket Concurrency Sweep: $image ===${NC}"
     local port_mapping=$(get_container_port_mapping $image $host_port)
     local ws_url="ws://localhost:$host_port/ws"
+    local ntests=${#concurrency_sweep_clients[@]}
+    local idx=1
     for clients in "${concurrency_sweep_clients[@]}"; do
-        echo "  Concurrency test: $clients clients, ${concurrency_sweep_size}KB payload"
+        local csv_file="$RESULTS_DIR/websocket/${image}_concurrency_sweep.csv"
+        echo "[$idx/$ntests] Concurrency: $clients clients, ${concurrency_sweep_size}KB payload"
         $PYTHON_PATH ./web-socket/measure_websocket.py \
             --server_image "$image" \
             --pattern burst \
@@ -375,19 +359,26 @@ run_concurrency_sweep() {
             --size_kb $concurrency_sweep_size \
             --bursts 3 \
             --interval 0.5 \
-            --output_csv "$RESULTS_DIR/websocket/${image}_concurrency_sweep.csv" \
+            --output_csv "$csv_file" \
             --measurement_type "concurrency_${clients}_${concurrency_sweep_size}"
+        print_csv_summary "$csv_file"
+        idx=$((idx+1))
     done
+    echo -e "${BLUE}Concurrency sweep completed for $image at $(date)${NC}"
+    echo "Results saved to: $RESULTS_DIR/websocket/${image}_concurrency_sweep.csv"
 }
 
 run_payload_sweep() {
     local image=$1
     local host_port=$2
-    echo "Running payload sweep for $image on port $host_port"
+    echo -e "${BLUE}\n=== WebSocket Payload Sweep: $image ===${NC}"
     local port_mapping=$(get_container_port_mapping $image $host_port)
     local ws_url="ws://localhost:$host_port/ws"
+    local ntests=${#payload_sweep_sizes[@]}
+    local idx=1
     for size_kb in "${payload_sweep_sizes[@]}"; do
-        echo "  Payload test: $payload_sweep_clients clients, ${size_kb}KB payload"
+        local csv_file="$RESULTS_DIR/websocket/${image}_payload_sweep.csv"
+        echo "[$idx/$ntests] Payload: $payload_sweep_clients clients, ${size_kb}KB payload"
         $PYTHON_PATH ./web-socket/measure_websocket.py \
             --server_image "$image" \
             --pattern burst \
@@ -396,9 +387,114 @@ run_payload_sweep() {
             --size_kb $size_kb \
             --bursts 3 \
             --interval 0.5 \
-            --output_csv "$RESULTS_DIR/websocket/${image}_payload_sweep.csv" \
+            --output_csv "$csv_file" \
             --measurement_type "payload_${payload_sweep_clients}_${size_kb}"
+        print_csv_summary "$csv_file"
+        idx=$((idx+1))
     done
+    echo -e "${BLUE}Payload sweep completed for $image at $(date)${NC}"
+    echo "Results saved to: $RESULTS_DIR/websocket/${image}_payload_sweep.csv"
+}
+
+# For static, dynamic, and local runs, add test numbering and summary
+run_docker_tests() {
+    local image=$1
+    local host_port=$2
+    local test_type=$3
+    echo -e "${BLUE}Running $test_type tests for $image on port $host_port${NC}"
+    local port_mapping=$(get_container_port_mapping $image $host_port)
+    local ntests=0
+    local -a test_counts
+    if [[ $SUPER_QUICK_BENCH -eq 1 ]]; then
+        test_counts=("${super_quick_http_requests[@]}")
+    elif [[ $QUICK_BENCH -eq 1 ]]; then
+        test_counts=("${quick_http_requests[@]}")
+    else
+        test_counts=("${full_http_requests[@]}")
+    fi
+    ntests=${#test_counts[@]}
+    local idx=1
+    for num_requests in "${test_counts[@]}"; do
+        local csv_file="$RESULTS_DIR/$test_type/${image}.csv"
+        echo "[$idx/$ntests] $test_type: $num_requests requests"
+        $PYTHON_PATH ./containers/measure_docker.py \
+            --server_image "$image" \
+            --port_mapping "$port_mapping" \
+            --num_requests "$num_requests" \
+            --output_csv "$csv_file"
+        print_csv_summary "$csv_file"
+        idx=$((idx+1))
+    done
+}
+
+run_local_tests() {
+    local server=$1
+    echo -e "${BLUE}Running local tests for $server${NC}"
+    local ntests=0
+    local -a test_counts
+    if [[ $SUPER_QUICK_BENCH -eq 1 ]]; then
+        test_counts=("${super_quick_http_requests[@]}")
+    elif [[ $QUICK_BENCH -eq 1 ]]; then
+        test_counts=("${quick_http_requests[@]}")
+    else
+        test_counts=("${full_http_requests[@]}")
+    fi
+    ntests=${#test_counts[@]}
+    local idx=1
+    for num_requests in "${test_counts[@]}"; do
+        local csv_file="$RESULTS_DIR/local/${server}.csv"
+        echo "[$idx/$ntests] local: $num_requests requests"
+        $PYTHON_PATH ./local/measure_local.py \
+            --server "$server" \
+            --num_requests "$num_requests" \
+            --output_csv "$csv_file"
+        print_csv_summary "$csv_file"
+        idx=$((idx+1))
+    done
+}
+
+# After all benchmarks are run, print a summary of containers with 100% failed requests
+print_run_summary() {
+    local failed_containers=()
+    local results_dir="$RESULTS_DIR"
+    for csv in "$results_dir"/static/*.csv "$results_dir"/dynamic/*.csv "$results_dir"/websocket/*.csv "$results_dir"/local/*.csv; do
+        [ -f "$csv" ] || continue
+        # Get the header and the last row (most recent run)
+        header=$(head -1 "$csv")
+        last_row=$(tail -1 "$csv")
+        # Determine column indices
+        IFS=',' read -r -a cols <<EOF
+$header
+EOF
+        IFS=',' read -r -a vals <<EOF
+$last_row
+EOF
+        total_idx=-1
+        fail_idx=-1
+        for i in $(seq 0 $((${#cols[@]} - 1))); do
+            col="${cols[$i]}"
+            case "$col" in
+                Total\ Requests|Total\ Messages) total_idx=$i ;;
+                Failed\ Requests|Failed\ Messages) fail_idx=$i ;;
+            esac
+        done
+        if [[ $total_idx -ge 0 ]] && [[ $fail_idx -ge 0 ]]; then
+            total="${vals[$total_idx]}"
+            fail="${vals[$fail_idx]}"
+            if [ "$total" = "$fail" ] && [ -n "$total" ]; then
+                container_name="${vals[0]}"
+                failed_containers+=("$container_name ($csv)")
+            fi
+        fi
+    done
+    if [ ${#failed_containers[@]} -eq 0 ]; then
+        echo -e "\n[RUN SUMMARY] All containers ran successfully (no 100% failed requests)."
+    else
+        echo -e "\n[RUN SUMMARY] The following containers had 100% failed requests:"
+        for c in "${failed_containers[@]}"; do
+            echo "  - $c"
+        done
+    fi
 }
 
 main() {
@@ -407,16 +503,16 @@ main() {
     echo ""
     if [[ $RUN_ALL -eq 1 ]]; then
         echo "Running all benchmarks..."
-        echo "=== Static Container Tests ==="
+        echo -e "${BLUE}=== Static Container Tests ===${NC}"
         local static_containers=($(discover_containers "static"))
         for container in "${static_containers[@]}"; do
             if ! check_port_free $HOST_PORT; then
-                echo "[ERROR] Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
+                echo -e "${RED}[ERROR]${NC} Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
                 exit 1
             fi
             # Before starting each container:
             if docker ps -a --format '{{.Names}}' | grep -q "^$container$"; then
-                echo "[INFO] Stopping and removing dangling container: $container"
+                echo -e "${BLUE}[INFO]${NC} Stopping and removing dangling container: $container"
                 docker stop "$container" > /dev/null 2>&1 || true
                 docker rm "$container" > /dev/null 2>&1 || true
                 sleep 1
@@ -424,16 +520,16 @@ main() {
             run_docker_tests "$container" "$HOST_PORT" "static"
             sleep 1
         done
-        echo "=== Dynamic Container Tests ==="
+        echo -e "${BLUE}=== Dynamic Container Tests ===${NC}"
         local dynamic_containers=($(discover_containers "dynamic"))
         for container in "${dynamic_containers[@]}"; do
             if ! check_port_free $HOST_PORT; then
-                echo "[ERROR] Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
+                echo -e "${RED}[ERROR]${NC} Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
                 exit 1
             fi
             # Before starting each container:
             if docker ps -a --format '{{.Names}}' | grep -q "^$container$"; then
-                echo "[INFO] Stopping and removing dangling container: $container"
+                echo -e "${BLUE}[INFO]${NC} Stopping and removing dangling container: $container"
                 docker stop "$container" > /dev/null 2>&1 || true
                 docker rm "$container" > /dev/null 2>&1 || true
                 sleep 1
@@ -441,16 +537,16 @@ main() {
             run_docker_tests "$container" "$HOST_PORT" "dynamic"
             sleep 1
         done
-        echo "=== WebSocket Tests ==="
+        echo -e "${BLUE}=== WebSocket Tests ===${NC}"
         local websocket_containers=($(discover_containers "websocket"))
         for container in "${websocket_containers[@]}"; do
             if ! check_port_free $HOST_PORT; then
-                echo "[ERROR] Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
+                echo -e "${RED}[ERROR]${NC} Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
                 exit 1
             fi
             # Before starting each container:
             if docker ps -a --format '{{.Names}}' | grep -q "^$container$"; then
-                echo "[INFO] Stopping and removing dangling container: $container"
+                echo -e "${BLUE}[INFO]${NC} Stopping and removing dangling container: $container"
                 docker stop "$container" > /dev/null 2>&1 || true
                 docker rm "$container" > /dev/null 2>&1 || true
                 sleep 1
@@ -461,12 +557,12 @@ main() {
         # Also run sweeps for all websocket servers
         for container in "${websocket_containers[@]}"; do
             if ! check_port_free $HOST_PORT; then
-                echo "[ERROR] Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
+                echo -e "${RED}[ERROR]${NC} Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
                 exit 1
             fi
             # Before starting each container:
             if docker ps -a --format '{{.Names}}' | grep -q "^$container$"; then
-                echo "[INFO] Stopping and removing dangling container: $container"
+                echo -e "${BLUE}[INFO]${NC} Stopping and removing dangling container: $container"
                 docker stop "$container" > /dev/null 2>&1 || true
                 docker rm "$container" > /dev/null 2>&1 || true
                 sleep 1
@@ -475,13 +571,13 @@ main() {
             run_payload_sweep "$container" "$HOST_PORT"
             sleep 1
         done
-        echo "=== Local Server Tests ==="
+        echo -e "${BLUE}=== Local Server Tests ===${NC}"
         if ! check_port_free $HOST_PORT; then
-            echo "[ERROR] Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
+            echo -e "${RED}[ERROR]${NC} Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
         else
             # Before starting each local server:
             if docker ps -a --format '{{.Names}}' | grep -q "^nginx$"; then
-                echo "[INFO] Stopping and removing dangling container: nginx"
+                echo -e "${BLUE}[INFO]${NC} Stopping and removing dangling container: nginx"
                 docker stop "nginx" > /dev/null 2>&1 || true
                 docker rm "nginx" > /dev/null 2>&1 || true
                 sleep 1
@@ -489,7 +585,7 @@ main() {
             run_local_tests "nginx"
             # Before starting each local server:
             if docker ps -a --format '{{.Names}}' | grep -q "^yaws$"; then
-                echo "[INFO] Stopping and removing dangling container: yaws"
+                echo -e "${BLUE}[INFO]${NC} Stopping and removing dangling container: yaws"
                 docker stop "yaws" > /dev/null 2>&1 || true
                 docker rm "yaws" > /dev/null 2>&1 || true
                 sleep 1
@@ -504,12 +600,12 @@ main() {
                 fi
                 for container in "${TARGET_IMAGES[@]}"; do
                     if ! check_port_free $HOST_PORT; then
-                        echo "[ERROR] Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
+                        echo -e "${RED}[ERROR]${NC} Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
                         exit 1
                     fi
                     # Before starting each container:
                     if docker ps -a --format '{{.Names}}' | grep -q "^$container$"; then
-                        echo "[INFO] Stopping and removing dangling container: $container"
+                        echo -e "${BLUE}[INFO]${NC} Stopping and removing dangling container: $container"
                         docker stop "$container" > /dev/null 2>&1 || true
                         docker rm "$container" > /dev/null 2>&1 || true
                         sleep 1
@@ -524,12 +620,12 @@ main() {
                 fi
                 for container in "${TARGET_IMAGES[@]}"; do
                     if ! check_port_free $HOST_PORT; then
-                        echo "[ERROR] Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
+                        echo -e "${RED}[ERROR]${NC} Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
                         exit 1
                     fi
                     # Before starting each container:
                     if docker ps -a --format '{{.Names}}' | grep -q "^$container$"; then
-                        echo "[INFO] Stopping and removing dangling container: $container"
+                        echo -e "${BLUE}[INFO]${NC} Stopping and removing dangling container: $container"
                         docker stop "$container" > /dev/null 2>&1 || true
                         docker rm "$container" > /dev/null 2>&1 || true
                         sleep 1
@@ -544,12 +640,12 @@ main() {
                 fi
                 for container in "${TARGET_IMAGES[@]}"; do
                     if ! check_port_free $HOST_PORT; then
-                        echo "[ERROR] Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
+                        echo -e "${RED}[ERROR]${NC} Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
                         exit 1
                     fi
                     # Before starting each container:
                     if docker ps -a --format '{{.Names}}' | grep -q "^$container$"; then
-                        echo "[INFO] Stopping and removing dangling container: $container"
+                        echo -e "${BLUE}[INFO]${NC} Stopping and removing dangling container: $container"
                         docker stop "$container" > /dev/null 2>&1 || true
                         docker rm "$container" > /dev/null 2>&1 || true
                         sleep 1
@@ -564,11 +660,11 @@ main() {
                 fi
                 for server in "${TARGET_IMAGES[@]}"; do
                     if ! check_port_free $HOST_PORT; then
-                        echo "[ERROR] Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
+                        echo -e "${RED}[ERROR]${NC} Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
                     else
                         # Before starting each local server:
                         if docker ps -a --format '{{.Names}}' | grep -q "^$server$"; then
-                            echo "[INFO] Stopping and removing dangling container: $server"
+                            echo -e "${BLUE}[INFO]${NC} Stopping and removing dangling container: $server"
                             docker stop "$server" > /dev/null 2>&1 || true
                             docker rm "$server" > /dev/null 2>&1 || true
                             sleep 1
@@ -584,12 +680,12 @@ main() {
                 fi
                 for container in "${TARGET_IMAGES[@]}"; do
                     if ! check_port_free $HOST_PORT; then
-                        echo "[ERROR] Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
+                        echo -e "${RED}[ERROR]${NC} Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
                         exit 1
                     fi
                     # Before starting each container:
                     if docker ps -a --format '{{.Names}}' | grep -q "^$container$"; then
-                        echo "[INFO] Stopping and removing dangling container: $container"
+                        echo -e "${BLUE}[INFO]${NC} Stopping and removing dangling container: $container"
                         docker stop "$container" > /dev/null 2>&1 || true
                         docker rm "$container" > /dev/null 2>&1 || true
                         sleep 1
@@ -598,7 +694,7 @@ main() {
                     sleep 1
                 done
                 echo ""
-                echo "Concurrency sweep completed at $(date)"
+                echo -e "${BLUE}Concurrency sweep completed at $(date)${NC}"
                 echo "Results saved to: $RESULTS_DIR"
                 exit 0
                 ;;
@@ -609,12 +705,12 @@ main() {
                 fi
                 for container in "${TARGET_IMAGES[@]}"; do
                     if ! check_port_free $HOST_PORT; then
-                        echo "[ERROR] Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
+                        echo -e "${RED}[ERROR]${NC} Port $HOST_PORT is already in use. Please free the port and rerun the benchmark."
                         exit 1
                     fi
                     # Before starting each container:
                     if docker ps -a --format '{{.Names}}' | grep -q "^$container$"; then
-                        echo "[INFO] Stopping and removing dangling container: $container"
+                        echo -e "${BLUE}[INFO]${NC} Stopping and removing dangling container: $container"
                         docker stop "$container" > /dev/null 2>&1 || true
                         docker rm "$container" > /dev/null 2>&1 || true
                         sleep 1
@@ -623,7 +719,7 @@ main() {
                     sleep 1
                 done
                 echo ""
-                echo "Payload sweep completed at $(date)"
+                echo -e "${BLUE}Payload sweep completed at $(date)${NC}"
                 echo "Results saved to: $RESULTS_DIR"
                 exit 0
                 ;;
@@ -635,8 +731,9 @@ main() {
         esac
     fi
     echo ""
-    echo "Benchmarks completed at $(date)"
+    echo -e "${BLUE}Benchmarks completed at $(date)${NC}"
     echo "Results saved to: $RESULTS_DIR"
 }
 
 main "$@"
+print_run_summary

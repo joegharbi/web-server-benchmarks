@@ -229,6 +229,16 @@ main() {
     print_status "INFO" "Using fixed host port: $HOST_PORT"
     echo ""
     
+    # Check if port is in use before starting each container
+    if ss -ltn | grep -q ":$HOST_PORT "; then
+        echo "[ERROR] Port $HOST_PORT is already in use. Please stop the process or container using it before running the health check."
+        echo "[INFO] The following processes are using port $HOST_PORT:"
+        ss -ltnp | grep ":$HOST_PORT "
+        echo "[INFO] Docker containers using this port:"
+        docker ps --filter "publish=$HOST_PORT"
+        exit 1
+    fi
+
     # Discover all containers from directory structure
     local discovered_containers=($(discover_containers))
     if [ ${#discovered_containers[@]} -eq 0 ]; then

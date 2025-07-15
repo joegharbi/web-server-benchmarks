@@ -88,7 +88,7 @@ run-local: ## Run local server benchmarks
 
 check-health: ## Check health of all built containers (startup, HTTP response, stability)
 	@echo "Checking health of all built containers..."
-	@./check_health.sh
+	@bash check_health.sh
 
 health: check-health ## Alias for check-health
 
@@ -115,7 +115,7 @@ test-container: ## Test a specific container (usage: make test-container CONTAIN
 	@echo "=== Building container ==="
 	@docker build -t $(CONTAINER) ./containers/*/$(CONTAINER)/ 2>/dev/null || docker build -t $(CONTAINER) ./web-socket/$(CONTAINER)/ 2>/dev/null || (echo "ERROR: Container $(CONTAINER) not found" && exit 1)
 	@echo "=== Checking container health ==="
-	@./check_health.sh | grep -A 5 -B 5 "$(CONTAINER)" || echo "Container $(CONTAINER) health check completed"
+	@bash check_health.sh | grep -A 5 -B 5 "$(CONTAINER)" || echo "Container $(CONTAINER) health check completed"
 	@echo "=== Running container benchmark ==="
 	@if [[ "$(CONTAINER)" == ws-* ]]; then \
 		./run_benchmarks.sh websocket $(CONTAINER); \
@@ -168,4 +168,4 @@ run-quick: ## Quick test with minimal requests (all discovered containers)
 	./run_benchmarks.sh --quick
 
 run-super-quick: ## Super quick test with single request per container type
-	./run_benchmarks.sh --super-quick 
+	bash run_benchmarks.sh --super-quick 
