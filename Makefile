@@ -138,17 +138,31 @@ validate: check-env ## Check and validate all required dependencies
 	@scaphandre --version || echo "ERROR: Scaphandre not found"
 	@echo "Validation complete"
 
-setup: ## Create the virtual environment and set up local servers
+setup: ## Set up only the Python virtual environment (no servers)
 	@echo "Creating virtual environment: $(VENV_NAME)"
 	@python -m venv $(VENV_NAME)
 	@echo "Virtual environment created!"
-	@echo "Setting up local servers (nginx, yaws)..."
-	sudo ./local/setup_nginx.sh install
-	sudo ./local/setup_yaws.sh install
 	@echo "Next steps:"
 	@echo "  1. Activate: source $(VENV_PATH)"
-	@echo "  2. Install dependencies: make install"
-	@echo "  3. Validate: make validate"
+	@echo "  2. Install dependencies: make install OR make set-env"
+	@echo "  3. Set up servers: make setup-local (local) or make setup-docker (docker)"
+	@echo "  4. Validate: make validate"
+
+set-env: ## Set up Python virtual environment and install dependencies
+	@echo "Creating virtual environment: $(VENV_NAME)"
+	@python -m venv $(VENV_NAME)
+	@echo "Activating virtual environment and installing dependencies..."
+	. $(VENV_PATH); pip install -r requirements.txt
+	@echo "Environment and dependencies ready!"
+
+setup-local: ## Install/setup all local servers (nginx, yaws, etc.)
+	sudo ./local/setup_nginx.sh install
+	sudo ./local/setup_yaws.sh install
+	@echo "Local servers installed."
+
+setup-docker: ## Build all Docker images/containers
+	$(MAKE) build
+	@echo "Docker images built."
 
 run-quick: ## Quick test with minimal requests (all discovered containers)
 	./run_benchmarks.sh --quick

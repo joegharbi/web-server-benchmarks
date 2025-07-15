@@ -57,20 +57,30 @@ make --version
 ## Quick Start
 
 ### 1. Environment Setup
-```bash
-# Create virtual environment and install dependencies
-make setup
-source srv/bin/activate
 
-# Or ensure existing environment
-make ensure-env
-make install
+```bash
+# Create only the Python virtual environment (no servers)
+make setup
+
+# Or set up environment and install dependencies
+make set-env
+
+# To install local servers (nginx, yaws, etc.)
+make setup-local
+
+# To build all Docker images/containers
+make setup-docker
 ```
+
+- You can combine these as needed. For example, to set up everything:
+  ```bash
+  make set-env setup-local setup-docker
+  ```
 
 ### 2. Build and Validate
 ```bash
-# Build all Docker images
-make build
+# Build all Docker images (if not already done)
+make setup-docker
 
 # Run comprehensive health checks (includes ulimit check)
 make check-health
