@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Set high open file descriptor limit for health check session
+ulimit -n 100000
+
 # Health Check Script for Web Server Benchmarks
 # Tests all built containers for proper startup, HTTP response, and health constraints
 
@@ -80,10 +83,21 @@ check_container_health() {
     local container_name="health-check-${image_name}"
     local port_mapping=$(get_container_port_mapping $image_name $host_port)
     print_status "INFO" "Testing $image_name..."
-    if ! docker run -d --rm --name "$container_name" -p "$port_mapping" "$image_name" > /dev/null 2>&1; then
+    if ! docker run -d --rm --ulimit nofile=100000:100000 --name "$container_name" -p "$port_mapping" "$image_name" > /dev/null 2>&1; then
         print_status "ERROR" "$image_name: Failed to start container"
         FAILED_CONTAINERS=$((FAILED_CONTAINERS + 1))
         FAILED_LIST+=("$image_name (startup failed)")
+        return 1
+    fi
+    # Check ulimit inside the running container
+    local actual_ulimit=$(docker exec "$container_name" sh -c 'ulimit -n' 2>/dev/null)
+    if [ -z "$actual_ulimit" ]; then
+        print_status "WARNING" "$image_name: Could not determine ulimit inside container"
+    elif [ "$actual_ulimit" -lt 100000 ]; then
+        print_status "ERROR" "$image_name: ulimit -n is $actual_ulimit (expected 100000)"
+        FAILED_CONTAINERS=$((FAILED_CONTAINERS + 1))
+        FAILED_LIST+=("$image_name (ulimit too low: $actual_ulimit)")
+        docker stop "$container_name" > /dev/null 2>&1 || true
         return 1
     fi
     local wait_time=$STARTUP_WAIT
@@ -231,6 +245,7 @@ case "${1:-}" in
         echo "  - Container stability"
         echo "  - HTTP response"
         echo "  - WebSocket response (for WebSocket containers)"
+        echo "  - ulimit -n check (should be 100000)"
         echo ""
         echo "Port assignment:"
         echo "  - Fixed host port: $HOST_PORT"

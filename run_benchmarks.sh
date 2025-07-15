@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Set high open file descriptor limit for benchmarking session
+ulimit -n 100000
+
 # Run measurement scripts for all Docker images and local servers based on args
 PYTHON_PATH="$(pwd)/srv/bin/python3"  # Absolute path from root directory
 

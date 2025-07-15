@@ -44,6 +44,14 @@ scaphandre --version
 make --version
 ```
 
+## Prerequisites and System Requirements
+
+- Docker must be installed and running.
+- Python 3.8+ required for benchmark scripts.
+- All containers are started with `--ulimit nofile=100000:100000` to ensure high concurrency support. This is enforced by the health check system.
+- The scripts `run_benchmarks.sh` and `check_health.sh` automatically set `ulimit -n 100000` at the start, so you do not need to set it manually.
+- If your system or Docker daemon restricts file descriptor limits, you must increase them (see Troubleshooting).
+
 ---
 
 ## Quick Start
@@ -64,7 +72,7 @@ make install
 # Build all Docker images
 make build
 
-# Run comprehensive health checks
+# Run comprehensive health checks (includes ulimit check)
 make check-health
 ```
 
@@ -136,9 +144,9 @@ The framework automatically discovers all available servers from the directory s
 
 ### Example Structure
 ```bash
-containers/static/my-nginx/Dockerfile      # Auto-discovered
-containers/dynamic/my-apache/Dockerfile    # Auto-discovered
-web-socket/my-websocket/Dockerfile         # Auto-discovered
+containers/static/my-nginx/Dockerfile      # Auto-discovered, must support high ulimit
+containers/dynamic/my-apache/Dockerfile    # Auto-discovered, must support high ulimit
+web-socket/my-websocket/Dockerfile         # Auto-discovered, must support high ulimit
 ```
 
 ### Legacy Naming Convention (Optional)
@@ -158,7 +166,9 @@ The framework includes a comprehensive health check system that validates contai
 - **HTTP Response**: Tests for proper HTTP 200 responses
 - **WebSocket Handshake**: Validates WebSocket upgrade responses
 - **Stability Testing**: Ensures containers remain running
+- **ulimit Enforcement**: Checks that `ulimit -n` is set to 100000 inside each container (required for high concurrency)
 - **Automatic Cleanup**: Stops and removes test containers
+- **ulimit Reporting**: The health check prints the actual `ulimit -n` value inside each container. A container is only reported as healthy if this value is correct.
 
 ### Running Health Checks
 ```bash
@@ -245,18 +255,19 @@ EXPOSE 8080
    mkdir -p web-socket/my-server
    ```
 
-2. **Add Dockerfile**: Include `EXPOSE` directive
+2. **Add Dockerfile**: Include `EXPOSE` directive and ensure your server can handle high file descriptor limits (ulimit 100000 is enforced)
    ```dockerfile
    FROM nginx:alpine
    COPY nginx.conf /etc/nginx/nginx.conf
    EXPOSE 80
    CMD ["nginx", "-g", "daemon off;"]
+   # Your entrypoint or CMD must not lower the ulimit
    ```
 
 3. **Auto-Discovery**: Container will be automatically found, built, tested, and benchmarked
    ```bash
    make build        # Automatically builds your new container
-   make check-health # Automatically tests your new container
+   make check-health # Automatically tests your new container (including ulimit)
    make run-all      # Automatically benchmarks your new container
    ```
 
@@ -501,8 +512,14 @@ docker logs health-check-<container-name>
 netstat -tlnp | grep 8001
 
 # Test manual container startup
-docker run -d --rm -p 8001:80 <image-name>
+docker run -d --rm --ulimit nofile=100000:100000 -p 8001:80 <image-name>
+
+# Check ulimit inside container (should be 100000)
+docker exec health-check-<container-name> sh -c 'ulimit -n'
 ```
+
+- The health check now verifies that `ulimit -n` (open file descriptors) is set to 100000 inside each container. The script prints the actual value for each container. If this is not met, the container will fail the health check and will not be benchmarked.
+- If you see ulimit errors, ensure your Docker daemon and host OS allow high file descriptor limits. See below for tips.
 
 #### Docker Issues
 ```bash
@@ -560,6 +577,19 @@ make help
 ./check_health.sh --help
 ./run_benchmarks.sh help
 ```
+
+### ulimit and File Descriptor Limits
+- All containers are started with `--ulimit nofile=100000:100000` for high concurrency.
+- If you see errors about ulimit or file descriptors, you may need to:
+  - Increase your system's open file limit (e.g., edit `/etc/security/limits.conf` on Linux)
+  - Configure Docker daemon to allow higher ulimits (see Docker docs: https://docs.docker.com/engine/reference/commandline/dockerd/#default-ulimit)
+  - Restart Docker after changing system or daemon limits
+- You can check the current limit inside any running container:
+  ```bash
+  docker exec <container-name> sh -c 'ulimit -n'
+  ```
+  The health check script will also print this value for you.
+- The health check will fail if the limit is not 100000.
 
 ---
 
