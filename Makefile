@@ -117,7 +117,18 @@ build-test-run: check-env ## Build all containers, check health, and run all ben
 graph:  ## Launch the GUI graph generator
 	@python3 gui_graph_generator.py
 
-validate: check-tools check-env check-health ## Validate all prerequisites and health
+validate: check-tools
+	@if [ ! -d srv ]; then \
+		echo "[INFO] Python virtual environment not found. Running 'make setup'..."; \
+		$(MAKE) setup; \
+	fi
+	@$(MAKE) check-env
+	@BUILT_CONTAINERS=$$(docker images --format '{{.Repository}}' | grep -E 'st-|dy-|ws-' || true); \
+	if [ -z "$$BUILT_CONTAINERS" ]; then \
+		echo "[INFO] No built containers found. Run 'make build' to build containers before validating health."; \
+	else \
+		$(MAKE) check-health; \
+	fi
 	@printf "${GREEN}Validation complete!${NC}\n"
 
 run-all: run  ## Run the full benchmark suite (alias)
