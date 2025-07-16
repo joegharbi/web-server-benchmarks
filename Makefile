@@ -6,7 +6,7 @@
 VENV_NAME ?= srv
 VENV_PATH = $(VENV_NAME)/bin/activate
 
-.PHONY: help install clean-build clean-repo build run run-static run-dynamic run-websocket run-local setup quick-test graph validate check-health build-test-run test-container
+.PHONY: help install clean-build clean-repo build run run-static run-dynamic run-websocket run-local setup graph validate check-health build-test-run run-single setup-local clean-local clean-all
 
 # Color codes
 GREEN=\033[0;32m
@@ -114,8 +114,13 @@ build-test-run: check-env ## Build all containers, check health, and run all ben
 	@printf "${YELLOW}=== Running all benchmarks ===${NC}\n"
 	@$(MAKE) run
 
-quick-test: check-env ## Quick test with minimal requests (all discovered containers)
-	@bash run_benchmarks.sh --quick
+graph:  ## Launch the GUI graph generator
+	@python3 gui_graph_generator.py
+
+validate: check-tools check-env check-health ## Validate all prerequisites and health
+	@printf "${GREEN}Validation complete!${NC}\n"
+
+run-all: run  ## Run the full benchmark suite (alias)
 
 setup:  ## Set up Python virtual environment and install dependencies
 	@if [ ! -d srv ]; then \
@@ -136,12 +141,10 @@ setup-local: check-env ## Install/setup all local servers (nginx, yaws, etc.)
 	@printf "${GREEN}Local servers installed.${NC}\n"
 
 # Aliases for backward compatibility (not shown in help)
-setup-docker: build
-
-test-container: run-single
+# Removed: setup-docker
 
 # Set help as the default goal
-.DEFAULT_GOAL := concise-help
+.DEFAULT_GOAL := help
 
 # Color variables
 YELLOW=\033[1;33m
@@ -149,23 +152,7 @@ CYAN=\033[1;36m
 GREEN=\033[1;32m
 NC=\033[0m
 
-concise-help:
-	@printf "${YELLOW}Web Server Benchmarks - Common Commands:${NC}\n\n"
-	@printf "${CYAN}Environment:${NC} srv (change with VENV_NAME=name)\n\n"
-	@printf "${YELLOW}Setup:${NC}\n"
-	@printf "  %-22s %s\n" "setup" "Set up Python virtual environment and install dependencies"
-	@printf "  %-22s %s\n" "build" "Build all Docker images for all discovered containers"
-	@printf "\n"
-	@printf "${YELLOW}Run Benchmarks:${NC}\n"
-	@printf "  %-22s %s\n" "run" "Run the full benchmark suite"
-	@printf "  %-22s %s\n" "run-quick" "Super quick test (single request per container type)"
-	@printf "\n"
-	@printf "${GREEN}Quick Start:${NC}\n"
-	@printf "  make setup            # Set up Python environment\n"
-	@printf "  source srv/bin/activate\n"
-	@printf "  make build-test-run   # Build, check health, and run all benchmarks\n"
-	@printf "\n"
-	@printf "For more commands, run: make help\n"
+# Removed: concise-help
 
 help:  ## Show this help message
 	@printf "${YELLOW}Web Server Benchmarks - Available Commands:${NC}\n\n"
@@ -178,7 +165,8 @@ help:  ## Show this help message
 	@printf "\n"
 	@printf "${YELLOW}Run Benchmarks:${NC}\n"
 	@printf "  %-22s %s\n" "run" "Run the full benchmark suite"
-	@printf "  %-22s %s\n" "run-quick" "Super quick test with single request per container type"
+	@printf "  %-22s %s\n" "run-all" "Alias for run (full benchmark suite)"
+	@printf "  %-22s %s\n" "run-quick" "Super quick test (fastest validation)"
 	@printf "  %-22s %s\n" "run-single" "Run a single server benchmark (SERVER=dy-nginx-deb-self)"
 	@printf "  %-22s %s\n" "run-static" "Run static server benchmarks only"
 	@printf "  %-22s %s\n" "run-dynamic" "Run dynamic server benchmarks only"
@@ -189,7 +177,7 @@ help:  ## Show this help message
 	@printf "  %-22s %s\n" "check-tools" "Check for required tools (Python, pip, Docker, scaphandre)"
 	@printf "  %-22s %s\n" "check-env" "Check if virtual environment is active"
 	@printf "  %-22s %s\n" "check-health" "Check health of all built containers (startup, HTTP response, stability)"
-	@printf "  %-22s %s\n" "validate" "Check and validate all required dependencies and tools"
+	@printf "  %-22s %s\n" "validate" "Validate all prerequisites and health"
 	@printf "\n"
 	@printf "${YELLOW}Build & Clean:${NC}\n"
 	@printf "  %-22s %s\n" "build-test-run" "Build all containers, check health, and run all benchmarks"
@@ -199,7 +187,7 @@ help:  ## Show this help message
 	@printf "  %-22s %s\n" "clean-repo" "Clean repository to bare minimum (fresh clone state)"
 	@printf "\n"
 	@printf "${YELLOW}Other:${NC}\n"
-	@printf "  %-22s %s\n" "graph" "Generate graphs from results in the output directory"
+	@printf "  %-22s %s\n" "graph" "Launch the GUI graph generator"
 	@printf "  %-22s %s\n" "help" "Show this help message"
 	@printf "\n"
 	@printf "${GREEN}Quick Start:${NC}\n"
