@@ -2,9 +2,11 @@ import os
 import csv
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
-from collections import defaultdict
+import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import numpy as np
+from collections import defaultdict
 
 # --- Constants for CSV Types ---
 WEBSOCKET_HEADERS = [
@@ -62,6 +64,10 @@ class BenchmarkGrapher(tk.Tk):
         self.rows = {}
         self.selected_metric = tk.StringVar()
         self.selected_files = []
+        self.plot_type = tk.StringVar(value="Auto")
+        self.color_cycle = [plt.get_cmap('tab10')(i) for i in range(10)]
+        self.marker_cycle = ['o', 's', 'D', '^', 'v', 'P', '*', 'X', 'h', '+']
+        self.legend_alpha = 1.0
         self.init_ui()
 
     def init_ui(self):
@@ -83,8 +89,16 @@ class BenchmarkGrapher(tk.Tk):
         self.metric_combo = ttk.Combobox(metric_frame, textvariable=self.selected_metric, state="readonly", width=40, font=("Arial", 11))
         self.metric_combo.pack(side=tk.LEFT, padx=5)
         self.metric_combo.bind('<<ComboboxSelected>>', lambda e: self.plot_selected())
-        tk.Button(metric_frame, text="Plot", command=self.plot_selected, font=("Arial", 11, "bold")).pack(side=tk.LEFT, padx=5)
-        tk.Button(metric_frame, text="Export Graph as PNG", command=self.export_graph, font=("Arial", 11)).pack(side=tk.LEFT, padx=5)
+
+        # --- Plot Type Selection ---
+        plot_type_frame = tk.Frame(self, bg="#f7f7f7")
+        plot_type_frame.pack(fill=tk.X, padx=10, pady=5)
+        tk.Label(plot_type_frame, text="Plot Type:", bg="#f7f7f7", font=("Arial", 12, "bold")).pack(side=tk.LEFT)
+        self.plot_type_combo = ttk.Combobox(plot_type_frame, textvariable=self.plot_type, state="readonly", width=20, font=("Arial", 11))
+        self.plot_type_combo.pack(side=tk.LEFT, padx=5)
+        self.plot_type_combo.bind('<<ComboboxSelected>>', lambda e: self.plot_selected())
+        self.plot_type_combo['values'] = ["Auto", "Bar", "Line"]
+        self.plot_type_combo.set("Auto")
 
         # --- Graph Area ---
         self.fig, self.ax = plt.subplots(figsize=(8, 5))
@@ -167,19 +181,42 @@ class BenchmarkGrapher(tk.Tk):
             return
         self.ax.clear()
         summary_lines = []
-        for f in selected_files:
+        plot_type = self.plot_type.get()
+        # For grouped bar chart
+        bar_width = 0.8 / max(1, len(selected_files))
+        for idx, f in enumerate(selected_files):
             header = self.headers[f]
             rows = self.rows[f]
             typ = self.file_types[f]
             x, y, label = self.get_plot_data(header, rows, typ, metric, os.path.basename(f))
             if x and y:
-                self.ax.plot(x, y, marker='o', label=label)
+                color = self.color_cycle[idx % len(self.color_cycle)]
+                marker = self.marker_cycle[idx % len(self.marker_cycle)]
+                # Determine plot type
+                if plot_type == "Auto":
+                    use_bar = (typ == "websocket")
+                elif plot_type == "Bar":
+                    use_bar = True
+                else:
+                    use_bar = False
+                if use_bar:
+                    # Grouped bars: offset x positions for each file
+                    if isinstance(x[0], (int, float, np.integer, np.floating)):
+                        x_vals = np.array(x) + (idx - (len(selected_files)-1)/2) * bar_width
+                    else:
+                        # For categorical x, convert to range
+                        x_vals = np.arange(len(x)) + (idx - (len(selected_files)-1)/2) * bar_width
+                        self.ax.set_xticks(np.arange(len(x)))
+                        self.ax.set_xticklabels([str(val) for val in x])
+                    self.ax.bar(x_vals, y, width=bar_width, label=label, color=color, alpha=0.85)
+                else:
+                    self.ax.plot(x, y, label=label, color=color, marker=marker, linewidth=2, markersize=7)
                 stats = summarize_column(rows, metric)
                 summary_lines.append(f"{label}: min={stats['min']}, max={stats['max']}, avg={stats['avg']}")
         self.ax.set_title(f"{metric} vs. Test Parameter")
         self.ax.set_xlabel("Test Parameter (Requests, Clients, etc.)")
         self.ax.set_ylabel(metric)
-        self.ax.legend()
+        self.ax.legend(loc='best', framealpha=0.85)
         self.ax.grid(True)
         self.canvas.draw()
         self.summary_text.config(state=tk.NORMAL)
