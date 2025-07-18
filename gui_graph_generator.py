@@ -2,11 +2,11 @@ import os
 import csv
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
-import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.backends._backend_tk import NavigationToolbar2Tk  # linter: correct import for toolbar
+import mplcursors  # Always use mplcursors for hover
 import numpy as np
-from collections import defaultdict
 
 # --- Constants for CSV Types ---
 WEBSOCKET_HEADERS = [
@@ -57,6 +57,10 @@ class BenchmarkGrapher(tk.Tk):
         super().__init__()
         self.title("Web Server Benchmark Graph Generator")
         self.geometry("1100x700")
+        try:
+            self.state('zoomed')  # Start maximized (Windows/Linux)
+        except Exception:
+            self.attributes('-zoomed', True)  # Fallback for some Linux/others
         self.configure(bg="#f7f7f7")
         self.files = []
         self.file_types = {}
@@ -65,10 +69,22 @@ class BenchmarkGrapher(tk.Tk):
         self.selected_metric = tk.StringVar()
         self.selected_files = []
         self.plot_type = tk.StringVar(value="Auto")
-        self.color_cycle = [plt.get_cmap('tab10')(i) for i in range(10)]
-        self.marker_cycle = ['o', 's', 'D', '^', 'v', 'P', '*', 'X', 'h', '+']
+        # Use a large, colorblind-friendly palette
+        self.color_cycle = []
+        for cmap_name in ['tab20', 'tab20b', 'tab20c', 'Set1', 'Set2', 'Set3', 'Dark2', 'Paired', 'Accent', 'Pastel1', 'Pastel2']:
+            cmap = plt.get_cmap(cmap_name)
+            self.color_cycle.extend([cmap(i) for i in range(cmap.N)])
+        # Remove duplicates and keep only visually distinct colors
+        self.color_cycle = list(dict.fromkeys(self.color_cycle))
+        # Large set of marker shapes
+        self.marker_cycle = ['o', 's', 'D', '^', 'v', 'P', '*', 'X', 'h', '+', 'x', '|', '_', '1', '2', '3', '4', '8', '<', '>', '.', ',', 'H', 'd', 'p']
+        # Line styles for extra distinction
+        self.linestyle_cycle = ['-', '--', '-.', ':']
         self.legend_alpha = 1.0
         self.init_ui()
+        # Global Ctrl+A binding for select all in file listbox
+        self.bind_all('<Control-a>', self.global_ctrl_a_select_all)
+        self.bind_all('<Control-A>', self.global_ctrl_a_select_all)
 
     def init_ui(self):
         # --- File Selection ---
@@ -76,10 +92,29 @@ class BenchmarkGrapher(tk.Tk):
         file_frame.pack(fill=tk.X, padx=10, pady=5)
         tk.Label(file_frame, text="Select CSV files:", bg="#f7f7f7", font=("Arial", 12, "bold")).pack(side=tk.LEFT)
         tk.Button(file_frame, text="Browse...", command=self.browse_files, font=("Arial", 11)).pack(side=tk.LEFT, padx=5)
+        tk.Button(file_frame, text="Load All CSVs in Folder...", command=self.load_all_csvs_in_folder, font=("Arial", 11)).pack(side=tk.LEFT, padx=5)
         tk.Button(file_frame, text="Clear", command=self.clear_files, font=("Arial", 11)).pack(side=tk.LEFT, padx=5)
+
+        # Place Select All button above the file listbox
+        select_all_frame = tk.Frame(self, bg="#f7f7f7")
+        select_all_frame.pack(fill=tk.X, padx=10, pady=(0, 0))
+        self.select_all_btn = tk.Button(select_all_frame, text="Select All", command=self.select_all_files, font=("Arial", 10), state=tk.DISABLED)
+        self.select_all_btn.pack(side=tk.LEFT, anchor='w')
+
         self.file_listbox = tk.Listbox(file_frame, selectmode=tk.MULTIPLE, width=80, height=3, font=("Arial", 10))
         self.file_listbox.pack(side=tk.LEFT, padx=10)
         self.file_listbox.bind('<Double-1>', lambda e: self.plot_selected())
+        # Ctrl+A to select all
+        self.file_listbox.bind('<Control-a>', self.select_all_files)
+        self.file_listbox.bind('<Control-A>', self.select_all_files)
+        # Ensure Listbox gets focus on mouse enter or click
+        self.file_listbox.bind('<Enter>', lambda e: self.file_listbox.focus_set())
+        self.file_listbox.bind('<Button-1>', lambda e: self.file_listbox.focus_set())
+        self.file_listbox.bind('<FocusIn>', lambda e: self.file_listbox.focus_set())
+        # Optional: Right-click context menu for Select All
+        self.file_listbox.bind('<Button-3>', self.show_file_listbox_menu)
+        self.file_listbox_menu = tk.Menu(self.file_listbox, tearoff=0)
+        self.file_listbox_menu.add_command(label="Select All", command=self.select_all_files)
         # Drag-and-drop support can be added with tkinterDnD2 if desired in the future.
 
         # --- Metric Selection ---
@@ -104,6 +139,18 @@ class BenchmarkGrapher(tk.Tk):
         self.fig, self.ax = plt.subplots(figsize=(8, 5))
         self.canvas = FigureCanvasTkAgg(self.fig, master=self)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        # Add matplotlib navigation toolbar for zoom/pan
+        self.toolbar = NavigationToolbar2Tk(self.canvas, self)
+        self.toolbar.update()
+        self.toolbar.pack(fill=tk.X, padx=10, pady=(0, 5))
+
+        # --- Save Button ---
+        save_frame = tk.Frame(self, bg="#f7f7f7")
+        save_frame.pack(fill=tk.X, padx=10, pady=(0, 5))
+        self.save_button = tk.Button(save_frame, text="Save Graph", command=self.export_graph, font=("Arial", 11))
+        self.save_button.pack(side=tk.LEFT)
+        # Optionally, add a tooltip or help text here
 
         # --- Summary Area ---
         summary_frame = tk.Frame(self, bg="#f7f7f7")
@@ -141,6 +188,11 @@ class BenchmarkGrapher(tk.Tk):
                 self.rows[f] = rows
                 self.file_listbox.insert(tk.END, os.path.basename(f) + f"  [{typ}]")
         self.update_metric_options()
+        # Enable Select All button if files are present
+        if self.files:
+            self.select_all_btn.config(state=tk.NORMAL)
+        else:
+            self.select_all_btn.config(state=tk.DISABLED)
 
     def clear_files(self):
         self.files.clear()
@@ -154,6 +206,8 @@ class BenchmarkGrapher(tk.Tk):
         self.summary_text.config(state=tk.NORMAL)
         self.summary_text.delete(1.0, tk.END)
         self.summary_text.config(state=tk.DISABLED)
+        # Disable Select All button when no files
+        self.select_all_btn.config(state=tk.DISABLED)
 
     def update_metric_options(self):
         # Show only metrics common to all selected files
@@ -180,10 +234,27 @@ class BenchmarkGrapher(tk.Tk):
             messagebox.showwarning("No metric selected", "Please select a metric to plot.")
             return
         self.ax.clear()
+        # Remove old mplcursors cursor if it exists
+        if hasattr(self, 'cursor') and self.cursor is not None:
+            try:
+                self.cursor.remove()
+            except Exception:
+                pass
+            self.cursor = None
+        if hasattr(self, 'bar_cursor') and self.bar_cursor is not None:
+            try:
+                self.bar_cursor.remove()
+            except Exception:
+                pass
+            self.bar_cursor = None
         summary_lines = []
         plot_type = self.plot_type.get()
         # For grouped bar chart
-        bar_width = 0.8 / max(1, len(selected_files))
+        n_bars = max(1, len(selected_files))
+        if n_bars <= 3:
+            bar_width = min(0.4, 0.8 / n_bars)
+        else:
+            bar_width = min(0.7, 2.4 / n_bars)
         for idx, f in enumerate(selected_files):
             header = self.headers[f]
             rows = self.rows[f]
@@ -191,7 +262,8 @@ class BenchmarkGrapher(tk.Tk):
             x, y, label = self.get_plot_data(header, rows, typ, metric, os.path.basename(f))
             if x and y:
                 color = self.color_cycle[idx % len(self.color_cycle)]
-                marker = self.marker_cycle[idx % len(self.marker_cycle)]
+                marker = self.marker_cycle[(idx // len(self.linestyle_cycle)) % len(self.marker_cycle)]
+                linestyle = self.linestyle_cycle[idx % len(self.linestyle_cycle)]
                 # Determine plot type
                 if plot_type == "Auto":
                     use_bar = (typ == "websocket")
@@ -208,9 +280,14 @@ class BenchmarkGrapher(tk.Tk):
                         x_vals = np.arange(len(x)) + (idx - (len(selected_files)-1)/2) * bar_width
                         self.ax.set_xticks(np.arange(len(x)))
                         self.ax.set_xticklabels([str(val) for val in x])
-                    self.ax.bar(x_vals, y, width=bar_width, label=label, color=color, alpha=0.85)
+                    self.ax.bar(x_vals, y, width=bar_width, label=label, color=color,
+                        alpha=0.85)
+                    # Draw a thin colored line for zero bars
+                    for xv, val in zip(x_vals, y):
+                        if val == 0:
+                            self.ax.plot([xv - bar_width/2, xv + bar_width/2], [0, 0], color=color, linewidth=2, alpha=0.85, solid_capstyle='butt')
                 else:
-                    self.ax.plot(x, y, label=label, color=color, marker=marker, linewidth=2, markersize=7)
+                    self.ax.plot(x, y, label=label, color=color, marker=marker, linestyle=linestyle, linewidth=2, markersize=7)
                 stats = summarize_column(rows, metric)
                 summary_lines.append(f"{label}: min={stats['min']}, max={stats['max']}, avg={stats['avg']}")
         self.ax.set_title(f"{metric} vs. Test Parameter")
@@ -223,6 +300,98 @@ class BenchmarkGrapher(tk.Tk):
         self.summary_text.delete(1.0, tk.END)
         self.summary_text.insert(tk.END, "\n".join(summary_lines))
         self.summary_text.config(state=tk.DISABLED)
+
+        # Add hover interactivity with mplcursors for lines
+        self.cursor = mplcursors.cursor(self.ax.lines, hover=True, highlight=False,
+            annotation_kwargs={
+                'fontsize': 9,
+                'arrowprops': dict(arrowstyle="->", color="#333", lw=1.2),
+                'bbox': dict(boxstyle="round,pad=0.2", fc="#f7f7f7", ec="#333", lw=0.8)
+            })
+        @self.cursor.connect("add")
+        def on_add(sel):
+            # Reset all lines
+            for line in self.ax.get_lines():
+                line.set_linewidth(2)
+                line.set_alpha(0.7)
+            # Highlight only the hovered line
+            sel.artist.set_linewidth(4)
+            sel.artist.set_alpha(1.0)
+            sel.annotation.set_text(sel.artist.get_label())
+            # Only one annotation at a time
+            for ann in self.ax.texts:
+                if ann is not sel.annotation:
+                    ann.set_visible(False)
+        @self.cursor.connect("remove")
+        def on_remove(sel):
+            # Reset all lines
+            for line in self.ax.get_lines():
+                line.set_linewidth(2)
+                line.set_alpha(1.0)
+            # Hide all annotations
+            for ann in self.ax.texts:
+                ann.set_visible(False)
+            self.canvas.draw_idle()
+
+        # Add hover interactivity with mplcursors for bars
+        if self.ax.containers:
+            self.bar_cursor = mplcursors.cursor(self.ax.containers, hover=True, highlight=False,
+                annotation_kwargs={
+                    'fontsize': 9,
+                    'arrowprops': dict(arrowstyle="->", color="#333", lw=1.2),
+                    'bbox': dict(boxstyle="round,pad=0.2", fc="#f7f7f7", ec="#333", lw=0.8)
+                })
+            @self.bar_cursor.connect("add")
+            def on_bar_add(sel):
+                # Reset all bars
+                for cont in self.ax.containers:
+                    for bar in cont:
+                        bar.set_linewidth(0.5)
+                        bar.set_edgecolor('black')
+                        bar.set_alpha(0.85)
+                # Highlight all bars in the same group/series as the hovered bar
+                target_label = sel.artist.get_label() if hasattr(sel.artist, 'get_label') else None
+                if target_label:
+                    for cont in self.ax.containers:
+                        for bar in cont:
+                            bar_label = bar.get_label() if hasattr(bar, 'get_label') else None
+                            if bar_label == target_label:
+                                bar.set_linewidth(3)
+                                bar.set_edgecolor('#d62728')
+                                bar.set_alpha(1.0)
+                # Show annotation for the hovered bar
+                sel.annotation.set_text(target_label or '')
+                # Only one annotation at a time
+                for ann in self.ax.texts:
+                    if ann is not sel.annotation:
+                        ann.set_visible(False)
+            @self.bar_cursor.connect("remove")
+            def on_bar_remove(sel):
+                # Reset all bars
+                for cont in self.ax.containers:
+                    for bar in cont:
+                        bar.set_linewidth(0.5)
+                        bar.set_edgecolor('black')
+                        bar.set_alpha(0.85)
+                # Hide all annotations
+                for ann in self.ax.texts:
+                    ann.set_visible(False)
+                self.canvas.draw_idle()
+
+        # Reset highlights and hide annotation when mouse leaves axes
+        def on_leave(event):
+            for line in self.ax.get_lines():
+                line.set_linewidth(2)
+                line.set_alpha(1.0)
+            for cont in self.ax.containers:
+                for bar in cont:
+                    bar.set_linewidth(0.5)
+                    bar.set_edgecolor('black')
+                    bar.set_alpha(0.85)
+            for ann in self.ax.texts:
+                ann.set_visible(False)
+            self.canvas.draw_idle()
+        self.canvas.mpl_connect('axes_leave_event', on_leave)
 
     def get_plot_data(self, header, rows, typ, metric, label):
         # Heuristics for x-axis:
@@ -268,6 +437,35 @@ class BenchmarkGrapher(tk.Tk):
             "- If a metric is missing in a file, it is skipped.\n"
         )
         messagebox.showinfo("Help", msg)
+
+    def select_all_files(self, event=None):
+        self.file_listbox.select_set(0, tk.END)
+        return 'break'
+
+    def global_ctrl_a_select_all(self, event=None):
+        # Only select all if file_listbox has focus, and avoid KeyError if dialog is open
+        try:
+            focus_widget = self.file_listbox.focus_get()
+            if focus_widget is self.file_listbox:
+                self.select_all_files()
+                return 'break'
+        except Exception:
+            pass
+
+    def show_file_listbox_menu(self, event):
+        try:
+            self.file_listbox_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.file_listbox_menu.grab_release()
+
+    def load_all_csvs_in_folder(self):
+        folder = filedialog.askdirectory(title="Select Folder Containing CSV Files")
+        if folder:
+            csv_files = [os.path.join(folder, f) for f in os.listdir(folder) if f.lower().endswith('.csv')]
+            if not csv_files:
+                messagebox.showwarning("No CSVs", "No CSV files found in the selected folder.")
+                return
+            self.add_files(csv_files)
 
 if __name__ == "__main__":
     app = BenchmarkGrapher()
