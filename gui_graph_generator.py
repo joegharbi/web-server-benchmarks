@@ -47,7 +47,26 @@ def get_numeric_columns(header):
     # Heuristic: columns with numbers in sample data
     numeric = []
     for h in header:
-        if any(x in h.lower() for x in ["cpu", "mem", "latency", "throughput", "energy", "power", "requests", "messages", "samples", "rate", "size", "duration", "interval", "bursts"]):
+        if any(x in h.lower() for x in [
+            "cpu",
+            "mem",
+            "latency",
+            "throughput",
+            "energy",
+            "power",
+            "requests",
+            "messages",
+            "samples",
+            "rate",
+            "size",
+            "duration",
+            "interval",
+            "bursts",
+            # Include time-based metrics like "Execution Time (s)"
+            "time",
+            "execution",
+            "runtime"
+        ]):
             numeric.append(h)
     return numeric
 
@@ -81,6 +100,8 @@ class BenchmarkGrapher(tk.Tk):
         # Line styles for extra distinction
         self.linestyle_cycle = ['-', '--', '-.', ':']
         self.legend_alpha = 1.0
+        # Make bars thicker in bar charts
+        self.bar_width_scale = 5.0
         self.init_ui()
         # Global Ctrl+A binding for select all in file listbox
         self.bind_all('<Control-a>', self.global_ctrl_a_select_all)
@@ -255,6 +276,8 @@ class BenchmarkGrapher(tk.Tk):
             bar_width = min(0.4, 0.8 / n_bars)
         else:
             bar_width = min(0.7, 2.4 / n_bars)
+        # Apply global scaling to make bars a bit thicker
+        bar_width *= getattr(self, 'bar_width_scale', 1.0)
         for idx, f in enumerate(selected_files):
             header = self.headers[f]
             rows = self.rows[f]
@@ -291,7 +314,12 @@ class BenchmarkGrapher(tk.Tk):
                 stats = summarize_column(rows, metric)
                 summary_lines.append(f"{label}: min={stats['min']}, max={stats['max']}, avg={stats['avg']}")
         self.ax.set_title(f"{metric} vs. Test Parameter")
-        self.ax.set_xlabel("Test Parameter (Requests, Clients, etc.)")
+        # Use dynamic x-axis label based on the first selected file
+        if selected_files:
+            x_axis_label = self.get_x_axis_column_name(self.headers[selected_files[0]], self.rows[selected_files[0]], self.file_types[selected_files[0]])
+        else:
+            x_axis_label = "Test Parameter"
+        self.ax.set_xlabel(x_axis_label)
         self.ax.set_ylabel(metric)
         self.ax.legend(loc='best', framealpha=0.85)
         self.ax.grid(True)
@@ -412,6 +440,21 @@ class BenchmarkGrapher(tk.Tk):
         x = list(range(1, len(rows)+1))
         y = [float(r[metric]) if r.get(metric) not in (None, '', 'NaN') else 0 for r in rows]
         return x, y, label
+
+    def get_x_axis_column_name(self, header, rows, typ):
+        """Get a meaningful name for the x-axis based on the data being plotted."""
+        if typ == "websocket":
+            # Check for common WebSocket test parameters
+            for xkey in ["Num Clients", "Message Size (KB)", "Rate (msg/s)", "Bursts", "Duration (s)", "Interval (s)"]:
+                if xkey in header:
+                    return xkey
+        else:
+            # Check for common HTTP test parameters
+            if "Total Requests" in header:
+                return "Total Requests"
+        
+        # If no obvious parameter found, return a generic label
+        return "Test Parameter"
 
     def export_graph(self):
         if not self.ax.has_data():
