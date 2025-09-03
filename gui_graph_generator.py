@@ -462,7 +462,8 @@ class BenchmarkGrapher(tk.Tk):
             return
         file = filedialog.asksaveasfilename(defaultextension=".png", filetypes=[("PNG Image", "*.png")])
         if file:
-            self.fig.savefig(file)
+            # Save with tight layout to trim white spaces
+            self.fig.savefig(file, bbox_inches='tight', pad_inches=0.1, dpi=300)
             messagebox.showinfo("Exported", f"Graph exported to {file}")
 
     def show_help(self):
