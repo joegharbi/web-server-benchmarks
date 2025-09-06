@@ -274,7 +274,7 @@ class BenchmarkGrapher(tk.Tk):
         n_bars = max(1, len(selected_files))
         if n_bars <= 3:
             bar_width = min(0.4, 0.8 / n_bars)
-        else:
+            else:
             bar_width = min(0.7, 2.4 / n_bars)
         # Apply global scaling to make bars a bit thicker
         bar_width *= getattr(self, 'bar_width_scale', 1.0)
@@ -317,7 +317,7 @@ class BenchmarkGrapher(tk.Tk):
         # Use dynamic x-axis label based on the first selected file
         if selected_files:
             x_axis_label = self.get_x_axis_column_name(self.headers[selected_files[0]], self.rows[selected_files[0]], self.file_types[selected_files[0]])
-        else:
+                else:
             x_axis_label = "Test Parameter"
         self.ax.set_xlabel(x_axis_label)
         self.ax.set_ylabel(metric)
@@ -430,7 +430,7 @@ class BenchmarkGrapher(tk.Tk):
                     x = [float(r[xkey]) if r.get(xkey) not in (None, '', 'NaN') else 0 for r in rows]
                     y = [float(r[metric]) if r.get(metric) not in (None, '', 'NaN') else 0 for r in rows]
                     return x, y, label
-        else:
+                    else:
             # HTTP: Prefer Total Requests
             if "Total Requests" in header:
                 x = [float(r["Total Requests"]) if r.get("Total Requests") not in (None, '', 'NaN') else 0 for r in rows]
@@ -448,7 +448,7 @@ class BenchmarkGrapher(tk.Tk):
             for xkey in ["Num Clients", "Message Size (KB)", "Rate (msg/s)", "Bursts", "Duration (s)", "Interval (s)"]:
                 if xkey in header:
                     return xkey
-        else:
+                                else:
             # Check for common HTTP test parameters
             if "Total Requests" in header:
                 return "Total Requests"
