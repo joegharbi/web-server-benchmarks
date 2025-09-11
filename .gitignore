@@ -17,3 +17,4 @@ local/localhost:8001.auth
 TODO
 .vscode/
 .ruff_cache/
+graphs_compressed/
