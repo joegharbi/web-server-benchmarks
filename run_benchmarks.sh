@@ -226,7 +226,7 @@ run_websocket_tests() {
     fi
     if [[ $SUPER_QUICK_BENCH -eq 1 ]]; then
         echo -e "${BLUE}--- WebSocket Burst Test (Super Quick) ---${NC}"
-        $PYTHON_PATH ./web-socket/measure_websocket.py \
+        "$PYTHON_PATH" ./web-socket/measure_websocket.py \
             --server_image "$image" \
             --pattern burst \
             --mode echo \
@@ -238,7 +238,7 @@ run_websocket_tests() {
             --measurement_type "burst_${quick_ws_burst_clients[0]}_${quick_ws_burst_sizes[0]}_${quick_ws_burst_bursts[0]}_${quick_ws_burst_intervals[0]}"
         print_csv_summary "$RESULTS_DIR/websocket/${image}.csv"
         echo -e "${BLUE}--- WebSocket Stream Test (Super Quick) ---${NC}"
-        $PYTHON_PATH ./web-socket/measure_websocket.py \
+        "$PYTHON_PATH" ./web-socket/measure_websocket.py \
             --server_image "$image" \
             --pattern stream \
             --mode echo \
@@ -267,7 +267,7 @@ run_websocket_tests() {
                 for bursts in "${burst_bursts[@]}"; do
                     for interval in "${burst_intervals[@]}"; do
                         echo "  Burst test: $clients clients, ${size_kb}KB, $bursts bursts, ${interval}s interval"
-                        $PYTHON_PATH ./web-socket/measure_websocket.py \
+                        "$PYTHON_PATH" ./web-socket/measure_websocket.py \
                             --server_image "$image" \
                             --pattern burst \
                             --mode echo \
@@ -286,7 +286,7 @@ run_websocket_tests() {
                 for rate in "${stream_rates[@]}"; do
                     for duration in "${stream_durations[@]}"; do
                         echo "  Stream test: $clients clients, ${size_kb}KB, ${rate}/s, ${duration}s"
-                        $PYTHON_PATH ./web-socket/measure_websocket.py \
+                        "$PYTHON_PATH" ./web-socket/measure_websocket.py \
                             --server_image "$image" \
                             --pattern stream \
                             --mode echo \
@@ -344,7 +344,7 @@ run_concurrency_sweep() {
     if [[ $SUPER_QUICK_BENCH -eq 1 ]]; then
         echo -e "${BLUE}--- WebSocket Concurrency Sweep (Super Quick) ---${NC}"
         local csv_file="$RESULTS_DIR/websocket/${image}_concurrency_sweep.csv"
-        $PYTHON_PATH ./web-socket/measure_websocket.py \
+        "$PYTHON_PATH" ./web-socket/measure_websocket.py \
             --server_image "$image" \
             --pattern burst \
             --mode echo \
@@ -366,7 +366,7 @@ run_concurrency_sweep() {
         for clients in "${concurrency_sweep_clients[@]}"; do
             local csv_file="$RESULTS_DIR/websocket/${image}_concurrency_sweep.csv"
             echo "[$idx/$ntests] Concurrency: $clients clients, ${concurrency_sweep_size}KB payload"
-            $PYTHON_PATH ./web-socket/measure_websocket.py \
+            "$PYTHON_PATH" ./web-socket/measure_websocket.py \
                 --server_image "$image" \
                 --pattern burst \
                 --mode echo \
@@ -390,7 +390,7 @@ run_payload_sweep() {
     if [[ $SUPER_QUICK_BENCH -eq 1 ]]; then
         echo -e "${BLUE}--- WebSocket Payload Sweep (Super Quick) ---${NC}"
         local csv_file="$RESULTS_DIR/websocket/${image}_payload_sweep.csv"
-        $PYTHON_PATH ./web-socket/measure_websocket.py \
+        "$PYTHON_PATH" ./web-socket/measure_websocket.py \
             --server_image "$image" \
             --pattern burst \
             --mode echo \
@@ -412,7 +412,7 @@ run_payload_sweep() {
         for size_kb in "${payload_sweep_sizes[@]}"; do
             local csv_file="$RESULTS_DIR/websocket/${image}_payload_sweep.csv"
             echo "[$idx/$ntests] Payload: $payload_sweep_clients clients, ${size_kb}KB payload"
-            $PYTHON_PATH ./web-socket/measure_websocket.py \
+            "$PYTHON_PATH" ./web-socket/measure_websocket.py \
                 --server_image "$image" \
                 --pattern burst \
                 --mode echo \
@@ -451,7 +451,7 @@ run_docker_tests() {
     for num_requests in "${test_counts[@]}"; do
         local csv_file="$RESULTS_DIR/$test_type/${image}.csv"
         echo "[$idx/$ntests] $test_type: $num_requests requests"
-        $PYTHON_PATH ./containers/measure_docker.py \
+        "$PYTHON_PATH" ./containers/measure_docker.py \
             --server_image "$image" \
             --port_mapping "$port_mapping" \
             --num_requests "$num_requests" \
@@ -478,7 +478,7 @@ run_local_tests() {
     for num_requests in "${test_counts[@]}"; do
         local csv_file="$RESULTS_DIR/local/${server}.csv"
         echo "[$idx/$ntests] local: $num_requests requests"
-        $PYTHON_PATH ./local/measure_local.py \
+        "$PYTHON_PATH" ./local/measure_local.py \
             --server "$server" \
             --num_requests "$num_requests" \
             --output_csv "$csv_file"
