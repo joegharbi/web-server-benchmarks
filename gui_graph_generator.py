@@ -1,24 +1,273 @@
+"""
+Benchmark Graph Generator — PyQt5 GUI for plotting CSV benchmark results.
+Extensible: add categories via CATEGORY_PATH_PARTS and CATEGORY_PREFIXES.
+Bar chart: bars grouped by x-axis (e.g. Num Clients) so all containers share the same groups.
+"""
 import os
-import csv
-import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.backends._backend_tk import NavigationToolbar2Tk  # linter: correct import for toolbar
-import mplcursors  # Always use mplcursors for hover
-import numpy as np
+import sys
 
-# --- Constants for CSV Types ---
-WEBSOCKET_HEADERS = [
-    "Container Name", "Test Type", "Num CPUs", "Total Messages", "Successful Messages", "Failed Messages", "Execution Time (s)", "Messages/s", "Throughput (MB/s)",
-    "Avg Latency (ms)", "Min Latency (ms)", "Max Latency (ms)", "Total Energy (J)", "Avg Power (W)", "Samples", "Avg CPU (%)", "Peak CPU (%)", "Total CPU (%)",
-    "Avg Mem (MB)", "Peak Mem (MB)", "Total Mem (MB)", "Pattern", "Num Clients", "Message Size (KB)", "Rate (msg/s)", "Bursts", "Interval (s)", "Duration (s)"
-]
-HTTP_HEADERS = [
-    "Container Name", "Type", "Num CPUs", "Total Requests", "Successful Requests", "Failed Requests", "Execution Time (s)", "Requests/s", "Total Energy (J)", "Avg Power (W)", "Samples", "Avg CPU (%)", "Peak CPU (%)", "Total CPU (%)", "Avg Mem (MB)", "Peak Mem (MB)", "Total Mem (MB)"
-]
+# Use Wayland platform on Linux when in a Wayland session (avoids xcb plugin load failure with pip-installed PyQt5)
+if sys.platform == "linux" and os.environ.get("XDG_SESSION_TYPE") == "wayland":
+    os.environ.setdefault("QT_QPA_PLATFORM", "wayland")
+
+import csv
+import re
+from datetime import datetime
+import numpy as np
+import matplotlib
+matplotlib.use("Qt5Agg")
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT
+import mplcursors
+
+from PyQt5.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QLabel, QPushButton, QComboBox, QListWidget, QListWidgetItem,
+    QFileDialog, QMessageBox, QGroupBox, QShortcut, QStyledItemDelegate,
+    QStyleFactory, QFrame, QSplitter, QSizePolicy, QMenu, QToolButton,
+    QScrollArea,
+)
+from PyQt5.QtCore import Qt, QPoint, pyqtSignal, QTimer
+from PyQt5.QtGui import QFont, QKeySequence, QColor, QPalette
+
+# --- Extensible category detection ---
+# Path segment (lowercase) -> display name. Add new benchmark types here.
+CATEGORY_PATH_PARTS = {"websocket": "WebSocket", "static": "Static", "dynamic": "Dynamic", "local": "Local", "grpc": "gRPC"}
+# Filename prefix -> display name
+CATEGORY_PREFIXES = {"ws-": "WebSocket", "st-": "Static", "dy-": "Dynamic", "grpc-": "gRPC"}
+FONT_FAMILY = "Sans Serif"
+FONT_SIZE = 11
+CONTROL_HEIGHT = 26
+
+# Single design system: one border, one hover, one pressed for all controls
+BORDER = "1px solid #ced4da"
+BORDER_RADIUS = "4px"
+BG_CONTROL = "#ffffff"
+BG_HOVER = "#f1f3f5"
+BG_PRESSED = "#e9ecef"
+BG_DISABLED = "#e9ecef"
+TEXT = "#212529"
+TEXT_DISABLED = "#adb5bd"
+BORDER_HOVER = "#adb5bd"
+SELECTION_BG = "#e9ecef"
+SELECTION_TEXT = "#212529"
+
+
+def _make_light_palette():
+    p = QPalette()
+    p.setColor(QPalette.Window, QColor("#f8f9fa"))
+    p.setColor(QPalette.WindowText, QColor(TEXT))
+    p.setColor(QPalette.Base, QColor(BG_CONTROL))
+    p.setColor(QPalette.AlternateBase, QColor(BG_HOVER))
+    p.setColor(QPalette.Text, QColor(TEXT))
+    p.setColor(QPalette.Button, QColor(BG_CONTROL))
+    p.setColor(QPalette.ButtonText, QColor(TEXT))
+    p.setColor(QPalette.Highlight, QColor(SELECTION_BG))
+    p.setColor(QPalette.HighlightedText, QColor(SELECTION_TEXT))
+    return p
+
+
+def _app_stylesheet():
+    """One design system: all buttons and controls share the same colors, size, hover, pressed."""
+    f = FONT_SIZE
+    h = CONTROL_HEIGHT
+    return f"""
+        QWidget {{ font-family: "{FONT_FAMILY}"; font-size: {f}pt; background-color: #f8f9fa; }}
+        QLabel {{ font-size: {f}pt; color: {TEXT}; }}
+
+        QPushButton, QToolButton {{
+            font-size: {f}pt;
+            background-color: {BG_CONTROL};
+            color: {TEXT};
+            border: {BORDER};
+            border-radius: {BORDER_RADIUS};
+            padding: 4px 12px;
+            min-height: {h}px;
+            max-height: {h}px;
+        }}
+        QPushButton:hover, QToolButton:hover {{
+            background-color: {BG_HOVER};
+            border: 1px solid {BORDER_HOVER};
+        }}
+        QPushButton:pressed, QToolButton:pressed {{
+            background-color: {BG_PRESSED};
+            border: 1px solid {BORDER_HOVER};
+        }}
+        QPushButton:disabled, QToolButton:disabled {{
+            background-color: {BG_DISABLED};
+            color: {TEXT_DISABLED};
+            border: 1px solid #dee2e6;
+        }}
+        QToolButton {{ text-align: left; }}
+        QToolButton::menu-indicator {{ width: 14px; border: none; }}
+
+        QMenu {{
+            font-size: {f}pt;
+            background-color: {BG_CONTROL};
+            border: {BORDER};
+            border-radius: {BORDER_RADIUS};
+            padding: 2px 0;
+        }}
+        QMenu::item {{ padding: 4px 16px; color: {TEXT}; }}
+        QMenu::item:selected {{ background-color: {SELECTION_BG}; color: {SELECTION_TEXT}; }}
+
+        QGroupBox {{
+            font-size: {f}pt;
+            font-weight: normal;
+            border: {BORDER};
+            border-radius: {BORDER_RADIUS};
+            margin-top: 6px;
+            padding: 8px;
+            padding-top: 12px;
+            background-color: {BG_CONTROL};
+        }}
+        QGroupBox::title {{ subcontrol-origin: margin; left: 8px; padding: 0 4px; color: {TEXT}; }}
+
+        QComboBox {{
+            font-size: {f}pt;
+            min-height: {h}px;
+            max-height: {h}px;
+            padding: 4px 12px;
+            background-color: {BG_CONTROL};
+            color: {TEXT};
+            border: {BORDER};
+            border-radius: {BORDER_RADIUS};
+        }}
+        QComboBox::drop-down {{ width: 18px; border: none; }}
+        QComboBox QAbstractItemView {{
+            font-size: {f}pt;
+            padding: 4px 8px;
+            background-color: {BG_CONTROL};
+            color: {TEXT};
+            selection-background-color: {SELECTION_BG};
+            selection-color: {SELECTION_TEXT};
+            border: {BORDER};
+        }}
+
+        QListWidget {{
+            font-size: {f}pt;
+            background-color: {BG_CONTROL};
+            color: {TEXT};
+            border: {BORDER};
+            border-radius: {BORDER_RADIUS};
+            outline: none;
+        }}
+        QListWidget::item {{
+            padding: 4px 8px;
+            border: none;
+            outline: none;
+        }}
+        QListWidget::item:selected {{
+            background-color: {SELECTION_BG};
+            color: {SELECTION_TEXT};
+            padding: 4px 8px;
+            border: none;
+            outline: none;
+        }}
+
+        QSplitter::handle {{
+            width: 6px;
+            background: #f1f3f5;
+            border: none;
+        }}
+        QSplitter::handle:hover {{
+            background: #e9ecef;
+        }}
+
+        QPushButton#sidebarToggleBtn {{
+            min-width: 38px;
+            max-width: 38px;
+            padding: 4px;
+            font-size: 18px;
+            line-height: 1;
+        }}
+
+        QScrollArea {{ border: none; background: transparent; }}
+    """
+
+
+class _ComboDelegate(QStyledItemDelegate):
+    """Use the same selection colors as the rest of the UI."""
+    def paint(self, painter, option, index):
+        option.palette.setColor(QPalette.HighlightedText, QColor(SELECTION_TEXT))
+        option.palette.setColor(QPalette.Highlight, QColor(SELECTION_BG))
+        super().paint(painter, option, index)
+
+
+# Left margin (px) reserved for checkbox; clicks here let the default handler toggle. Clicks on the row text toggle programmatically.
+_CHECKBOX_MARGIN = 28
+
+
+class CheckableFileListWidget(QListWidget):
+    """List where clicking the row (text) toggles the checkbox; Ctrl+click toggles that row only. Checkbox area uses default behavior."""
+    def mousePressEvent(self, event):
+        pos = event.pos()
+        item = self.itemAt(pos)
+        if item and (item.flags() & Qt.ItemIsUserCheckable):
+            rect = self.visualItemRect(item)
+            # Click on text part (right of checkbox area) -> toggle check ourselves so it works like clicking the box
+            if pos.x() - rect.x() >= _CHECKBOX_MARGIN:
+                state = Qt.Unchecked if item.checkState() == Qt.Checked else Qt.Checked
+                item.setCheckState(state)
+        super().mousePressEvent(event)
+
+
+class MenuSelectorWidget(QWidget):
+    """
+    Compact selector: button + QMenu. No arrow chrome; selection only on click.
+    Slim height, flat style for a modern look.
+    """
+    option_chosen = pyqtSignal(str)
+
+    def __init__(self, placeholder="—", parent=None):
+        super().__init__(parent)
+        self._placeholder = placeholder
+        self._options = []
+        self._menu = QMenu(self)
+        self._button = QToolButton(self)
+        self._button.setPopupMode(QToolButton.InstantPopup)
+        self._button.setMenu(self._menu)
+        self._button.setText(placeholder)
+        self._button.setMinimumHeight(CONTROL_HEIGHT)
+        self._button.setMaximumHeight(CONTROL_HEIGHT)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self._button)
+
+    def set_options(self, options):
+        """Set the list of options; rebuilds the menu. Keeps placeholder if current text is the placeholder."""
+        self._options = list(options) if options else []
+        self._menu.clear()
+        for opt in self._options:
+            action = self._menu.addAction(opt)
+            action.triggered.connect(lambda checked, o=opt: self._on_picked(o))
+        current = self._button.text()
+        if self._options and current not in self._options and current != self._placeholder:
+            self._button.setText(self._options[0])
+
+    def _on_picked(self, text):
+        self._button.setText(text)
+        self.option_chosen.emit(text)
+
+    def set_current(self, text):
+        if text == self._placeholder or text in self._options:
+            self._button.setText(text)
+
+    def currentText(self):
+        return self._button.text()
+
 
 # --- Helper Functions ---
+def safe_float(val, default=0.0):
+    """Convert value to float; return default on failure (avoids GUI crash on bad CSV data)."""
+    if val is None or val == '' or (isinstance(val, str) and val.strip().upper() in ('', 'NAN', 'N/A', '-', '--')):
+        return default
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return default
+
 def detect_csv_type(header):
     if "Test Type" in header or "Total Messages" in header:
         return "websocket"
@@ -26,173 +275,461 @@ def detect_csv_type(header):
         return "http"
     return "unknown"
 
+# WebSocket CSV: test subtypes and x-axis column names (from measure_websocket.py + run_benchmarks.sh)
+WS_SUBTYPE_CONCURRENCY = "concurrency"
+WS_SUBTYPE_PAYLOAD = "payload"
+WS_SUBTYPE_BURST = "burst"
+WS_SUBTYPE_STREAM = "stream"
+WS_XAXIS_COLUMNS = ["Num Clients", "Message Size (KB)", "Rate (msg/s)", "Bursts", "Duration (s)", "Interval (s)"]
+WS_TYPE_ALL = "All"
+WS_TYPE_CONCURRENCY = "Concurrency"
+WS_TYPE_PAYLOAD = "Payload"
+WS_TYPE_BURST = "Burst"
+WS_TYPE_STREAM = "Stream"
+WS_TYPE_OPTIONS = [WS_TYPE_ALL, WS_TYPE_CONCURRENCY, WS_TYPE_PAYLOAD, WS_TYPE_BURST, WS_TYPE_STREAM]
+WS_PLOT_HEATMAP = "Heatmap"
+WS_PLOT_MULTILINE = "Multi-line"
+WS_PLOT_BAR = "Bar"
+WS_PLOT_STYLE_OPTIONS = [WS_PLOT_MULTILINE, WS_PLOT_HEATMAP, WS_PLOT_BAR]
+BENCHMARK_TYPE_PLACEHOLDER = "Benchmark type"
+METRIC_PLACEHOLDER = "Metric"
+WS_TYPE_PLACEHOLDER = "WebSocket type"
+# Short acronyms for WebSocket subtype in save filenames (avoids overwriting when saving different subtypes in the same second)
+WS_TYPE_SAVE_ACRONYM = {
+    WS_TYPE_CONCURRENCY: "conc",
+    WS_TYPE_PAYLOAD: "pay",
+    WS_TYPE_BURST: "burst",
+    WS_TYPE_STREAM: "stream",
+    WS_TYPE_ALL: "all",
+    WS_TYPE_PLACEHOLDER: "all",
+}
+
+# Human-readable x-axis labels for plot
+XAXIS_DISPLAY_NAMES = {
+    "Num Clients": "Number of clients",
+    "Message Size (KB)": "Message size (KB)",
+    "Rate (msg/s)": "Rate (msg/s)",
+    "Bursts": "Bursts",
+    "Duration (s)": "Duration (s)",
+    "Interval (s)": "Interval (s)",
+    "Total Requests": "Total requests",
+}
+
+def detect_websocket_subtype(filepath, header, rows):
+    """Return WebSocket subtype from filename or CSV content for correct x-axis and display."""
+    base = os.path.basename(filepath).lower()
+    if "_concurrency" in base:
+        return WS_SUBTYPE_CONCURRENCY
+    if "_payload" in base:
+        return WS_SUBTYPE_PAYLOAD
+    if "_burst" in base:
+        return WS_SUBTYPE_BURST
+    if "_stream" in base:
+        return WS_SUBTYPE_STREAM
+    # Legacy: detect from Pattern column when filename has no _burst/_stream
+    if not rows or "Pattern" not in header:
+        return None
+    patterns = {str(r.get("Pattern", "")).strip().lower() for r in rows}
+    if "burst" in patterns and "stream" not in patterns:
+        return WS_SUBTYPE_BURST
+    if "stream" in patterns:
+        return WS_SUBTYPE_STREAM
+    return None
+
+def websocket_xaxis_column(header, rows, subtype):
+    """Choose the best x-axis column for WebSocket plot from subtype and data."""
+    if subtype == WS_SUBTYPE_CONCURRENCY and "Num Clients" in header:
+        return "Num Clients"
+    if subtype == WS_SUBTYPE_PAYLOAD and "Message Size (KB)" in header:
+        return "Message Size (KB)"
+    for col in WS_XAXIS_COLUMNS:
+        if col not in header:
+            continue
+        vals = [safe_float(r.get(col)) for r in rows if r.get(col) not in (None, "")]
+        if len(set(vals)) > 1:
+            return col
+    for col in WS_XAXIS_COLUMNS:
+        if col in header:
+            return col
+    return None
+
+def websocket_subtype_display_name(subtype):
+    if subtype == WS_SUBTYPE_CONCURRENCY:
+        return "Concurrency"
+    if subtype == WS_SUBTYPE_PAYLOAD:
+        return "Payload"
+    if subtype == WS_SUBTYPE_BURST:
+        return "Burst"
+    if subtype == WS_SUBTYPE_STREAM:
+        return "Stream"
+    return None
+
+def _row_value(r, key, header=None):
+    """Get value from row by key; fallback to header match if key has spacing differences."""
+    val = r.get(key)
+    if val is not None and str(val).strip() != "":
+        return val
+    if header and key:
+        for h in header:
+            if h.strip().lower() == key.strip().lower():
+                return r.get(h)
+    return None
+
 def read_csv(filepath):
-    with open(filepath, newline='') as f:
+    with open(filepath, newline='', encoding='utf-8', errors='replace') as f:
         reader = csv.DictReader(f)
-        header = reader.fieldnames
+        header = reader.fieldnames or []
         rows = list(reader)
     return header, rows
 
 def summarize_column(rows, col):
-    vals = [float(r[col]) for r in rows if r.get(col) not in (None, '', 'NaN')]
+    vals = [safe_float(r.get(col)) for r in rows if r.get(col) not in (None, '', 'NaN')]
     if not vals:
         return {'min': '-', 'max': '-', 'avg': '-'}
-    return {
-        'min': min(vals),
-        'max': max(vals),
-        'avg': sum(vals)/len(vals)
-    }
+    return {'min': min(vals), 'max': max(vals), 'avg': sum(vals) / len(vals)}
 
 def get_numeric_columns(header):
-    # Heuristic: columns with numbers in sample data
     numeric = []
     for h in header:
         if any(x in h.lower() for x in [
-            "cpu",
-            "mem",
-            "latency",
-            "throughput",
-            "energy",
-            "power",
-            "requests",
-            "messages",
-            "samples",
-            "rate",
-            "size",
-            "duration",
-            "interval",
-            "bursts",
-            # Include time-based metrics like "Execution Time (s)"
-            "time",
-            "execution",
-            "runtime"
+            "cpu", "mem", "latency", "throughput", "energy", "power",
+            "requests", "messages", "samples", "rate", "size", "duration",
+            "interval", "bursts", "time", "execution", "runtime", "clients"
         ]):
             numeric.append(h)
     return numeric
 
+
+def get_group_key_for_type(header, typ):
+    """Return the column name to use for grouping bars (x-axis) by type. Used for grouped bar chart."""
+    header_list = list(header) if hasattr(header, "__iter__") and not isinstance(header, dict) else list(header.keys()) if isinstance(header, dict) else []
+    if typ == "websocket":
+        for xkey in WS_XAXIS_COLUMNS:
+            if xkey in header_list:
+                return xkey
+    if typ == "http" and "Total Requests" in header_list:
+        return "Total Requests"
+    return None
+
+
+def build_grouped_bar_data(selected_files, headers, rows, file_types, metric, group_key):
+    """
+    Build data for grouped bar chart: group values (x-axis) and per-file metric values.
+    Returns (group_labels, list of (file_label, list of metric values per group)), or (None, None) if not possible.
+    Bars are grouped by the same x-axis (e.g. Num Clients) so all containers share the same groups.
+    """
+    if not group_key or not selected_files:
+        return None, None
+    file_data = []
+    all_group_values = set()
+    for f in selected_files:
+        header = headers[f]
+        header_list = list(header) if hasattr(header, "__iter__") and not isinstance(header, dict) else list(header.keys()) if isinstance(header, dict) else []
+        if group_key not in header_list and group_key not in header:
+            return None, None
+        if metric not in header_list and metric not in header:
+            return None, None
+        group_to_vals = {}
+        for r in rows[f]:
+            g = _row_value(r, group_key, header_list) or r.get(group_key)
+            if g in (None, '', 'NaN') or (isinstance(g, str) and g.strip() in ('', 'NAN', 'N/A')):
+                continue
+            gval = safe_float(g, default=np.nan)
+            if np.isnan(gval):
+                continue
+            m = _row_value(r, metric, header_list) or r.get(metric)
+            if m in (None, '', 'NaN') or (isinstance(m, str) and m.strip() in ('', 'NAN', 'N/A')):
+                continue
+            mval = safe_float(m, default=np.nan)
+            if np.isnan(mval):
+                continue
+            all_group_values.add(gval)
+            if gval not in group_to_vals:
+                group_to_vals[gval] = []
+            group_to_vals[gval].append(mval)
+        group_to_value = {g: sum(vals) / len(vals) for g, vals in group_to_vals.items()}
+        file_data.append((os.path.basename(f), group_to_value))
+    if not all_group_values:
+        return None, None
+    group_labels = sorted(all_group_values)
+    result = []
+    for file_label, group_to_value in file_data:
+        values = [group_to_value.get(g, np.nan) for g in group_labels]
+        result.append((file_label, values))
+    return group_labels, result
+
+
 # --- Main GUI Class ---
-class BenchmarkGrapher(tk.Tk):
+class BenchmarkGrapher(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.title("Web Server Benchmark Graph Generator")
-        self.geometry("1100x700")
-        try:
-            self.state('zoomed')  # Start maximized (Windows/Linux)
-        except Exception:
-            self.attributes('-zoomed', True)  # Fallback for some Linux/others
-        self.configure(bg="#f7f7f7")
+        self.setWindowTitle("Web Server Benchmark Graph Generator")
+        self.setMinimumSize(1100, 700)
         self.files = []
         self.file_types = {}
         self.headers = {}
         self.rows = {}
-        self.selected_metric = tk.StringVar()
-        self.selected_files = []
-        self.plot_type = tk.StringVar(value="Auto")
-        # Use a large, colorblind-friendly palette
+        self.file_categories = {}
+        self.file_ws_subtypes = {}
         self.color_cycle = []
         for cmap_name in ['tab20', 'tab20b', 'tab20c', 'Set1', 'Set2', 'Set3', 'Dark2', 'Paired', 'Accent', 'Pastel1', 'Pastel2']:
             cmap = plt.get_cmap(cmap_name)
             self.color_cycle.extend([cmap(i) for i in range(cmap.N)])
-        # Remove duplicates and keep only visually distinct colors
         self.color_cycle = list(dict.fromkeys(self.color_cycle))
-        # Large set of marker shapes
-        self.marker_cycle = ['o', 's', 'D', '^', 'v', 'P', '*', 'X', 'h', '+', 'x', '|', '_', '1', '2', '3', '4', '8', '<', '>', '.', ',', 'H', 'd', 'p']
-        # Line styles for extra distinction
+        self.marker_cycle = ['o', 's', 'D', '^', 'v', 'P', '*', 'X', 'h', '+', 'x', '|', '_', '1', '2', '3', '4', '8']
         self.linestyle_cycle = ['-', '--', '-.', ':']
-        self.legend_alpha = 1.0
-        # Make bars thicker in bar charts
         self.bar_width_scale = 5.0
+        self.cursor = None
+        self.bar_cursor = None
         self.init_ui()
-        # Global Ctrl+A binding for select all in file listbox
-        self.bind_all('<Control-a>', self.global_ctrl_a_select_all)
-        self.bind_all('<Control-A>', self.global_ctrl_a_select_all)
 
     def init_ui(self):
-        # --- File Selection ---
-        file_frame = tk.Frame(self, bg="#f7f7f7")
-        file_frame.pack(fill=tk.X, padx=10, pady=5)
-        tk.Label(file_frame, text="Select CSV files:", bg="#f7f7f7", font=("Arial", 12, "bold")).pack(side=tk.LEFT)
-        tk.Button(file_frame, text="Browse...", command=self.browse_files, font=("Arial", 11)).pack(side=tk.LEFT, padx=5)
-        tk.Button(file_frame, text="Load All CSVs in Folder...", command=self.load_all_csvs_in_folder, font=("Arial", 11)).pack(side=tk.LEFT, padx=5)
-        tk.Button(file_frame, text="Clear", command=self.clear_files, font=("Arial", 11)).pack(side=tk.LEFT, padx=5)
+        app = QApplication.instance()
+        app.setStyle(QStyleFactory.create("Fusion"))
+        app.setPalette(_make_light_palette())
+        app.setFont(QFont(FONT_FAMILY, FONT_SIZE))
+        central = QWidget()
+        self.setCentralWidget(central)
+        main_layout = QVBoxLayout(central)
+        main_layout.setContentsMargins(8, 8, 8, 8)
 
-        # Place Select All button above the file listbox
-        select_all_frame = tk.Frame(self, bg="#f7f7f7")
-        select_all_frame.pack(fill=tk.X, padx=10, pady=(0, 0))
-        self.select_all_btn = tk.Button(select_all_frame, text="Select All", command=self.select_all_files, font=("Arial", 10), state=tk.DISABLED)
-        self.select_all_btn.pack(side=tk.LEFT, anchor='w')
+        # All buttons: same height, same min width, same policy — homogeneous
+        BTN_MIN_W = 88
+        def _btn(text, slot, min_w=None):
+            w = min_w if min_w is not None else BTN_MIN_W
+            b = QPushButton(text, clicked=slot)
+            b.setMinimumWidth(w)
+            b.setMinimumHeight(CONTROL_HEIGHT)
+            b.setMaximumHeight(CONTROL_HEIGHT)
+            b.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
+            return b
 
-        self.file_listbox = tk.Listbox(file_frame, selectmode=tk.MULTIPLE, width=80, height=3, font=("Arial", 10))
-        self.file_listbox.pack(side=tk.LEFT, padx=10)
-        self.file_listbox.bind('<Double-1>', lambda e: self.plot_selected())
-        # Ctrl+A to select all
-        self.file_listbox.bind('<Control-a>', self.select_all_files)
-        self.file_listbox.bind('<Control-A>', self.select_all_files)
-        # Ensure Listbox gets focus on mouse enter or click
-        self.file_listbox.bind('<Enter>', lambda e: self.file_listbox.focus_set())
-        self.file_listbox.bind('<Button-1>', lambda e: self.file_listbox.focus_set())
-        self.file_listbox.bind('<FocusIn>', lambda e: self.file_listbox.focus_set())
-        # Optional: Right-click context menu for Select All
-        self.file_listbox.bind('<Button-3>', self.show_file_listbox_menu)
-        self.file_listbox_menu = tk.Menu(self.file_listbox, tearoff=0)
-        self.file_listbox_menu.add_command(label="Select All", command=self.select_all_files)
-        # Drag-and-drop support can be added with tkinterDnD2 if desired in the future.
+        GAP = 6
+        splitter = QSplitter(Qt.Horizontal)
+        splitter.setHandleWidth(6)
+        splitter.setChildrenCollapsible(False)
 
-        # --- Metric Selection ---
-        metric_frame = tk.Frame(self, bg="#f7f7f7")
-        metric_frame.pack(fill=tk.X, padx=10, pady=5)
-        tk.Label(metric_frame, text="Metric to plot:", bg="#f7f7f7", font=("Arial", 12, "bold")).pack(side=tk.LEFT)
-        self.metric_combo = ttk.Combobox(metric_frame, textvariable=self.selected_metric, state="readonly", width=40, font=("Arial", 11))
-        self.metric_combo.pack(side=tk.LEFT, padx=5)
-        self.metric_combo.bind('<<ComboboxSelected>>', lambda e: self.plot_selected())
+        left_panel = QWidget()
+        left_panel.setMinimumWidth(380)
+        left_layout = QVBoxLayout(left_panel)
+        left_layout.setSpacing(GAP)
 
-        # --- Plot Type Selection ---
-        plot_type_frame = tk.Frame(self, bg="#f7f7f7")
-        plot_type_frame.pack(fill=tk.X, padx=10, pady=5)
-        tk.Label(plot_type_frame, text="Plot Type:", bg="#f7f7f7", font=("Arial", 12, "bold")).pack(side=tk.LEFT)
-        self.plot_type_combo = ttk.Combobox(plot_type_frame, textvariable=self.plot_type, state="readonly", width=20, font=("Arial", 11))
-        self.plot_type_combo.pack(side=tk.LEFT, padx=5)
-        self.plot_type_combo.bind('<<ComboboxSelected>>', lambda e: self.plot_selected())
-        self.plot_type_combo['values'] = ["Auto", "Bar", "Line"]
-        self.plot_type_combo.set("Auto")
+        data_group = QGroupBox("Data")
+        data_layout = QVBoxLayout(data_group)
+        data_layout.setSpacing(GAP)
+        row1 = QHBoxLayout()
+        row1.setSpacing(GAP)
+        row1.addWidget(_btn("Select files", self.browse_files))
+        row1.addWidget(_btn("Select folder", self.load_all_csvs_in_folder))
+        row1.addStretch()
+        data_layout.addLayout(row1)
+        row2 = QHBoxLayout()
+        row2.setSpacing(GAP)
+        self.clear_all_btn = _btn("Clear all", self.clear_files)
+        self.clear_all_btn.setEnabled(False)
+        row2.addWidget(self.clear_all_btn)
+        self.select_all_btn = _btn("Select all", self.select_all_files)
+        self.select_all_btn.setEnabled(False)
+        row2.addWidget(self.select_all_btn)
+        self.deselect_all_btn = _btn("Deselect all", self.deselect_all_files)
+        self.deselect_all_btn.setEnabled(False)
+        row2.addWidget(self.deselect_all_btn)
+        row2.addStretch()
+        data_layout.addLayout(row2)
+        row3 = QHBoxLayout()
+        row3.setSpacing(GAP)
+        self.category_selector = MenuSelectorWidget(placeholder=BENCHMARK_TYPE_PLACEHOLDER, parent=self)
+        self.category_selector.set_options([])
+        self.category_selector.setEnabled(False)
+        self.category_selector.option_chosen.connect(lambda t: QTimer.singleShot(0, self._on_filter_changed))
+        row3.addWidget(self.category_selector)
+        self.file_count_label = QLabel("0 loaded, 0 selected")
+        row3.addWidget(self.file_count_label, 1)
+        data_layout.addLayout(row3)
+        self.ws_type_row = QWidget()
+        row_ws = QHBoxLayout(self.ws_type_row)
+        row_ws.setContentsMargins(0, 0, 0, 0)
+        row_ws.setSpacing(GAP)
+        self.ws_type_selector = MenuSelectorWidget(placeholder=WS_TYPE_PLACEHOLDER, parent=self)
+        self.ws_type_selector.set_options([WS_TYPE_ALL, WS_TYPE_CONCURRENCY, WS_TYPE_PAYLOAD, WS_TYPE_BURST, WS_TYPE_STREAM])
+        self.ws_type_selector.option_chosen.connect(lambda t: QTimer.singleShot(0, self._on_filter_changed))
+        row_ws.addWidget(self.ws_type_selector)
+        row_ws.addStretch()
+        self.ws_type_row.setVisible(False)
+        data_layout.addWidget(self.ws_type_row)
+        self.file_listbox = CheckableFileListWidget(self)
+        self.file_listbox.setSelectionMode(QListWidget.ExtendedSelection)
+        self.file_listbox.setMinimumHeight(140)
+        self.file_listbox.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.file_listbox.itemSelectionChanged.connect(self._on_selection_changed)
+        self.file_listbox.itemChanged.connect(self._on_item_changed)
+        self.file_listbox.itemDoubleClicked.connect(self.plot_selected)
+        data_layout.addWidget(self.file_listbox, 1)
+        left_layout.addWidget(data_group, 1)
 
-        # --- Graph Area ---
+        plot_group = QGroupBox("Plot")
+        plot_layout = QVBoxLayout(plot_group)
+        plot_layout.setSpacing(GAP)
+        plot_layout.setContentsMargins(8, 10, 8, 8)
+        plot_layout.addWidget(QLabel("Metric:"))
+        self.metric_selector = MenuSelectorWidget(placeholder=METRIC_PLACEHOLDER, parent=self)
+        self.metric_selector.set_options([])
+        self.metric_selector.setEnabled(False)
+        self.metric_selector.option_chosen.connect(lambda t: QTimer.singleShot(0, self.plot_selected))
+        plot_layout.addWidget(self.metric_selector)
+        pr = QHBoxLayout()
+        pr.setSpacing(GAP)
+        pr.addWidget(QLabel("Type:"))
+        self.plot_type_selector = MenuSelectorWidget(placeholder="Auto", parent=self)
+        self.plot_type_selector.set_options(["Auto", "Bar", "Line"])
+        self.plot_type_selector.setEnabled(False)
+        self.plot_type_selector.option_chosen.connect(lambda t: QTimer.singleShot(0, self.plot_selected))
+        pr.addWidget(self.plot_type_selector)
+        self.plot_btn = _btn("Plot", self.plot_selected)
+        self.plot_btn.setEnabled(False)
+        pr.addWidget(self.plot_btn)
+        pr.addStretch()
+        plot_layout.addLayout(pr)
+        left_layout.addWidget(plot_group)
+
+        bottom_left = QFrame()
+        bottom_left.setFrameShape(QFrame.NoFrame)
+        bl_layout = QVBoxLayout(bottom_left)
+        bl_layout.setSpacing(GAP)
+        save_row = QHBoxLayout()
+        save_row.setSpacing(GAP)
+        self.save_btn = _btn("Save", self.export_graph)
+        self.save_btn.setEnabled(False)
+        save_row.addWidget(self.save_btn)
+        save_row.addWidget(_btn("Help", self.show_help))
+        save_row.addStretch()
+        bl_layout.addLayout(save_row)
+        self.summary_label = QLabel("")
+        self.summary_label.setStyleSheet(f"color: {TEXT_DISABLED}; padding: 2px; font-size: {FONT_SIZE}pt; font-style: italic;")
+        self.summary_label.setWordWrap(True)
+        bl_layout.addWidget(self.summary_label)
+        left_layout.addWidget(bottom_left)
+
+        scroll = QScrollArea()
+        scroll.setWidget(left_panel)
+        scroll.setWidgetResizable(True)
+        scroll.setMinimumWidth(360)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.left_panel = scroll
+        splitter.addWidget(scroll)
+
+        # --- Right panel: Graph (resizable) ---
+        right_panel = QWidget()
+        right_panel.setMinimumWidth(450)  # Keep graph usable when user shrinks it
+        right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        graph_group = QGroupBox("Graph")
+        graph_layout = QVBoxLayout(graph_group)
+        graph_layout.setContentsMargins(2, 2, 2, 2)
+        top_row = QHBoxLayout()
+        self.sidebar_toggle_btn = QPushButton("\u00AB")  # « = collapse/hide sidebar (IDE convention)
+        self.sidebar_toggle_btn.setObjectName("sidebarToggleBtn")
+        self.sidebar_toggle_btn.setToolTip("Hide sidebar (full screen graph)")
+        self.sidebar_toggle_btn.setFixedSize(38, CONTROL_HEIGHT)
+        self.sidebar_toggle_btn.clicked.connect(self._toggle_sidebar)
+        top_row.addWidget(self.sidebar_toggle_btn)
         self.fig, self.ax = plt.subplots(figsize=(8, 5))
-        self.canvas = FigureCanvasTkAgg(self.fig, master=self)
-        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        self.canvas = FigureCanvas(self.fig)
+        self.toolbar = NavigationToolbar2QT(self.canvas, self)
+        for a in self.toolbar.actions():
+            if "save" in (a.toolTip() or "").lower() or a.text() == "Save":
+                a.setVisible(False)
+                break
+        top_row.addWidget(self.toolbar, 1)
+        graph_layout.addLayout(top_row)
+        graph_layout.addWidget(self.canvas)
+        right_layout.addWidget(graph_group)
+        splitter.addWidget(right_panel)
 
-        # Add matplotlib navigation toolbar for zoom/pan
-        self.toolbar = NavigationToolbar2Tk(self.canvas, self)
-        self.toolbar.update()
-        self.toolbar.pack(fill=tk.X, padx=10, pady=(0, 5))
+        # Initial split: left at minimum readable width, graph gets the rest
+        splitter.setSizes([400, 10000])
 
-        # --- Save Button ---
-        save_frame = tk.Frame(self, bg="#f7f7f7")
-        save_frame.pack(fill=tk.X, padx=10, pady=(0, 5))
-        self.save_button = tk.Button(save_frame, text="Save Graph", command=self.export_graph, font=("Arial", 11))
-        self.save_button.pack(side=tk.LEFT)
-        # Optionally, add a tooltip or help text here
+        main_layout.addWidget(splitter)
+        central.setStyleSheet(_app_stylesheet())
 
-        # --- Summary Area ---
-        summary_frame = tk.Frame(self, bg="#f7f7f7")
-        summary_frame.pack(fill=tk.X, padx=10, pady=5)
-        tk.Label(summary_frame, text="Summary:", bg="#f7f7f7", font=("Arial", 12, "bold")).pack(side=tk.LEFT)
-        self.summary_text = tk.Text(summary_frame, height=4, width=120, font=("Arial", 10))
-        self.summary_text.pack(side=tk.LEFT, padx=10)
-        self.summary_text.config(state=tk.DISABLED)
+        QShortcut(QKeySequence("Ctrl+A"), self).activated.connect(self.select_all_files)
+        QShortcut(QKeySequence(Qt.Key_Return), self).activated.connect(self.plot_selected)
+        QShortcut(QKeySequence(Qt.Key_Enter), self).activated.connect(self.plot_selected)
+        self.showMaximized()
 
-        # --- Help Button ---
-        tk.Button(self, text="Help", command=self.show_help, font=("Arial", 11)).pack(side=tk.RIGHT, padx=10, pady=5)
+    def _toggle_sidebar(self):
+        visible = self.left_panel.isVisible()
+        self.left_panel.setVisible(not visible)
+        if visible:
+            self.sidebar_toggle_btn.setText("\u00BB")   # » = expand/show sidebar
+            self.sidebar_toggle_btn.setToolTip("Show sidebar")
+        else:
+            self.sidebar_toggle_btn.setText("\u00AB")  # « = collapse/hide sidebar
+            self.sidebar_toggle_btn.setToolTip("Hide sidebar (full screen graph)")
 
     def browse_files(self):
-        files = filedialog.askopenfilenames(title="Select CSV files", filetypes=[("CSV Files", "*.csv")])
+        start_dir = os.path.abspath("results") if os.path.isdir("results") else ""
+        files, _ = QFileDialog.getOpenFileNames(self, "Select CSV files", start_dir, "CSV Files (*.csv)")
         if files:
             self.add_files(files)
 
-    # Drag-and-drop support removed for compatibility with standard Tkinter.
-    # def drop_files(self, event):
-    #     files = self.tk.splitlist(event.data)
-    #     self.add_files(files)
+    def detect_file_category(self, filepath):
+        """Detect category from path using CATEGORY_PREFIXES and CATEGORY_PATH_PARTS."""
+        base = os.path.basename(filepath).lower()
+        for prefix, cat in CATEGORY_PREFIXES.items():
+            if base.startswith(prefix):
+                return cat
+        path_lower = filepath.lower()
+        for part, cat in CATEGORY_PATH_PARTS.items():
+            if part in path_lower:
+                return cat
+        return "Unknown"
+
+    def _on_filter_changed(self):
+        cat = self.category_selector.currentText()
+        if getattr(self, "ws_type_row", None):
+            self.ws_type_row.setVisible(cat == "WebSocket")
+            if cat != "WebSocket" and getattr(self, "ws_type_selector", None):
+                self.ws_type_selector.set_current(WS_TYPE_PLACEHOLDER)
+        if getattr(self, "plot_type_selector", None):
+            if cat == "WebSocket":
+                self.plot_type_selector.set_options(WS_PLOT_STYLE_OPTIONS)
+                self.plot_type_selector.set_current(WS_PLOT_MULTILINE)
+            else:
+                self.plot_type_selector.set_options(["Auto", "Line", "Bar"])
+                self.plot_type_selector.set_current("Auto")
+        self.update_file_listbox_display()
+        self.update_metric_options()
+
+    def _on_selection_changed(self):
+        self._update_file_count_label()
+
+    def _on_item_changed(self, item):
+        """Update file count when a checkbox is toggled."""
+        self._update_file_count_label()
+
+    def _update_selection_buttons_state(self):
+        has_items = self.file_listbox.count() > 0
+        self.select_all_btn.setEnabled(has_items)
+        self.deselect_all_btn.setEnabled(has_items)
+
+    def _update_filter_combo(self):
+        """Populate benchmark type from loaded file categories (no separate label; dropdown shows current choice)."""
+        cats = ["All"] + sorted(set(self.file_categories.values()))
+        current = self.category_selector.currentText()
+        self.category_selector.set_options(cats)
+        if current in cats:
+            self.category_selector.set_current(current)
+        else:
+            self.category_selector.set_current(BENCHMARK_TYPE_PLACEHOLDER)
+        self._on_filter_changed()
+
+    def _update_file_count_label(self):
+        total = len(self.get_visible_files())
+        selected = sum(1 for i in range(self.file_listbox.count())
+                       if self.file_listbox.item(i).checkState() == Qt.Checked)
+        self.file_count_label.setText(f"{total} loaded, {selected} selected")
 
     def add_files(self, files):
         for f in files:
@@ -200,62 +737,218 @@ class BenchmarkGrapher(tk.Tk):
                 try:
                     header, rows = read_csv(f)
                 except Exception as e:
-                    messagebox.showerror("Error", f"Failed to read {f}: {e}")
+                    QMessageBox.critical(self, "Error", f"Failed to read {f}: {e}")
+                    continue
+                if not header:
+                    QMessageBox.warning(self, "Empty or invalid CSV", f"No header in {f}; skipping.")
                     continue
                 typ = detect_csv_type(header)
+                category = self.detect_file_category(f)
+                ws_sub = detect_websocket_subtype(f, header, rows) if typ == "websocket" else None
                 self.files.append(f)
                 self.file_types[f] = typ
                 self.headers[f] = header
                 self.rows[f] = rows
-                self.file_listbox.insert(tk.END, os.path.basename(f) + f"  [{typ}]")
+                self.file_categories[f] = category
+                self.file_ws_subtypes[f] = ws_sub
+        self._update_filter_combo()
         self.update_metric_options()
-        # Enable Select All button if files are present
-        if self.files:
-            self.select_all_btn.config(state=tk.NORMAL)
-        else:
-            self.select_all_btn.config(state=tk.DISABLED)
+        self.update_file_listbox_display()
+        self._set_data_controls_enabled(len(self.files) > 0)
+
+    def update_file_listbox_display(self):
+        self.file_listbox.clear()
+        visible = self.get_visible_files()
+        self.file_listbox.blockSignals(True)
+        for f in visible:
+            typ = self.file_types.get(f, "unknown")
+            suffix = f"  [{typ}]"
+            if typ == "websocket":
+                sub = self.file_ws_subtypes.get(f)
+                if sub:
+                    sub_display = websocket_subtype_display_name(sub)
+                    if sub_display:
+                        suffix = f"  [{typ} / {sub_display}]"
+            item = QListWidgetItem(os.path.basename(f) + suffix)
+            item.setData(Qt.UserRole, f)
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(Qt.Checked)
+            self.file_listbox.addItem(item)
+        self.file_listbox.blockSignals(False)
+        self.file_listbox.selectAll()
+        self._update_file_count_label()
+        self._update_selection_buttons_state()
 
     def clear_files(self):
         self.files.clear()
         self.file_types.clear()
         self.headers.clear()
         self.rows.clear()
-        self.file_listbox.delete(0, tk.END)
-        self.metric_combo.set("")
+        self.file_categories.clear()
+        self.file_ws_subtypes.clear()
+        self.file_listbox.clear()
+        self.category_selector.set_options([BENCHMARK_TYPE_PLACEHOLDER])
+        self.category_selector.set_current(BENCHMARK_TYPE_PLACEHOLDER)
+        if getattr(self, "ws_type_row", None):
+            self.ws_type_row.setVisible(False)
+        if getattr(self, "ws_type_selector", None):
+            self.ws_type_selector.set_current(WS_TYPE_PLACEHOLDER)
+        if getattr(self, "plot_type_selector", None):
+            self.plot_type_selector.set_options(["Auto", "Line", "Bar"])
+            self.plot_type_selector.set_current("Auto")
+        self.metric_selector.set_options([])
+        self.metric_selector.set_current(METRIC_PLACEHOLDER)
+        self._set_data_controls_enabled(False)
         self.ax.clear()
         self.canvas.draw()
-        self.summary_text.config(state=tk.NORMAL)
-        self.summary_text.delete(1.0, tk.END)
-        self.summary_text.config(state=tk.DISABLED)
-        # Disable Select All button when no files
-        self.select_all_btn.config(state=tk.DISABLED)
+        self.summary_label.setText("")
+        self.file_count_label.setText("0 loaded, 0 selected")
+        self.select_all_btn.setEnabled(False)
+        self.deselect_all_btn.setEnabled(False)
+
+    def _set_data_controls_enabled(self, enabled):
+        """Enable or disable data/plot/save controls (only usable after files are loaded)."""
+        self.clear_all_btn.setEnabled(enabled)
+        self.category_selector.setEnabled(enabled)
+        self.metric_selector.setEnabled(enabled)
+        self.plot_type_selector.setEnabled(enabled)
+        self.plot_btn.setEnabled(enabled)
+        self.save_btn.setEnabled(enabled)
 
     def update_metric_options(self):
-        # Show only metrics common to all selected files
-        if not self.files:
-            self.metric_combo['values'] = []
+        visible = self.get_visible_files()
+        if not visible:
+            self.metric_selector.set_options([])
             return
-        metrics = set(get_numeric_columns(self.headers[self.files[0]]))
-        for f in self.files[1:]:
+        metrics = set(get_numeric_columns(self.headers[visible[0]]))
+        for f in visible[1:]:
             metrics &= set(get_numeric_columns(self.headers[f]))
         metrics = sorted(metrics)
-        self.metric_combo['values'] = metrics
-        if metrics:
-            self.metric_combo.set(metrics[0])
-        else:
-            self.metric_combo.set("")
+        old = self.metric_selector.currentText()
+        self.metric_selector.set_options(metrics)
+        if old in metrics:
+            self.metric_selector.set_current(old)
+        elif metrics:
+            self.metric_selector.set_current(metrics[0])
+
+    def get_selected_files(self):
+        visible = self.get_visible_files()
+        checked = [self.file_listbox.item(i).data(Qt.UserRole)
+                   for i in range(self.file_listbox.count())
+                   if self.file_listbox.item(i).checkState() == Qt.Checked
+                   and self.file_listbox.item(i).data(Qt.UserRole) in visible]
+        if not checked:
+            return visible
+        return checked
+
+    def select_all_files(self):
+        self.file_listbox.blockSignals(True)
+        for i in range(self.file_listbox.count()):
+            self.file_listbox.item(i).setCheckState(Qt.Checked)
+        self.file_listbox.blockSignals(False)
+        self.file_listbox.selectAll()
+        self._update_file_count_label()
+
+    def deselect_all_files(self):
+        self.file_listbox.blockSignals(True)
+        for i in range(self.file_listbox.count()):
+            self.file_listbox.item(i).setCheckState(Qt.Unchecked)
+        self.file_listbox.blockSignals(False)
+        self.file_listbox.clearSelection()
+        self._update_file_count_label()
+
+    # Fixed axes positions so repeated plot/heatmap never shrinks (colorbar in its own axes)
+    _AXES_FULL = [0.1, 0.12, 0.85, 0.8]   # main plot when no colorbar
+    _AXES_WITH_CBAR = [0.1, 0.12, 0.72, 0.8]  # main plot when heatmap; leaves room for colorbar
+    _CBAR_RECT = [0.85, 0.12, 0.025, 0.8]    # colorbar axes (fixed, so main ax never shrinks)
+
+    def _plot_websocket_heatmap(self, selected_files, metric):
+        """Build and draw a heatmap: rows = files, columns = unique x-axis values, color = metric."""
+        self.ax.set_position(self._AXES_WITH_CBAR)
+        data_rows = []
+        row_labels = []
+        all_x_ordered = []
+        for f in selected_files:
+            header = self.headers[f]
+            rows = self.rows[f]
+            typ = self.file_types[f]
+            x, y, label = self.get_plot_data(header, rows, typ, metric, os.path.basename(f), filepath=f)
+            if not x or not y:
+                continue
+            data_rows.append((x, y))
+            row_labels.append(label or os.path.basename(f))
+            all_x_ordered.extend(x)
+        if not data_rows:
+            self._heatmap_vals = []
+            return
+        # Unique x values in order of first appearance (or sorted if numeric)
+        seen = set()
+        x_unique = []
+        for v in all_x_ordered:
+            try:
+                vf = float(v)
+                if vf not in seen:
+                    seen.add(vf)
+                    x_unique.append(vf)
+            except (TypeError, ValueError):
+                if v not in seen:
+                    seen.add(v)
+                    x_unique.append(v)
+        try:
+            x_unique = sorted(x_unique)
+        except TypeError:
+            pass
+        if not x_unique:
+            self._heatmap_vals = []
+            return
+        x_to_col = {xv: j for j, xv in enumerate(x_unique)}
+        n_rows = len(data_rows)
+        n_cols = len(x_unique)
+        matrix = np.full((n_rows, n_cols), np.nan)
+        heatmap_vals = []
+        for i, (x_list, y_list) in enumerate(data_rows):
+            for xv, yv in zip(x_list, y_list):
+                j = x_to_col.get(xv)
+                if j is not None and yv is not None:
+                    try:
+                        matrix[i, j] = float(yv)
+                        heatmap_vals.append(float(yv))
+                    except (TypeError, ValueError):
+                        pass
+        self._heatmap_vals = heatmap_vals
+        if not heatmap_vals:
+            return
+        im = self.ax.imshow(matrix, aspect="auto", cmap="viridis", interpolation="nearest")
+        self.ax.set_xticks(np.arange(n_cols))
+        self.ax.set_xticklabels([str(x_unique[j]) for j in range(n_cols)], rotation=45, ha="right")
+        self.ax.set_yticks(np.arange(n_rows))
+        self.ax.set_yticklabels(row_labels)
+        first_file = selected_files[0]
+        x_col = self.get_x_axis_column_name(self.headers[first_file], self.rows[first_file], "websocket", filepath=first_file)
+        x_axis_label = XAXIS_DISPLAY_NAMES.get(x_col, x_col) if x_col else "Parameter"
+        self.ax.set_xlabel(x_axis_label)
+        self.ax.set_ylabel("Benchmark")
+        self.ax.set_title(f"{metric} (heatmap)")
+        # Use a separate fixed axes for colorbar so main ax is never shrunk (no shrink on repeated plot)
+        cax = self.fig.add_axes(self._CBAR_RECT)
+        self.fig.colorbar(im, cax=cax, label=metric)
 
     def plot_selected(self):
-        selected_indices = self.file_listbox.curselection()
-        if not selected_indices:
-            selected_indices = range(len(self.files))  # Default: all
-        selected_files = [self.files[i] for i in selected_indices]
-        metric = self.selected_metric.get()
-        if not metric:
-            messagebox.showwarning("No metric selected", "Please select a metric to plot.")
+        selected_files = self.get_selected_files()
+        metric = self.metric_selector.currentText()
+        if not metric or metric == METRIC_PLACEHOLDER:
+            return
+        if not selected_files:
             return
         self.ax.clear()
-        # Remove old mplcursors cursor if it exists
+        # Remove every axes that is not the main plot (colorbar etc.) so none accumulate
+        while True:
+            extra = [ax for ax in self.fig.axes if ax is not self.ax]
+            if not extra:
+                break
+            for ax in extra:
+                ax.remove()
+        self.ax.set_position(self._AXES_FULL)
         if hasattr(self, 'cursor') and self.cursor is not None:
             try:
                 self.cursor.remove()
@@ -268,145 +961,158 @@ class BenchmarkGrapher(tk.Tk):
             except Exception:
                 pass
             self.bar_cursor = None
-        summary_lines = []
-        plot_type = self.plot_type.get()
-        # For grouped bar chart
-        n_bars = max(1, len(selected_files))
-        if n_bars <= 3:
-            bar_width = min(0.4, 0.8 / n_bars)
+
+        all_vals = []
+        type_choice = self.plot_type_selector.currentText()
+        n_series = max(1, len(selected_files))
+        is_websocket = selected_files and all(self.file_types.get(f) == "websocket" for f in selected_files)
+        use_bar = (is_websocket and type_choice == WS_PLOT_BAR) or (not is_websocket and type_choice == "Bar")
+
+        if is_websocket and type_choice == WS_PLOT_HEATMAP:
+            self._plot_websocket_heatmap(selected_files, metric)
+            self.canvas.draw()
+            if getattr(self, "_heatmap_vals", None):
+                v = self._heatmap_vals
+                s = f"{metric}: min={min(v):.2f}, max={max(v):.2f}, avg={sum(v)/len(v):.2f}"
+                self.summary_label.setText(s)
             else:
-            bar_width = min(0.7, 2.4 / n_bars)
-        # Apply global scaling to make bars a bit thicker
-        bar_width *= getattr(self, 'bar_width_scale', 1.0)
-        for idx, f in enumerate(selected_files):
-            header = self.headers[f]
-            rows = self.rows[f]
-            typ = self.file_types[f]
-            x, y, label = self.get_plot_data(header, rows, typ, metric, os.path.basename(f))
-            if x and y:
+                self.summary_label.setText("")
+            return
+
+        # Grouped bar chart: group by x-axis (e.g. Num Clients) so all containers share the same groups
+        group_labels = None
+        file_data = None
+        if use_bar and selected_files:
+            first = selected_files[0]
+            group_key = get_group_key_for_type(self.headers[first], self.file_types[first])
+            if group_key:
+                group_labels, file_data = build_grouped_bar_data(selected_files, self.headers, self.rows, self.file_types, metric, group_key)
+
+        if use_bar and group_labels is not None and file_data is not None and len(group_labels) > 0:
+            n_groups = len(group_labels)
+            n_files = len(file_data)
+            bar_width_total = 0.8
+            bar_width = bar_width_total / n_files
+            x_centers = np.arange(n_groups)
+            for idx, (file_label, values) in enumerate(file_data):
                 color = self.color_cycle[idx % len(self.color_cycle)]
-                marker = self.marker_cycle[(idx // len(self.linestyle_cycle)) % len(self.marker_cycle)]
-                linestyle = self.linestyle_cycle[idx % len(self.linestyle_cycle)]
-                # Determine plot type
-                if plot_type == "Auto":
-                    use_bar = (typ == "websocket")
-                elif plot_type == "Bar":
-                    use_bar = True
-                else:
-                    use_bar = False
-                if use_bar:
-                    # Grouped bars: offset x positions for each file
-                    if isinstance(x[0], (int, float, np.integer, np.floating)):
-                        x_vals = np.array(x) + (idx - (len(selected_files)-1)/2) * bar_width
+                offset = (idx - (n_files - 1) / 2) * bar_width
+                x_vals = x_centers + offset
+                self.ax.bar(x_vals, values, width=bar_width * 0.9, label=file_label, color=color, alpha=0.85)
+                for xv, val in zip(x_vals, values):
+                    if val == 0 or (isinstance(val, float) and np.isnan(val)):
+                        self.ax.plot([xv - bar_width/2, xv + bar_width/2], [0, 0], color=color, linewidth=2, alpha=0.85, solid_capstyle='butt')
+            self.ax.set_xticks(x_centers)
+            self.ax.set_xticklabels([str(g) for g in group_labels])
+            x_axis_label = XAXIS_DISPLAY_NAMES.get(group_key, group_key) if group_key else "Test parameter"
+            all_vals = [v for _, values in file_data for v in values if isinstance(v, (int, float)) and not np.isnan(v)]
+        else:
+            # Line or non-grouped bar: per-file series
+            for idx, f in enumerate(selected_files):
+                header = self.headers[f]
+                rows = self.rows[f]
+                typ = self.file_types[f]
+                x, y, label = self.get_plot_data(header, rows, typ, metric, os.path.basename(f), filepath=f)
+                if x and y:
+                    color = self.color_cycle[idx % len(self.color_cycle)]
+                    marker = self.marker_cycle[(idx // len(self.linestyle_cycle)) % len(self.marker_cycle)]
+                    linestyle = self.linestyle_cycle[idx % len(self.linestyle_cycle)]
+                    if use_bar:
+                        n_points = len(x)
+                        if isinstance(x[0], (int, float, np.integer, np.floating)):
+                            x_arr = np.array(x, dtype=float)
+                            x_min, x_max = x_arr.min(), x_arr.max()
+                            x_range = (x_max - x_min) if (x_max > x_min) else (x_max or 1.0)
+                            slot_width = x_range / max(n_points, 1)
+                            bar_width = max(slot_width * 0.4, x_range * 0.02)
+                            bar_width = min(bar_width, slot_width * 0.9 / n_series)
+                            bar_width *= getattr(self, "bar_width_scale", 1.0)
+                            x_vals = x_arr + (idx - (n_series - 1) / 2) * bar_width
+                        else:
+                            slot_width = 1.0
+                            bar_width = max(0.15, 0.8 / n_series)
+                            bar_width *= getattr(self, "bar_width_scale", 1.0)
+                            x_vals = np.arange(len(x)) + (idx - (n_series - 1) / 2) * bar_width
+                            self.ax.set_xticks(np.arange(len(x)))
+                            self.ax.set_xticklabels([str(v) for v in x])
+                        self.ax.bar(x_vals, y, width=bar_width, label=label, color=color, alpha=0.85)
+                        for xv, val in zip(x_vals, y):
+                            if val == 0:
+                                self.ax.plot([xv - bar_width/2, xv + bar_width/2], [0, 0], color=color, linewidth=2, alpha=0.85, solid_capstyle='butt')
                     else:
-                        # For categorical x, convert to range
-                        x_vals = np.arange(len(x)) + (idx - (len(selected_files)-1)/2) * bar_width
-                        self.ax.set_xticks(np.arange(len(x)))
-                        self.ax.set_xticklabels([str(val) for val in x])
-                    self.ax.bar(x_vals, y, width=bar_width, label=label, color=color,
-                        alpha=0.85)
-                    # Draw a thin colored line for zero bars
-                    for xv, val in zip(x_vals, y):
-                        if val == 0:
-                            self.ax.plot([xv - bar_width/2, xv + bar_width/2], [0, 0], color=color, linewidth=2, alpha=0.85, solid_capstyle='butt')
-                else:
-                    self.ax.plot(x, y, label=label, color=color, marker=marker, linestyle=linestyle, linewidth=2, markersize=7)
-                stats = summarize_column(rows, metric)
-                summary_lines.append(f"{label}: min={stats['min']}, max={stats['max']}, avg={stats['avg']}")
-        self.ax.set_title(f"{metric} vs. Test Parameter")
-        # Use dynamic x-axis label based on the first selected file
-        if selected_files:
-            x_axis_label = self.get_x_axis_column_name(self.headers[selected_files[0]], self.rows[selected_files[0]], self.file_types[selected_files[0]])
-                else:
-            x_axis_label = "Test Parameter"
+                        self.ax.plot(x, y, label=label, color=color, marker=marker, linestyle=linestyle, linewidth=2, markersize=7)
+                    all_vals.extend(y)
+            x_axis_label = self.get_x_axis_column_name(self.headers[selected_files[0]], self.rows[selected_files[0]], self.file_types[selected_files[0]], filepath=selected_files[0])
+            x_axis_label = XAXIS_DISPLAY_NAMES.get(x_axis_label, x_axis_label) if x_axis_label else "Test parameter"
+
+        self.ax.set_title(f"{metric} vs. {x_axis_label}")
         self.ax.set_xlabel(x_axis_label)
         self.ax.set_ylabel(metric)
         self.ax.legend(loc='best', framealpha=0.85)
         self.ax.grid(True)
         self.canvas.draw()
-        self.summary_text.config(state=tk.NORMAL)
-        self.summary_text.delete(1.0, tk.END)
-        self.summary_text.insert(tk.END, "\n".join(summary_lines))
-        self.summary_text.config(state=tk.DISABLED)
+        if all_vals:
+            s = f"{metric}: min={min(all_vals):.2f}, max={max(all_vals):.2f}, avg={sum(all_vals)/len(all_vals):.2f}"
+            self.summary_label.setText(s)
+        else:
+            self.summary_label.setText("")
 
-        # Add hover interactivity with mplcursors for lines
-        self.cursor = mplcursors.cursor(self.ax.lines, hover=True, highlight=False,
-            annotation_kwargs={
-                'fontsize': 9,
-                'arrowprops': dict(arrowstyle="->", color="#333", lw=1.2),
-                'bbox': dict(boxstyle="round,pad=0.2", fc="#f7f7f7", ec="#333", lw=0.8)
-            })
-        @self.cursor.connect("add")
-        def on_add(sel):
-            # Reset all lines
-            for line in self.ax.get_lines():
-                line.set_linewidth(2)
-                line.set_alpha(0.7)
-            # Highlight only the hovered line
-            sel.artist.set_linewidth(4)
-            sel.artist.set_alpha(1.0)
-            sel.annotation.set_text(sel.artist.get_label())
-            # Only one annotation at a time
-            for ann in self.ax.texts:
-                if ann is not sel.annotation:
-                    ann.set_visible(False)
-        @self.cursor.connect("remove")
-        def on_remove(sel):
-            # Reset all lines
-            for line in self.ax.get_lines():
-                line.set_linewidth(2)
-                line.set_alpha(1.0)
-            # Hide all annotations
-            for ann in self.ax.texts:
-                ann.set_visible(False)
-            self.canvas.draw_idle()
+        try:
+            if self.ax.lines and len(self.ax.lines) > 0:
+                self.cursor = mplcursors.cursor(self.ax.lines, hover=True, highlight=False,
+                    annotation_kwargs={'fontsize': 9, 'arrowprops': dict(arrowstyle="->", color="#333", lw=1.2),
+                        'bbox': dict(boxstyle="round,pad=0.2", fc="#f7f7f7", ec="#333", lw=0.8)})
+                @self.cursor.connect("add")
+                def on_add(sel):
+                    for line in self.ax.get_lines():
+                        line.set_linewidth(2)
+                        line.set_alpha(0.7)
+                    sel.artist.set_linewidth(4)
+                    sel.artist.set_alpha(1.0)
+                    sel.annotation.set_text(sel.artist.get_label())
+                    for ann in self.ax.texts:
+                        if ann is not sel.annotation:
+                            ann.set_visible(False)
+                @self.cursor.connect("remove")
+                def on_remove(_):
+                    for line in self.ax.get_lines():
+                        line.set_linewidth(2)
+                        line.set_alpha(1.0)
+                    for ann in self.ax.texts:
+                        ann.set_visible(False)
+                    self.canvas.draw_idle()
 
-        # Add hover interactivity with mplcursors for bars
-        if self.ax.containers:
-            self.bar_cursor = mplcursors.cursor(self.ax.containers, hover=True, highlight=False,
-                annotation_kwargs={
-                    'fontsize': 9,
-                    'arrowprops': dict(arrowstyle="->", color="#333", lw=1.2),
-                    'bbox': dict(boxstyle="round,pad=0.2", fc="#f7f7f7", ec="#333", lw=0.8)
-                })
-            @self.bar_cursor.connect("add")
-            def on_bar_add(sel):
-                # Reset all bars
-                for cont in self.ax.containers:
-                    for bar in cont:
-                        bar.set_linewidth(0.5)
-                        bar.set_edgecolor('black')
-                        bar.set_alpha(0.85)
-                # Highlight all bars in the same group/series as the hovered bar
-                target_label = sel.artist.get_label() if hasattr(sel.artist, 'get_label') else None
-                if target_label:
+            if self.ax.containers and len(self.ax.containers) > 0:
+                self.bar_cursor = mplcursors.cursor(self.ax.containers, hover=True, highlight=False,
+                    annotation_kwargs={'fontsize': 9, 'arrowprops': dict(arrowstyle="->", color="#333", lw=1.2),
+                        'bbox': dict(boxstyle="round,pad=0.2", fc="#f7f7f7", ec="#333", lw=0.8)})
+                @self.bar_cursor.connect("add")
+                def on_bar_add(sel):
+                    target_label = sel.artist.get_label() if hasattr(sel.artist, 'get_label') else None
+                    if target_label:
+                        for cont in self.ax.containers:
+                            for bar in cont:
+                                if (bar.get_label() if hasattr(bar, 'get_label') else None) == target_label:
+                                    bar.set_linewidth(3)
+                                    bar.set_edgecolor('#d62728')
+                                    bar.set_alpha(1.0)
+                    sel.annotation.set_text(target_label or '')
+                    for ann in self.ax.texts:
+                        if ann is not sel.annotation:
+                            ann.set_visible(False)
+                @self.bar_cursor.connect("remove")
+                def on_bar_remove(_):
                     for cont in self.ax.containers:
                         for bar in cont:
-                            bar_label = bar.get_label() if hasattr(bar, 'get_label') else None
-                            if bar_label == target_label:
-                                bar.set_linewidth(3)
-                                bar.set_edgecolor('#d62728')
-                                bar.set_alpha(1.0)
-                # Show annotation for the hovered bar
-                sel.annotation.set_text(target_label or '')
-                # Only one annotation at a time
-                for ann in self.ax.texts:
-                    if ann is not sel.annotation:
+                            bar.set_linewidth(0.5)
+                            bar.set_edgecolor('black')
+                            bar.set_alpha(0.85)
+                    for ann in self.ax.texts:
                         ann.set_visible(False)
-            @self.bar_cursor.connect("remove")
-            def on_bar_remove(sel):
-                # Reset all bars
-                for cont in self.ax.containers:
-                    for bar in cont:
-                        bar.set_linewidth(0.5)
-                        bar.set_edgecolor('black')
-                        bar.set_alpha(0.85)
-                # Hide all annotations
-                for ann in self.ax.texts:
-                    ann.set_visible(False)
-                self.canvas.draw_idle()
+                    self.canvas.draw_idle()
+        except Exception:
+            pass
 
-        # Reset highlights and hide annotation when mouse leaves axes
         def on_leave(event):
             for line in self.ax.get_lines():
                 line.set_linewidth(2)
@@ -421,96 +1127,159 @@ class BenchmarkGrapher(tk.Tk):
             self.canvas.draw_idle()
         self.canvas.mpl_connect('axes_leave_event', on_leave)
 
-    def get_plot_data(self, header, rows, typ, metric, label):
-        # Heuristics for x-axis:
+    def get_plot_data(self, header, rows, typ, metric, label, filepath=None):
+        if not rows:
+            return [], [], label
+        header_list = list(header) if hasattr(header, "__iter__") and not isinstance(header, dict) else list(header.keys()) if isinstance(header, dict) else []
+        file_basename = os.path.splitext(os.path.basename(label))[0] if isinstance(label, str) else ""
+        if header_list and "Container Name" in header_list and rows and _row_value(rows[0], "Container Name", header_list) not in (None, ""):
+            container_name = str(_row_value(rows[0], "Container Name", header_list)).strip()
+            if file_basename and file_basename != container_name and container_name in file_basename:
+                label = file_basename
+            else:
+                label = container_name
+        else:
+            label = file_basename or label
         if typ == "websocket":
-            # Prefer Num Clients, Message Size, Rate, Bursts, Duration, etc.
-            for xkey in ["Num Clients", "Message Size (KB)", "Rate (msg/s)", "Bursts", "Duration (s)", "Interval (s)"]:
-                if xkey in header:
-                    x = [float(r[xkey]) if r.get(xkey) not in (None, '', 'NaN') else 0 for r in rows]
-                    y = [float(r[metric]) if r.get(metric) not in (None, '', 'NaN') else 0 for r in rows]
-                    return x, y, label
-                    else:
-            # HTTP: Prefer Total Requests
-            if "Total Requests" in header:
-                x = [float(r["Total Requests"]) if r.get("Total Requests") not in (None, '', 'NaN') else 0 for r in rows]
-                y = [float(r[metric]) if r.get(metric) not in (None, '', 'NaN') else 0 for r in rows]
-                return x, y, label
-        # Fallback: row index
-        x = list(range(1, len(rows)+1))
-        y = [float(r[metric]) if r.get(metric) not in (None, '', 'NaN') else 0 for r in rows]
+            subtype = self.file_ws_subtypes.get(filepath) if filepath and getattr(self, "file_ws_subtypes", None) else None
+            xcol = websocket_xaxis_column(header_list, rows, subtype)
+            if xcol:
+                x = [safe_float(_row_value(r, xcol, header_list)) for r in rows]
+                y = [safe_float(_row_value(r, metric, header_list)) for r in rows]
+            else:
+                x = list(range(1, len(rows) + 1))
+                y = [safe_float(_row_value(r, metric, header_list)) for r in rows]
+            if not x:
+                x = list(range(1, len(rows) + 1))
+            if not y:
+                y = [0.0] * len(rows)
+            return x, y, label
+        if header_list and "Total Requests" in header_list:
+            x = [safe_float(_row_value(r, "Total Requests", header_list)) for r in rows]
+            y = [safe_float(_row_value(r, metric, header_list)) for r in rows]
+        else:
+            x = list(range(1, len(rows) + 1))
+            y = [safe_float(_row_value(r, metric, header_list)) for r in rows]
+        if not y:
+            y = [0.0] * len(rows)
         return x, y, label
 
-    def get_x_axis_column_name(self, header, rows, typ):
-        """Get a meaningful name for the x-axis based on the data being plotted."""
+    def get_x_axis_column_name(self, header, rows, typ, filepath=None):
         if typ == "websocket":
-            # Check for common WebSocket test parameters
-            for xkey in ["Num Clients", "Message Size (KB)", "Rate (msg/s)", "Bursts", "Duration (s)", "Interval (s)"]:
-                if xkey in header:
-                    return xkey
-                                else:
-            # Check for common HTTP test parameters
-            if "Total Requests" in header:
-                return "Total Requests"
-        
-        # If no obvious parameter found, return a generic label
+            subtype = self.file_ws_subtypes.get(filepath) if filepath and getattr(self, 'file_ws_subtypes', None) else None
+            xcol = websocket_xaxis_column(header, rows, subtype)
+            if xcol:
+                return xcol
+            return "Test Parameter"
+        if "Total Requests" in header:
+            return "Total Requests"
         return "Test Parameter"
 
+    def _default_save_path(self):
+        """Default path: graphs/<category>/<metric>[-<ws-subtype>]-<N>bench-<YYYYMMDD-HHMM>.ext.
+        WebSocket subtype (conc/pay/burst/stream/all) in filename avoids overwriting when saving different subtypes in the same second."""
+        metric = self.metric_selector.currentText() or "graph"
+        if metric == METRIC_PLACEHOLDER:
+            metric = "graph"
+        slug = re.sub(r"[^\w\s-]", "", metric).strip().lower()
+        slug = re.sub(r"[-\s]+", "-", slug) or "graph"
+        n = len(self.get_selected_files()) or len(self.get_visible_files()) or 0
+        ts = datetime.now().strftime("%Y%m%d-%H%M")
+        ext = ".svg"
+        cat = (self.category_selector.currentText() or "").strip()
+        cat_lower = cat.lower().replace(" ", "")
+        subtype_part = ""
+        if cat_lower == "websocket" and getattr(self, "ws_type_selector", None):
+            ws_type = self.ws_type_selector.currentText() or WS_TYPE_PLACEHOLDER
+            acronym = WS_TYPE_SAVE_ACRONYM.get(ws_type, "all")
+            subtype_part = f"-{acronym}"
+        name = f"{slug}{subtype_part}-{n}bench-{ts}{ext}"
+        base = os.path.abspath("graphs")
+        if cat and cat_lower not in ("all", "", BENCHMARK_TYPE_PLACEHOLDER.lower().replace(" ", "")):
+            base = os.path.join(base, cat_lower)
+        os.makedirs(base, exist_ok=True)
+        return os.path.join(base, name)
+
+    def get_visible_files(self):
+        filter_cat = self.category_selector.currentText()
+        if filter_cat in (None, "", BENCHMARK_TYPE_PLACEHOLDER, "All"):
+            base = list(self.files)
+        else:
+            base = [f for f in self.files if self.file_categories.get(f, "Unknown") == filter_cat]
+        if filter_cat != "WebSocket":
+            return base
+        ws_type = self.ws_type_selector.currentText() if getattr(self, "ws_type_selector", None) else WS_TYPE_PLACEHOLDER
+        if not ws_type or ws_type in (WS_TYPE_PLACEHOLDER, WS_TYPE_ALL):
+            return base
+        out = []
+        for f in base:
+            sub = self.file_ws_subtypes.get(f)
+            if ws_type == WS_TYPE_CONCURRENCY and sub == WS_SUBTYPE_CONCURRENCY:
+                out.append(f)
+            elif ws_type == WS_TYPE_PAYLOAD and sub == WS_SUBTYPE_PAYLOAD:
+                out.append(f)
+            elif ws_type == WS_TYPE_BURST and sub == WS_SUBTYPE_BURST:
+                out.append(f)
+            elif ws_type == WS_TYPE_STREAM and sub == WS_SUBTYPE_STREAM:
+                out.append(f)
+            else:
+                pass
+        return out
+
     def export_graph(self):
-        if not self.ax.has_data():
-            messagebox.showwarning("No graph", "No graph to export. Please plot something first.")
+        _has_data = getattr(self.ax, 'has_data', None)
+        has_data = _has_data() if callable(_has_data) else (len(self.ax.lines) + len(self.ax.containers)) > 0
+        if not has_data:
+            QMessageBox.warning(self, "No graph", "No graph to export. Please plot something first.")
             return
-        file = filedialog.asksaveasfilename(defaultextension=".png", filetypes=[("PNG Image", "*.png")])
-        if file:
-            # Save with tight layout to trim white spaces
-            self.fig.savefig(file, bbox_inches='tight', pad_inches=0.1, dpi=300)
-            messagebox.showinfo("Exported", f"Graph exported to {file}")
+        filetypes, defaultext = "SVG Image (*.svg)", ".svg"
+        default_path = self._default_save_path()
+        filepath, _ = QFileDialog.getSaveFileName(self, "Save graph", default_path, filetypes)
+        if filepath:
+            if not filepath.lower().endswith(defaultext):
+                filepath = filepath + defaultext
+            self.fig.savefig(filepath, bbox_inches='tight', pad_inches=0.1, format="svg")
+            QMessageBox.information(self, "Exported", f"Graph exported to {filepath}")
 
     def show_help(self):
         msg = (
-            "Web Server Benchmark Graph Generator\n\n"
-            "- Select one or more CSV files (from results directories).\n"
-            "- The tool auto-detects file type (HTTP, WebSocket, etc).\n"
-            "- Choose a metric to plot (latency, throughput, CPU, etc).\n"
-            "- Overlay/combine results from multiple files.\n"
-            "- Export graphs as PNG.\n"
-            "- Summary stats (min, max, avg) shown below the graph.\n"
-            "- Drag-and-drop files into the list.\n"
-            "- Double-click a file to plot.\n"
-            "- Handles all result types (static, dynamic, local, websocket).\n"
-            "- If a metric is missing in a file, it is skipped.\n"
+            "Benchmark Graph Generator\n\n"
+            "• Select one or more CSV files (from results directories).\n"
+            "• Auto-detects file type (HTTP, WebSocket, gRPC, etc).\n"
+            "• Filter by category (Static, Dynamic, WebSocket, gRPC, etc).\n"
+            "• WebSocket: subtype (Burst, Stream, Concurrency, Payload) is auto-detected from filename.\n"
+            "• Type changes by category: WebSocket = Multi-line / Heatmap / Bar; others = Auto / Line / Bar.\n"
+            "• Bar chart: bars are grouped by x-axis (e.g. Num Clients) so all containers share the same groups.\n"
+            "• Choose a metric to plot (latency, throughput, CPU, etc).\n"
+            "• Overlay/combine results from multiple files.\n"
+            "• Export graphs as SVG (Save button below).\n"
+            "• Summary stats (min, max, avg) shown below the graph.\n"
+            "• Double-click a file to plot. Use Plot button or change metric.\n"
+            "• Select folder: recursively loads all CSVs from subfolders.\n"
         )
-        messagebox.showinfo("Help", msg)
-
-    def select_all_files(self, event=None):
-        self.file_listbox.select_set(0, tk.END)
-        return 'break'
-
-    def global_ctrl_a_select_all(self, event=None):
-        # Only select all if file_listbox has focus, and avoid KeyError if dialog is open
-        try:
-            focus_widget = self.file_listbox.focus_get()
-            if focus_widget is self.file_listbox:
-                self.select_all_files()
-                return 'break'
-        except Exception:
-            pass
-
-    def show_file_listbox_menu(self, event):
-        try:
-            self.file_listbox_menu.tk_popup(event.x_root, event.y_root)
-        finally:
-            self.file_listbox_menu.grab_release()
+        QMessageBox.information(self, "Help", msg)
 
     def load_all_csvs_in_folder(self):
-        folder = filedialog.askdirectory(title="Select Folder Containing CSV Files")
+        start_dir = os.path.abspath("results") if os.path.isdir("results") else ""
+        folder = QFileDialog.getExistingDirectory(self, "Select Folder Containing CSV Files", start_dir)
         if folder:
-            csv_files = [os.path.join(folder, f) for f in os.listdir(folder) if f.lower().endswith('.csv')]
+            csv_files = []
+            for root, dirs, files in os.walk(folder):
+                for f in files:
+                    if f.lower().endswith('.csv'):
+                        csv_files.append(os.path.join(root, f))
             if not csv_files:
-                messagebox.showwarning("No CSVs", "No CSV files found in the selected folder.")
+                QMessageBox.warning(self, "No CSVs", "No CSV files found in the selected folder.")
                 return
             self.add_files(csv_files)
 
+
+def main():
+    app = QApplication(sys.argv)
+    win = BenchmarkGrapher()
+    win.show()
+    sys.exit(app.exec_())
+
+
 if __name__ == "__main__":
-    app = BenchmarkGrapher()
-    app.mainloop()
+    main()
