@@ -17,4 +17,5 @@ local/localhost:8001.auth
 TODO
 .vscode/
 .ruff_cache/
+__pycache__/
 graphs_compressed/
