@@ -1185,7 +1185,7 @@ class BenchmarkGrapher(QMainWindow):
         slug = re.sub(r"[-\s]+", "-", slug) or "graph"
         n = len(self.get_selected_files()) or len(self.get_visible_files()) or 0
         ts = datetime.now().strftime("%Y%m%d-%H%M")
-        ext = ".svg"
+        ext = ".png"
         cat = (self.category_selector.currentText() or "").strip()
         cat_lower = cat.lower().replace(" ", "")
         subtype_part = ""
@@ -1232,13 +1232,29 @@ class BenchmarkGrapher(QMainWindow):
         if not has_data:
             QMessageBox.warning(self, "No graph", "No graph to export. Please plot something first.")
             return
-        filetypes, defaultext = "SVG Image (*.svg)", ".svg"
+        filetypes = "PNG Image (*.png);;SVG Image (*.svg)"
         default_path = self._default_save_path()
-        filepath, _ = QFileDialog.getSaveFileName(self, "Save graph", default_path, filetypes)
+        filepath, selected_filter = QFileDialog.getSaveFileName(
+            self, "Save graph", default_path, filetypes
+        )
         if filepath:
-            if not filepath.lower().endswith(defaultext):
-                filepath = filepath + defaultext
-            self.fig.savefig(filepath, bbox_inches='tight', pad_inches=0.1, format="svg")
+            use_svg = "SVG" in (selected_filter or "") or filepath.lower().endswith(".svg")
+            if use_svg:
+                if not filepath.lower().endswith(".svg"):
+                    filepath = filepath + ".svg"
+                self.fig.savefig(filepath, bbox_inches='tight', pad_inches=0.1, format="svg")
+            else:
+                if not filepath.lower().endswith(".png"):
+                    filepath = filepath + ".png"
+                # 200 DPI keeps LaTeX/Overleaf sharp with smaller files; max PNG compression
+                self.fig.savefig(
+                    filepath,
+                    bbox_inches='tight',
+                    pad_inches=0.05,
+                    format="png",
+                    dpi=200,
+                    pil_kwargs={'optimize': True, 'compress_level': 9},
+                )
             QMessageBox.information(self, "Exported", f"Graph exported to {filepath}")
 
     def show_help(self):
@@ -1252,7 +1268,7 @@ class BenchmarkGrapher(QMainWindow):
             "• Bar chart: bars are grouped by x-axis (e.g. Num Clients) so all containers share the same groups.\n"
             "• Choose a metric to plot (latency, throughput, CPU, etc).\n"
             "• Overlay/combine results from multiple files.\n"
-            "• Export graphs as SVG (Save button below).\n"
+            "• Export graphs as PNG (200 DPI, compressed) or SVG (Save button below).\n"
             "• Summary stats (min, max, avg) shown below the graph.\n"
             "• Double-click a file to plot. Use Plot button or change metric.\n"
             "• Select folder: recursively loads all CSVs from subfolders.\n"
