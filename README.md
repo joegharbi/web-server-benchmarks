@@ -1,112 +1,113 @@
-# BEAM Web Server Benchmarks
+# Web Server Benchmarks
 
-A benchmarking framework for HTTP and WebSocket servers. This repository compares **BEAM languages** (Erlang, Elixir, Gleam) and their frameworks (Cowboy, Phoenix, Yaws, Mist). The framework is general-purpose: you can add other languages or benchmark types.
+A benchmark framework for measuring HTTP and WebSocket server performance and energy in Docker containers.
+
+This repository benchmarks multiple stacks, including:
+
+- Static HTTP servers (Apache, Nginx, Cowboy, Yaws, Erlang variants)
+- Dynamic HTTP servers (Apache, Nginx+Python, Cowboy, Yaws, Erlang variants)
+- WebSocket servers (Apache, Nginx+Java, Nginx+Python websockets, Nginx+Tornado, Cowboy, Yaws)
 
 ## Overview
 
-- **Auto-discovery**: Finds all containers under `benchmarks/static/`, `benchmarks/dynamic/`, `benchmarks/websocket/`. No hardcoded lists.
-- **Health checks**: Validates startup, HTTP/WebSocket response, large payloads, and ulimit before benchmarking.
-- **Measurement**: Runs containers under load with Scaphandre for energy and performance metrics.
-- **Visualization**: GUI for plotting results from CSV output.
+- Auto-discovers benchmarks from `benchmarks/static`, `benchmarks/dynamic`, `benchmarks/websocket`
+- Builds and health-checks containers before running load
+- Captures runtime metrics and energy (via Scaphandre when available)
+- Stores CSV results by run timestamp
+- Includes a GUI graph generator for analysis/export
 
-```
-make init → make build → make check-health → make run → make graph
+Typical flow:
+
+```bash
+make setup
+make build
+make check-health
+make run-quick
+make graph
 ```
 
 ## Prerequisites
 
-- **Linux** (Debian-based recommended)
-- **Python 3.8+** and **python3-venv** (`sudo apt install python3 python3-venv`)
-- **Docker** (`sudo apt install docker.io`)
-- **Make**
-- **Scaphandre** (optional, for energy): `cargo install scaphandre`
+- Linux (Debian/Ubuntu recommended)
+- Python 3 + venv support (`python3-venv`)
+- Docker
+- Make
+- Optional: Scaphandre for energy metrics
 
-Verify: `make check-tools`
-
-## Quick Start
+Verify:
 
 ```bash
-make init              # venv + deps + build + health check
-make run-super-quick   # Fast validation (1 request count per container)
-make run-quick         # 3 request counts per container
-make run-all           # Full suite (static, dynamic, websocket)
-make graph             # Interactive result visualization
-```
-
-Step-by-step: `make setup` → `make build` → `make check-health` → `make run-quick`
-
-Benchmark root can be overridden (default remains `benchmarks/`):
-
-```bash
-make run BENCHMARKS_DIR=benchmarks
+make check-tools
 ```
 
 ## Directory Structure
 
+```text
+benchmarks/
+  static/      # static HTTP benchmark containers
+  dynamic/     # dynamic HTTP benchmark containers
+  websocket/   # websocket benchmark containers
+scripts/
+  install_benchmarks.sh
+  run_benchmarks.sh
+  check_health.sh
+  test_containers.sh
+tools/
+  measure_docker.py
+  measure_websocket.py
+  gui_graph_generator.py
+results/
+logs/
+docs/
 ```
-benchmarks/           # Type → Language → Framework → container (with Dockerfile)
-  static/             # Static HTTP
-  dynamic/            # Dynamic HTTP
-  websocket/          # WebSocket (must expose /ws)
-scripts/              # check_health.sh, run_benchmarks.sh, install_benchmarks.sh
-tools/                # measure_docker.py, measure_websocket.py, gui_graph_generator.py
-results/              # Output CSVs (results/<timestamp>/{static,dynamic,websocket}/)
+
+## Main Commands
+
+- `make setup` - create/repair venv and install dependencies
+- `make build` - build all benchmark images
+- `make check-health` - validate built images are runnable/healthy
+- `make test` - build + health check all images
+- `make run` - run full benchmark suite
+- `make run-quick` - quick run with reduced parameters
+- `make run-super-quick` - smoke run
+- `make run-single SERVER=<image>` - run only one image
+- `make graph` - launch graph GUI
+
+You can also run specific suites with auto pattern targets:
+
+- `make run-static`
+- `make run-dynamic`
+- `make run-websocket`
+
+## Configuration
+
+Common environment variables:
+
+- `BENCH_DIR` (default `benchmarks`) - benchmark root
+- `HOST_PORT` (default `8001`) - host port used for tests
+- `HTTP_MAX_WORKERS` - HTTP worker count override
+- `BENCH_MEASURE_QUIET` - compact vs verbose measure logs
+- `MEASURE_HEARTBEAT_SEC` - quiet-mode heartbeat interval
+
+Examples:
+
+```bash
+make run BENCH_DIR=benchmarks
+HOST_PORT=9001 make check-health
+HTTP_MAX_WORKERS=70 make run-static
 ```
 
-Each directory containing a `Dockerfile` under `benchmarks/` is one benchmark. The **directory name** is the Docker image name (use unified naming: `<type>-<language>-<framework>-<version>`, e.g. `st-erlang-cowboy-27`). Type is inferred from the path (`benchmarks/websocket/...` → WebSocket test). See [docs/MINIMAL_BASES_AND_UNIFICATION.md](docs/MINIMAL_BASES_AND_UNIFICATION.md) for base images and Dockerfile structure.
+## Results
 
-## Adding a Server
+Each run writes timestamped outputs under `results/<timestamp>/` with CSV files grouped by benchmark type.
 
-1. Create `benchmarks/<type>/<lang>/<framework>/<container>/` with a `Dockerfile`.
-2. Add `EXPOSE 80` (or your port). Ensure ulimit 100000 (health check enforces this).
-3. Run `make build` → `make check-health` → `make run-super-quick`.
+See:
 
-## Commands
+- `docs/RESULTS.md`
+- `docs/CONFIGURATION_AUDIT.md`
+- `docs/BENCHMARKS_AUDIT.md`
 
-| Task           | Command                         |
-|----------------|---------------------------------|
-| Build          | `make build`                    |
-| Health check   | `make check-health` (no build; use after `make build`) |
-| Container test | `make test` (build + health check; run before long `make run`) |
-| Benchmarks     | `make run-quick`, `make run-all`|
-| Graphs         | `make graph`                    |
-| Clean results  | `make clean-results`            |
-| Clean env      | `make clean-env` (venv + __pycache__) |
-| Clean Docker   | `make clean-build`              |
-| Clean all      | `make clean-all` (results + env + Docker; run `make setup` after) |
-| Empty benchmarks| `make clean-benchmarks CONFIRM=1` |
-| Full reset     | `make clean-nuclear CONFIRM=1`  |
+## Notes
 
-Port: `HOST_PORT=9001 make check-health` (default 8001). Full clean options: [docs/CONFIGURATION_AUDIT.md](docs/CONFIGURATION_AUDIT.md) or `make help`.
-
-## Documentation
-
-| Document | Description |
-|----------|-------------|
-| [docs/CONFIGURATION_AUDIT.md](docs/CONFIGURATION_AUDIT.md) | All settings (ulimit, ports, request counts, Scaphandre) |
-| [docs/CONFIGURATION_PARITY.md](docs/CONFIGURATION_PARITY.md) | Canonical values (acceptors, max_connections, base image) |
-| [docs/MINIMAL_BASES_AND_UNIFICATION.md](docs/MINIMAL_BASES_AND_UNIFICATION.md) | Unified Dockerfile stages and naming |
-| [docs/BENCHMARKS_AUDIT.md](docs/BENCHMARKS_AUDIT.md) | Current BEAM benchmark set (34 containers) |
-| [docs/RESULTS.md](docs/RESULTS.md) | CSV format, parameters, visualization |
-| [docs/EXTENDING.md](docs/EXTENDING.md) | Adding new benchmark types (gRPC, etc.) |
-| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Setup, health, Docker, energy, ulimit |
-| [docs/CHANGELOG.md](docs/CHANGELOG.md) | Version history |
-
-## Energy Measurement
-
-Scaphandre attributes energy by container. On systems where it reports `container: null` (e.g. cgroups v2, Debian 13), the scripts use a **cgroup fallback** (matching `/proc/<pid>/cgroup` to the container ID). See [Scaphandre issue #420](https://github.com/hubblo-org/scaphandre/issues/420). Ensure Scaphandre runs on the host with `sudo`. Debug: `python tools/debug_scaphandre_docker.py --server_image <image> --duration 10`.
-
-## Troubleshooting
-
-- **Setup fails**: `sudo apt install python3-venv`; if `srv/` is broken, `make clean-env && make setup`
-- **Health check fails**: Check `docker logs health-check-<name>`, ensure port 8001 is free, verify ulimit inside container
-- **"Container health check failed" during long runs**: BEAM containers may need more time to boot. Set `MEASURE_STARTUP_WAIT=25 MEASURE_HEALTH_RETRIES=30` before `make run` (or use higher values). The script will also print container logs on failure.
-- **Avoid late failures**: Before a long benchmark run, use **`make test`** to build all images (log in `logs/build_*.log`) and run a quick health check on every container (log in `logs/test_*.log`). If the test passes, you can start `make run` with confidence.
-- **Energy 0.00 J**: See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md#energy-measurement-000-j-container-not-found)
-- **ulimit errors**: Increase system/Docker limits; health check requires 100000
-
-Full troubleshooting: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
-
-## License
-
-MIT. See `LICENSE`.
+- Benchmark container names currently follow legacy prefixes (`st-`, `dy-`, `ws-`).
+- The framework is generic and can support additional benchmark types if new runners/tools are added.
