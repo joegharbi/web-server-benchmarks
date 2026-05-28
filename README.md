@@ -1,674 +1,112 @@
-# Web Server Energy and Performance Benchmarking Framework
+# BEAM Web Server Benchmarks
+
+A benchmarking framework for HTTP and WebSocket servers. This repository compares **BEAM languages** (Erlang, Elixir, Gleam) and their frameworks (Cowboy, Phoenix, Yaws, Mist). The framework is general-purpose: you can add other languages or benchmark types.
 
 ## Overview
-A comprehensive benchmarking framework for evaluating the performance and energy efficiency of web servers running in Docker containers, local installations, and WebSocket servers. Features automatic container discovery, intelligent health checks, simplified port management, and extensive automation.
 
-## Key Features
-- **🔄 Auto-Discovery**: Automatically finds and benchmarks all containers from directory structure
-- **🏥 Intelligent Health Checks**: Comprehensive health validation before benchmarking
-- **🔧 Simplified Port Management**: Fixed host port with automatic container port detection
-- **📊 Multi-Modal Testing**: Static, dynamic, WebSocket, and local server benchmarks
-- **⚡ Energy Measurement**: Integrated Scaphandre for power consumption analysis
-- **📈 Visualization**: Interactive GUI for result analysis and graph generation
-- **🧹 Repository Management**: Powerful cleaning and maintenance tools
+- **Auto-discovery**: Finds all containers under `benchmarks/static/`, `benchmarks/dynamic/`, `benchmarks/websocket/`. No hardcoded lists.
+- **Health checks**: Validates startup, HTTP/WebSocket response, large payloads, and ulimit before benchmarking.
+- **Measurement**: Runs containers under load with Scaphandre for energy and performance metrics.
+- **Visualization**: GUI for plotting results from CSV output.
 
-## Table of Contents
-1. [Prerequisites](#prerequisites)
-2. [Quick Start](#quick-start)
-3. [Directory Structure](#directory-structure)
-4. [Container Auto-Discovery](#container-auto-discovery)
-5. [Health Check System](#health-check-system)
-6. [Port Management](#port-management)
-7. [Adding New Servers](#adding-new-servers)
-8. [Running Benchmarks](#running-benchmarks)
-9. [WebSocket Testing](#websocket-testing)
-10. [Results and Visualization](#results-and-visualization)
-11. [Repository Management](#repository-management)
-12. [Makefile Commands](#makefile-commands)
-13. [Troubleshooting](#troubleshooting)
-
----
-
-## Prerequisites
-- **OS**: Linux (Debian-based recommended)
-- **Python 3**: 3.6+ with pip
-- **Docker**: `sudo apt install docker.io`
-- **Scaphandre**: `cargo install scaphandre` (for energy measurement)
-- **Make**: Usually pre-installed
-
-Verify installations:
-```bash
-python3 --version
-docker --version
-scaphandre --version
-make --version
+```
+make init → make build → make check-health → make run → make graph
 ```
 
-## Prerequisites and System Requirements
+## Prerequisites
 
-- Docker must be installed and running.
-- Python 3.8+ required for benchmark scripts.
-- All containers are started with `--ulimit nofile=100000:100000` to ensure high concurrency support. This is enforced by the health check system.
-- The scripts `run_benchmarks.sh` and `check_health.sh` automatically set `ulimit -n 100000` at the start, so you do not need to set it manually.
-- If your system or Docker daemon restricts file descriptor limits, you must increase them (see Troubleshooting).
+- **Linux** (Debian-based recommended)
+- **Python 3.8+** and **python3-venv** (`sudo apt install python3 python3-venv`)
+- **Docker** (`sudo apt install docker.io`)
+- **Make**
+- **Scaphandre** (optional, for energy): `cargo install scaphandre`
 
----
+Verify: `make check-tools`
 
 ## Quick Start
 
-### 1. Environment Setup
-
 ```bash
-# Create only the Python virtual environment (no servers)
-make setup
-
-# Or set up environment and install dependencies
-make set-env
-
-# To install local servers (nginx, yaws, etc.)
-make setup-local
-
-# To build all Docker images/containers
-make setup-docker
+make init              # venv + deps + build + health check
+make run-super-quick   # Fast validation (1 request count per container)
+make run-quick         # 3 request counts per container
+make run-all           # Full suite (static, dynamic, websocket)
+make graph             # Interactive result visualization
 ```
 
-- You can combine these as needed. For example, to set up everything:
-  ```bash
-  make set-env setup-local setup-docker
-  ```
+Step-by-step: `make setup` → `make build` → `make check-health` → `make run-quick`
 
-### 2. Build and Validate
+Benchmark root can be overridden (default remains `benchmarks/`):
+
 ```bash
-# Build all Docker images (if not already done)
-make setup-docker
-
-# Run comprehensive health checks (includes ulimit check)
-make check-health
+make run BENCHMARKS_DIR=benchmarks
 ```
-
-### 3. Run Benchmarks
-```bash
-# Quick test (single server, reduced load)
-make quick-test
-
-# Full benchmark suite
-make run-all
-
-# Specific benchmark types
-make run-static
-make run-dynamic
-make run-websocket
-make run-local
-```
-
-### 4. Analyze Results
-```bash
-# Generate interactive graphs
-make graph
-```
-
----
 
 ## Directory Structure
+
 ```
-web-server-benchmarks/
-├── containers/
-│   ├── static/         # Static web servers (Apache, Nginx, etc.)
-│   │   └── st-*/Dockerfile
-│   ├── dynamic/        # Dynamic web servers (with modules/scripts)
-│   │   └── dy-*/Dockerfile
-│   └── measure_docker.py
-├── web-socket/         # WebSocket servers
-│   ├── ws-*/Dockerfile
-│   └── measure_websocket.py
-├── local/              # Local server configurations
-│   ├── measure_local.py
-│   └── setup_*.sh
-├── results/            # Benchmark results (timestamped)
-├── logs/               # Execution logs
-├── check_health.sh     # Health check system
-├── run_benchmarks.sh   # Main benchmark runner
-├── gui_graph_generator.py
-├── Makefile           # Automation commands
-└── README.md
+benchmarks/           # Type → Language → Framework → container (with Dockerfile)
+  static/             # Static HTTP
+  dynamic/            # Dynamic HTTP
+  websocket/          # WebSocket (must expose /ws)
+scripts/              # check_health.sh, run_benchmarks.sh, install_benchmarks.sh
+tools/                # measure_docker.py, measure_websocket.py, gui_graph_generator.py
+results/              # Output CSVs (results/<timestamp>/{static,dynamic,websocket}/)
 ```
 
----
-
-## Container Auto-Discovery
-
-The framework automatically discovers all available servers from the directory structure using **true autodiscovery** - no naming conventions required!
-
-### Auto-Discovery Process
-1. **Directory Scanning**: Scans `containers/static/`, `containers/dynamic/`, and `web-socket/`
-2. **Dockerfile Detection**: Identifies directories containing `Dockerfile`
-3. **Port Detection**: Reads `EXPOSE` directive from Dockerfile for container port
-4. **Automatic Testing**: Runs health checks and benchmarks with sensible defaults
-5. **Dynamic Cleanup**: Removes all discovered containers and images during cleanup
-
-### Autodiscovery Implementation
-- ✅ **Build System** (`install_benchmarks.sh`): Discovers and builds all containers
-- ✅ **Health Checks** (`check_health.sh`): Tests all discovered containers
-- ✅ **Benchmark Runner** (`run_benchmarks.sh`): Runs benchmarks on all discovered containers
-- ✅ **Cleanup System**: Removes all discovered containers and images
-
-### Example Structure
-```bash
-containers/static/my-nginx/Dockerfile      # Auto-discovered, must support high ulimit
-containers/dynamic/my-apache/Dockerfile    # Auto-discovered, must support high ulimit
-web-socket/my-websocket/Dockerfile         # Auto-discovered, must support high ulimit
-```
-
-### Legacy Naming Convention (Optional)
-While not required, you can still use the legacy naming convention for organization:
-- **Static containers**: `st-*` (e.g., `st-nginx-deb-self`)
-- **Dynamic containers**: `dy-*` (e.g., `dy-apache-deb-self`)
-- **WebSocket containers**: `ws-*` (e.g., `ws-cowboy-27-self`)
-
----
-
-## Payload Size Support
-
-All web servers in this framework are configured and tested to support large payloads:
-
-| Server Type / Container         | Config File Location                                 | Payload Size Directive / Setting         | Value / Default         | Health Check Test                      |
-|---------------------------------|-----------------------------------------------------|------------------------------------------|------------------------|----------------------------------------|
-| **Nginx (static)**              | containers/static/st-nginx-deb-self/nginx.conf       | client_max_body_size                     | 100m                   | 10MB HTTP POST                        |
-| **Nginx (dynamic)**             | containers/dynamic/dy-nginx-deb-self/nginx.conf      | client_max_body_size                     | 100m                   | 10MB HTTP POST                        |
-| **Nginx (websocket)**           | web-socket/ws-nginx-java-self/nginx.conf (and similar) | client_max_body_size                  | 100m                   | 1MB WebSocket message                  |
-| **Apache (static)**             | containers/static/st-apache-deb-self/apache2.conf    | LimitRequestBody                         | 104857600 (100MB)      | 10MB HTTP POST                        |
-| **Apache (dynamic)**            | containers/dynamic/dy-apache-deb-self/apache2.conf   | LimitRequestBody                         | 104857600 (100MB)      | 10MB HTTP POST                        |
-| **Yaws (static/dynamic)**       | containers/static/dy-yaws-*/yaws.conf                | (none)                                   | Unlimited (default)    | 10MB HTTP POST                        |
-| **Cowboy/Erlang/Erlindex**      | containers/static/dy-cowboy-*/, *-erlang*, *-erlindex* | (none)                                | Unlimited (default)    | 10MB HTTP POST / 1MB WebSocket message |
-| **WebSocket (Python)**          | ws-nginx-python-websockets-self/websocket_server.py  | max_size (websockets lib)                | None (unlimited)       | 1MB WebSocket message                  |
-| **WebSocket (Java/Spring)**     | ws-nginx-java-self/src/main/java/com/example/WebSocketConfig.java | setMaxTextMessageBufferSize, setMaxBinaryMessageBufferSize | 64MB | 1MB WebSocket message |
-| **WebSocket (Tornado)**         | ws-nginx-tornado-self/Dockerfile (inline)            | (none)                                   | Unlimited (default)    | 1MB WebSocket message                  |
-
-- All HTTP servers are configured to accept at least 100MB payloads.
-- All WebSocket servers are tested with at least 1MB messages.
-- The health check will fail if a server cannot handle these payloads.
-
----
-
-## Health Check System
-
-The framework includes a comprehensive health check system that validates containers before benchmarking:
-
-### Health Check Features
-- **Container Startup**: Verifies containers start successfully
-- **HTTP Response**: Tests for proper HTTP 200 responses (HTTP containers only)
-- **WebSocket Handshake**: Only a successful WebSocket handshake (`101 Switching Protocols`) is accepted as healthy for WebSocket containers. HTTP 200 OK is **not** accepted for WebSocket containers.
-- **Large Payload Test**: For HTTP containers, a 10MB POST is sent and must be accepted (200/201/204/413). For WebSocket containers, a 1MB binary message is sent and must be echoed back correctly.
-- **Stability Testing**: Ensures containers remain running
-- **ulimit Enforcement**: Checks that `ulimit -n` is set to 100000 inside each container (required for high concurrency)
-- **Automatic Cleanup**: Stops and removes test containers
-- **ulimit Reporting**: The health check prints the actual `ulimit -n` value inside each container. A container is only reported as healthy if this value is correct.
-
-### Running Health Checks
-```bash
-# Using Makefile (recommended)
-make check-health
-make health
-make check
-
-# Using script directly
-./check_health.sh
-
-# Custom port
-HOST_PORT=9001 make check-health
-HOST_PORT=9001 ./check_health.sh
-
-# Custom timeouts
-./check_health.sh --timeout 60 --startup 15
-```
-
-### Health Check Output
-```
-[INFO] Starting health check for all built containers...
-[INFO] Using fixed host port: 8001
-[INFO] Found 28 containers to test
-
-[INFO] Testing st-nginx-deb-self...
-[SUCCESS] st-nginx-deb-self: Healthy (ready for benchmarking)
-
-[INFO] Testing dy-apache-deb-self...
-[SUCCESS] dy-apache-deb-self: Healthy (ready for benchmarking)
-
-[INFO] === HEALTH CHECK SUMMARY ===
-[INFO] Total containers tested: 28
-[SUCCESS] Healthy containers: 28
-[SUCCESS] All containers are healthy! 🎉
-```
-
-## Why the Health Check Verifies ulimit and Large Payload Support
-
-In this benchmarking framework, the health check does more than just verify that a container is up and running. It also:
-
-- **Checks the open file descriptor limit (`ulimit -n`)** inside each container to ensure it is set high enough (e.g., 100,000) for high-concurrency benchmarks.
-- **Tests large payload support** by sending a 10MB HTTP POST (for HTTP servers) or a 1MB message (for WebSocket servers) to verify the server is configured to handle large requests.
-
-**Why is this important?**
-
-- A container that is merely "up" may still be misconfigured for benchmarking (e.g., low ulimit, small payload limits).
-- Running benchmarks on such containers can lead to failed tests, misleading results, or wasted time.
-- By verifying these settings in the health check, you ensure that all servers are truly ready for high-load, high-concurrency, and large-payload benchmarks.
-
-**Best Practice:**
-- This approach is recommended for any benchmarking or performance testing framework, as it catches subtle misconfigurations early and guarantees the validity of your results.
-
----
-
-## Port Management
-
-The framework uses a simplified port management system:
-
-### Fixed Host Port
-- **Default**: All containers use host port `8001`
-- **Configurable**: Set `HOST_PORT` environment variable
-- **Container Port**: Automatically detected from Dockerfile `EXPOSE` directive
-
-### Port Configuration
-```bash
-# Default behavior
-./check_health.sh          # Uses port 8001
-./run_benchmarks.sh        # Uses port 8001
-
-# Custom port
-HOST_PORT=9001 ./check_health.sh
-HOST_PORT=9001 ./run_benchmarks.sh
-
-# Session-wide setting
-export HOST_PORT=9001
-./check_health.sh
-./run_benchmarks.sh
-```
-
-### Port Mapping Examples
-```dockerfile
-# Dockerfile with EXPOSE directive
-EXPOSE 80
-# Results in: 8001:80 mapping
-
-EXPOSE 8080
-# Results in: 8001:8080 mapping
-```
-
----
-
-## Adding New Servers
-
-### Docker Containers
-1. **Create Directory**: Any name works with autodiscovery
-   ```bash
-   mkdir -p containers/static/my-server
-   mkdir -p containers/dynamic/my-server
-   mkdir -p web-socket/my-server
-   ```
-
-2. **Add Dockerfile**: Include `EXPOSE` directive and ensure your server can handle high file descriptor limits (ulimit 100000 is enforced)
-   ```dockerfile
-   FROM nginx:alpine
-   COPY nginx.conf /etc/nginx/nginx.conf
-   EXPOSE 80
-   CMD ["nginx", "-g", "daemon off;"]
-   # Your entrypoint or CMD must not lower the ulimit
-   ```
-
-3. **Auto-Discovery**: Container will be automatically found, built, tested, and benchmarked
-   ```bash
-   make build        # Automatically builds your new container
-   make check-health # Automatically tests your new container (including ulimit)
-   make run-all      # Automatically benchmarks your new container
-   ```
-
-### Local Servers
-1. **Add Configuration**: Place in `local/` directory
-   ```bash
-   touch local/my-server
-   chmod +x local/my-server
-   ```
-
-2. **Auto-Discovery**: Server will be included in local benchmarks
-
----
-
-## Running Benchmarks
-
-### Using Makefile (Recommended)
-```bash
-# Complete benchmark suite
-make run-all
-
-# Specific benchmark types
-make run-static      # Static containers only
-make run-dynamic     # Dynamic containers only
-make run-websocket   # WebSocket containers only
-make run-local       # Local servers only
-
-# Quick testing
-make run-quick       # Reduced parameters for fast testing (3 request counts: 1000, 5000, 10000)
-make run-super-quick # Single test per container type (1 request count: 1000)
-```
-
-### Using Scripts Directly
-```bash
-# All benchmarks
-./run_benchmarks.sh
-
-# Specific types
-./run_benchmarks.sh static
-./run_benchmarks.sh dynamic
-./run_benchmarks.sh websocket
-./run_benchmarks.sh local
-
-# Quick mode
-./run_benchmarks.sh --quick static
-```
-
-### Benchmark Parameters
-
-#### HTTP Benchmarks (Static/Dynamic/Local)
-- **Full test**: 13 request counts (100, 1000, 5000, 8000, 10000, 15000, 20000, 30000, 40000, 50000, 60000, 70000, 80000)
-- **Quick test**: 3 request counts (1000, 5000, 10000)
-- **Super quick test**: 1 request count (1000) - fastest validation
-
-#### WebSocket Benchmarks
-- **Full test**: Comprehensive parameter combinations
-  - Burst mode: 4 client counts × 7 message sizes × 2 burst counts × 3 intervals
-  - Stream mode: 4 client counts × 7 message sizes × 3 rates × 3 durations
-- **Quick test**: Moderate parameter combinations
-  - Burst mode: 2 client counts × 2 message sizes × 2 burst counts × 1 interval
-  - Stream mode: 2 client counts × 2 message sizes × 2 rates × 1 duration
-- **Super quick test**: Single parameter combination
-  - Burst mode: 1 client × 8KB × 1 burst × 0.5s interval
-  - Stream mode: 1 client × 8KB × 10 msg/s × 3s duration
-
----
-
-## WebSocket Testing
-
-The framework includes comprehensive WebSocket benchmarking:
-
-### Test Modes
-1. **Burst Mode**: Rapid message bursts with intervals
-2. **Streaming Mode**: Continuous message streams at fixed rates
-
-### Parameters
-```bash
-# Burst Mode
---clients     # Concurrent WebSocket connections
---size_kb     # Message size in kilobytes
---bursts      # Number of messages per burst
---interval    # Time between bursts (seconds)
-
-# Streaming Mode
---clients     # Concurrent WebSocket connections
---size_kb     # Message size in kilobytes
---rate        # Messages per second
---duration    # Test duration (seconds)
-```
-
-### Example Test Scenarios
-```bash
-# Burst: 10 clients, 8KB messages, 50 bursts, 0.5s intervals
-# Stream: 50 clients, 64KB messages, 100 msg/s, 30s duration
-```
-
----
-
-## Results and Visualization
-
-### Results Structure
-```
-results/
-└── 2024-01-15_143022/
-    ├── static/          # Static container results (grouped by container name)
-    ├── dynamic/         # Dynamic container results (grouped by container name)
-    ├── websocket/       # WebSocket results (grouped by container name)
-    └── local/           # Local server results (grouped by server name)
-```
-
-**File Organization:**
-- **Before**: `st-apache-deb-self_1000.csv`, `st-apache-deb-self_5000.csv`, `st-apache-deb-self_10000.csv`
-- **After**: `st-apache-deb-self.csv` (single file with multiple rows for different request counts)
-
-### CSV Output Format
-
-#### HTTP Containers (Static/Dynamic/Local)
-Results are grouped by container name with multiple rows per file:
-```csv
-Container Name,Type,Num CPUs,Total Requests,Successful Requests,Failed Requests,Execution Time (s),Requests/s,Total Energy (J),Avg Power (W),Samples,Avg CPU (%),Peak CPU (%),Total CPU (%),Avg Mem (MB),Peak Mem (MB),Total Mem (MB)
-```
-
-**Example:** `st-apache-deb-self.csv` contains:
-- Row 1: 1000 requests, results...
-- Row 2: 5000 requests, results...
-- Row 3: 10000 requests, results...
-
-#### WebSocket Containers
-WebSocket-specific metrics with latency and throughput data:
-```csv
-Container Name,Test Type,Num CPUs,Total Messages,Successful Messages,Failed Messages,Execution Time (s),Messages/s,Throughput (MB/s),Avg Latency (ms),Min Latency (ms),Max Latency (ms),Total Energy (J),Avg Power (W),Samples,Avg CPU (%),Peak CPU (%),Total CPU (%),Avg Mem (MB),Peak Mem (MB),Total Mem (MB),Pattern,Num Clients,Message Size (KB),Rate (msg/s),Bursts,Interval (s),Duration (s)
-```
-
-**Key WebSocket Metrics:**
-- **Latency**: Average, minimum, and maximum round-trip times
-- **Throughput**: Messages per second and data throughput in MB/s
-- **Pattern Configuration**: Burst or stream mode with specific parameters
-
-### Visualization
-```bash
-# Interactive graph generator
-make graph
-
-# Or directly
-python3 gui_graph_generator.py
-```
-
-Features:
-- **File Selection**: Browse and select CSV files/folders
-- **Column Selection**: Choose metrics to visualize
-- **Interactive Graphs**: Zoom, pan, and export capabilities
-- **Multi-Server Comparison**: Compare multiple servers simultaneously
-
----
-
-## Repository Management
-
-### Cleaning Options
-```bash
-# Safe cleaning (Docker only)
-make clean-build
-
-# Clean everything: Docker and local servers (autodiscovery)
-make clean-all
-
-# Uninstall all local servers (autodiscovery)
-make clean-local
-
-# Complete reset (nuclear option)
-make clean-repo
-```
-
-### Clean Operations
-- **`clean-build`**: Removes Docker containers/images, keeps source code
-- **`clean-local`**: Uninstalls all local servers that have a `setup_{server}.sh` script with uninstall support (autodiscovery)
-- **`clean-all`**: Runs both `clean-build` and `clean-local` for a full clean (Docker + local servers)
-- **`clean-repo`**: Complete repository reset to fresh clone state
-
-**Autodiscovery:**
-- `clean-local` will automatically find and uninstall any local server for which there is a `setup_{server}.sh` script in `local/` that defines and supports the uninstall command. This makes it easy to add new local servers—just provide a compatible setup script!
-
-### Post-Clean Setup
-After `make clean-repo`:
-```bash
-make setup
-source srv/bin/activate
-make install
-make build
-```
-
----
-
-## Makefile Commands
-
-### Environment Management
-```bash
-make setup          # Create virtual environment
-make ensure-env     # Ensure environment is active
-make install        # Install dependencies
-make validate       # Validate all prerequisites
-```
-
-### Docker Operations
-```bash
-make build          # Build all Docker images
-make clean-build    # Remove Docker containers/images
-```
-
-### Benchmarking
-```bash
-make quick-test     # Quick benchmark test
-make run-all        # Complete benchmark suite
-make run-static     # Static container benchmarks
-make run-dynamic    # Dynamic container benchmarks
-make run-websocket  # WebSocket benchmarks
-make run-local      # Local server benchmarks
-```
-
-### Visualization
-```bash
-make graph          # Launch graph generator
-```
-
-### Repository Management
-```bash
-make clean-repo     # Complete repository reset
-make help           # Show all available commands
-```
-
----
+Each directory containing a `Dockerfile` under `benchmarks/` is one benchmark. The **directory name** is the Docker image name (use unified naming: `<type>-<language>-<framework>-<version>`, e.g. `st-erlang-cowboy-27`). Type is inferred from the path (`benchmarks/websocket/...` → WebSocket test). See [docs/MINIMAL_BASES_AND_UNIFICATION.md](docs/MINIMAL_BASES_AND_UNIFICATION.md) for base images and Dockerfile structure.
+
+## Adding a Server
+
+1. Create `benchmarks/<type>/<lang>/<framework>/<container>/` with a `Dockerfile`.
+2. Add `EXPOSE 80` (or your port). Ensure ulimit 100000 (health check enforces this).
+3. Run `make build` → `make check-health` → `make run-super-quick`.
+
+## Commands
+
+| Task           | Command                         |
+|----------------|---------------------------------|
+| Build          | `make build`                    |
+| Health check   | `make check-health` (no build; use after `make build`) |
+| Container test | `make test` (build + health check; run before long `make run`) |
+| Benchmarks     | `make run-quick`, `make run-all`|
+| Graphs         | `make graph`                    |
+| Clean results  | `make clean-results`            |
+| Clean env      | `make clean-env` (venv + __pycache__) |
+| Clean Docker   | `make clean-build`              |
+| Clean all      | `make clean-all` (results + env + Docker; run `make setup` after) |
+| Empty benchmarks| `make clean-benchmarks CONFIRM=1` |
+| Full reset     | `make clean-nuclear CONFIRM=1`  |
+
+Port: `HOST_PORT=9001 make check-health` (default 8001). Full clean options: [docs/CONFIGURATION_AUDIT.md](docs/CONFIGURATION_AUDIT.md) or `make help`.
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [docs/CONFIGURATION_AUDIT.md](docs/CONFIGURATION_AUDIT.md) | All settings (ulimit, ports, request counts, Scaphandre) |
+| [docs/CONFIGURATION_PARITY.md](docs/CONFIGURATION_PARITY.md) | Canonical values (acceptors, max_connections, base image) |
+| [docs/MINIMAL_BASES_AND_UNIFICATION.md](docs/MINIMAL_BASES_AND_UNIFICATION.md) | Unified Dockerfile stages and naming |
+| [docs/BENCHMARKS_AUDIT.md](docs/BENCHMARKS_AUDIT.md) | Current BEAM benchmark set (34 containers) |
+| [docs/RESULTS.md](docs/RESULTS.md) | CSV format, parameters, visualization |
+| [docs/EXTENDING.md](docs/EXTENDING.md) | Adding new benchmark types (gRPC, etc.) |
+| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Setup, health, Docker, energy, ulimit |
+| [docs/CHANGELOG.md](docs/CHANGELOG.md) | Version history |
+
+## Energy Measurement
+
+Scaphandre attributes energy by container. On systems where it reports `container: null` (e.g. cgroups v2, Debian 13), the scripts use a **cgroup fallback** (matching `/proc/<pid>/cgroup` to the container ID). See [Scaphandre issue #420](https://github.com/hubblo-org/scaphandre/issues/420). Ensure Scaphandre runs on the host with `sudo`. Debug: `python tools/debug_scaphandre_docker.py --server_image <image> --duration 10`.
 
 ## Troubleshooting
 
-### Common Issues
+- **Setup fails**: `sudo apt install python3-venv`; if `srv/` is broken, `make clean-env && make setup`
+- **Health check fails**: Check `docker logs health-check-<name>`, ensure port 8001 is free, verify ulimit inside container
+- **"Container health check failed" during long runs**: BEAM containers may need more time to boot. Set `MEASURE_STARTUP_WAIT=25 MEASURE_HEALTH_RETRIES=30` before `make run` (or use higher values). The script will also print container logs on failure.
+- **Avoid late failures**: Before a long benchmark run, use **`make test`** to build all images (log in `logs/build_*.log`) and run a quick health check on every container (log in `logs/test_*.log`). If the test passes, you can start `make run` with confidence.
+- **Energy 0.00 J**: See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md#energy-measurement-000-j-container-not-found)
+- **ulimit errors**: Increase system/Docker limits; health check requires 100000
 
-#### Health Check Failures
-```bash
-# Check container logs
-docker logs health-check-<container-name>
-
-# Verify port availability
-netstat -tlnp | grep 8001
-
-# Test manual container startup
-docker run -d --rm --ulimit nofile=100000:100000 -p 8001:80 <image-name>
-
-# Check ulimit inside container (should be 100000)
-docker exec health-check-<container-name> sh -c 'ulimit -n'
-```
-
-- The health check now verifies that `ulimit -n` (open file descriptors) is set to 100000 inside each container. The script prints the actual value for each container. If this is not met, the container will fail the health check and will not be benchmarked.
-- If you see ulimit errors, ensure your Docker daemon and host OS allow high file descriptor limits. See below for tips.
-
-#### Docker Issues
-```bash
-# Check Docker status
-docker info
-
-# Clean up containers
-docker stop $(docker ps -q)
-docker rm $(docker ps -aq)
-
-# Rebuild images
-make clean-build
-make build
-```
-
-#### Energy Measurement
-```bash
-# Verify Scaphandre installation
-scaphandre --version
-
-# Check hardware support
-cat /sys/class/powercap/intel-rapl/intel-rapl:0/energy_uj
-
-# Test energy measurement
-scaphandre -t 1
-```
-
-#### Performance Issues
-```bash
-# Increase timeouts
-./check_health.sh --timeout 60 --startup 20
-
-# Check system resources
-htop
-free -h
-df -h
-```
-
-### Debug Mode
-```bash
-# Enable verbose output
-export DEBUG=1
-make quick-test
-
-# Check logs
-tail -f logs/run_*.log
-```
-
-### Getting Help
-```bash
-# Show all Makefile commands
-make help
-
-# Script help
-./check_health.sh --help
-./run_benchmarks.sh help
-```
-
-### ulimit and File Descriptor Limits
-- All containers are started with `--ulimit nofile=100000:100000` for high concurrency.
-- If you see errors about ulimit or file descriptors, you may need to:
-  - Increase your system's open file limit (e.g., edit `/etc/security/limits.conf` on Linux)
-  - Configure Docker daemon to allow higher ulimits (see Docker docs: https://docs.docker.com/engine/reference/commandline/dockerd/#default-ulimit)
-  - Restart Docker after changing system or daemon limits
-- You can check the current limit inside any running container:
-  ```bash
-  docker exec <container-name> sh -c 'ulimit -n'
-  ```
-  The health check script will also print this value for you.
-- The health check will fail if the limit is not 100000.
-
----
-
-## Recent Improvements
-
-### v2.1 Enhancements
-- **CSV Result Grouping**: Results grouped by container name for easier analysis
-- **WebSocket-Specific Metrics**: Enhanced WebSocket CSV format with latency and throughput data
-- **Super Quick Testing**: New `run-super-quick` option for fastest validation
-- **Improved Local Scripts**: Fixed path resolution for local server setup scripts
-- **Enhanced Port Management**: All containers now use port 80 internally for consistency
-
-### v2.0 Enhancements
-- **Simplified Port Management**: Fixed host port with automatic container port detection
-- **Enhanced Health Checks**: Comprehensive validation with HTTP and WebSocket testing
-- **Auto-Discovery**: Intelligent container detection from directory structure
-- **Improved Automation**: Streamlined Makefile commands and script integration
-- **Better Error Handling**: Robust error detection and reporting
-- **Configurable Ports**: Environment variable support for custom ports
-
-### Key Changes
-- Removed complex port arrays and manual configuration
-- Added real HTTP response validation in health checks
-- Implemented WebSocket handshake testing
-- Enhanced container discovery and management
-- Improved repository cleaning and maintenance tools
-- Added comprehensive logging and error reporting
-
----
+Full troubleshooting: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
 
 ## License
-This project is licensed under the MIT License. See the `LICENSE` file for details.
+
+MIT. See `LICENSE`.
