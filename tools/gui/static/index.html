@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Web Server Benchmark Framework</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+/* ── Design tokens ── */
+:root {
+  --bg:      #0f1117;
+  --surface: #1a1d2e;
+  --surf2:   #232635;
+  --border:  #2e3148;
+  --text:    #e2e8f0;
+  --muted:   #8892a4;
+  --accent:  #4f8ef7;
+  --green:   #3ecf8e;
+  --yellow:  #f5c842;
+  --red:     #e05252;
+  --purple:  #a78bfa;
+  --radius:  8px;
+  --font:    -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --mono:    'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+}
+.light {
+  --bg:      #f5f7fa;
+  --surface: #ffffff;
+  --surf2:   #eef0f5;
+  --border:  #d0d5e0;
+  --text:    #1a202c;
+  --muted:   #5a6480;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: var(--bg); color: var(--text); font-family: var(--font);
+  font-size: 14px; display: flex; flex-direction: column; overflow: hidden;
+}
+
+/* ── Header ── */
+#header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 16px; height: 44px; flex-shrink: 0;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+}
+#header h1 { font-size: 15px; font-weight: 600; flex: 1; }
+#status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+#status-label { font-size: 12px; color: var(--muted); }
+/* #btn-term-show removed — replaced by #term-strip */
+#btn-theme {
+  background: var(--surf2); border: 1px solid var(--border);
+  color: var(--text); cursor: pointer; padding: 4px 12px; border-radius: 5px; font-size: 12px;
+}
+
+/* ── Nav ── */
+#nav {
+  display: flex; gap: 2px; padding: 0 12px;
+  background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.tab-btn {
+  background: none; border: none; color: var(--muted); cursor: pointer;
+  padding: 10px 14px; font-size: 13px; border-bottom: 2px solid transparent;
+  transition: color .15s, border-color .15s;
+}
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* ── Main scrollable ── */
+#main { flex: 1; overflow-y: auto; padding: 14px; min-height: 0; }
+.tab-pane { display: none; }
+.tab-pane.active { display: block; }
+
+/* ── Cards ── */
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px; margin-bottom: 12px;
+}
+.card h2 {
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--muted); margin-bottom: 10px;
+}
+
+/* ── Forms ── */
+label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px; }
+input[type=text], input[type=number], select, textarea {
+  width: 100%; background: var(--surf2); border: 1px solid var(--border);
+  color: var(--text); border-radius: 5px; padding: 7px 10px; font-size: 13px;
+  font-family: var(--font); outline: none;
+}
+input[type=text]:focus, input[type=number]:focus, select:focus { border-color: var(--accent); }
+input[type=checkbox] { accent-color: var(--accent); }
+select option { background: var(--surface); }
+.form-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: flex-start; }
+.form-row > * { flex: 1; }
+.form-group { margin-bottom: 10px; }
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  border-radius: 5px; font-size: 13px; padding: 7px 14px; font-family: var(--font);
+  border: 1px solid transparent; transition: opacity .15s, filter .15s;
+}
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn:not(:disabled):hover { filter: brightness(1.1); }
+.btn-primary { background: var(--accent);  color: #fff; border-color: var(--accent); }
+.btn-success { background: var(--green);   color: #000; border-color: var(--green); }
+.btn-danger  { background: var(--red);     color: #fff; border-color: var(--red); }
+.btn-ghost   { background: var(--surf2);   color: var(--text); border-color: var(--border); }
+.btn-large   { padding: 10px 24px; font-size: 15px; font-weight: 600; }
+
+/* ── Badges / chips ── */
+.badge {
+  display: inline-block; font-size: 10px; padding: 1px 7px; border-radius: 10px; font-weight: 600;
+}
+.badge-s { background: #4f8ef720; color: var(--accent); border: 1px solid var(--accent); }
+.badge-d { background: #3ecf8e20; color: var(--green);  border: 1px solid var(--green); }
+.badge-w { background: #a78bfa20; color: var(--purple); border: 1px solid var(--purple); }
+
+.p-chip {
+  font-size: 11px; padding: 2px 8px; border-radius: 20px;
+  border: 1px solid var(--accent); color: var(--accent); background: #4f8ef710;
+}
+
+/* ── Stat grid (setup) ── */
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.stat-cell {
+  background: var(--surf2); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px;
+}
+.stat-cell .lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.stat-cell .val { font-size: 15px; font-weight: 600; margin-top: 2px; }
+
+/* ── Target cards (run) ── */
+.target-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+.target-card {
+  background: var(--surf2); border: 2px solid var(--border); border-radius: var(--radius);
+  padding: 12px 14px; cursor: pointer; text-align: left; font-family: var(--font);
+  color: var(--text); transition: border-color .15s, background .15s;
+}
+.target-card:hover { border-color: var(--muted); }
+.target-card.selected { border-color: var(--accent); background: #4f8ef710; }
+.tc-name { font-size: 13px; font-weight: 600; margin-bottom: 3px; }
+.tc-cmd  { font-size: 11px; color: var(--accent); font-family: var(--mono); margin-bottom: 5px; }
+.tc-desc { font-size: 11px; color: var(--muted); line-height: 1.4; }
+
+/* ── Container list ── */
+.cont-list { display: flex; flex-direction: column; gap: 4px; }
+.cont-item {
+  display: flex; align-items: center; gap: 8px; padding: 5px 10px;
+  background: var(--surf2); border: 1px solid var(--border); border-radius: 5px;
+}
+.cont-item .ci-name { font-family: var(--mono); font-size: 12px; flex: 1; }
+
+/* ── Results layout ── */
+.results-layout { display: flex; gap: 12px; height: calc(100vh - 120px); min-height: 0; }
+.results-sidebar {
+  width: 220px; flex-shrink: 0; display: flex; flex-direction: column; gap: 0;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  overflow: hidden;
+}
+.sidebar-section { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.sidebar-section h2 { margin-bottom: 6px; }
+.sidebar-scroll { flex: 1; overflow-y: auto; padding: 6px; }
+.results-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+
+.sess-item {
+  padding: 7px 10px; border-radius: 5px; cursor: pointer;
+  border: 1px solid transparent; margin-bottom: 3px;
+}
+.sess-item:hover { background: var(--surf2); }
+.sess-item.active { background: var(--surf2); border-color: var(--accent); }
+.sess-item .sn { font-family: var(--mono); font-size: 11px; color: var(--accent); }
+.sess-item .st { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+.file-item {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 12px;
+}
+.file-item:hover { background: var(--surf2); }
+.file-item.active { background: var(--surf2); color: var(--accent); }
+.fi-name { font-family: var(--mono); font-size: 11px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fi-sz   { font-size: 10px; color: var(--muted); flex-shrink: 0; }
+
+/* ── Model selector ── */
+.ms-step { display: flex; gap: 12px; margin-bottom: 12px; }
+.ms-num {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: var(--surf2); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; color: var(--muted); flex-shrink: 0; margin-top: 2px;
+}
+.ms-num.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ms-body { flex: 1; }
+.ms-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.ms-table th { text-align: left; padding: 6px 8px; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); }
+.ms-table td { padding: 5px 8px; border-bottom: 1px solid var(--surf2); font-family: var(--mono); }
+.ms-table tr.winner td { color: var(--green); font-weight: 600; }
+.ms-bar-wrap { background: var(--surf2); border-radius: 3px; height: 8px; overflow: hidden; }
+.ms-bar { height: 100%; border-radius: 3px; background: var(--accent); }
+tr.winner .ms-bar { background: var(--green); }
+.note-box {
+  font-size: 12px; padding: 8px 12px; border-left: 3px solid var(--yellow);
+  background: var(--surf2); border-radius: 0 4px 4px 0; line-height: 1.5;
+}
+
+/* ── Queue ── */
+details summary { cursor: pointer; list-style: none; font-size: 12px; color: var(--muted); }
+details summary::-webkit-details-marker { display: none; }
+details summary::before { content: '▶ '; font-size: 10px; }
+details[open] summary::before { content: '▼ '; }
+.q-item {
+  display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+  background: var(--surf2); border: 1px solid var(--border); border-radius: 5px; margin-bottom: 4px;
+}
+.q-item .qi { font-size: 11px; color: var(--muted); width: 18px; text-align: center; }
+.q-item .qc { font-family: var(--mono); font-size: 12px; flex: 1; }
+.q-item .qs { font-size: 11px; }
+.q-item.running { border-color: var(--accent); }
+.q-item.done    { border-color: var(--green); opacity: .6; }
+.q-item.failed  { border-color: var(--red); }
+.q-item .qr { background: none; border: none; color: var(--muted); cursor: pointer; padding: 0 4px; font-size: 16px; }
+.q-item .qr:hover { color: var(--red); }
+
+/* ── Export ── */
+.metric-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 5px; }
+.metric-chk { display: flex; align-items: center; gap: 7px; font-size: 12px; padding: 3px 0; }
+
+/* ── Terminal ── */
+#terminal-wrap {
+  flex-shrink: 0; display: flex; flex-direction: column;
+  border-top: 1px solid var(--border); background: #000;
+  height: var(--term-h, 200px); transition: height .2s ease; overflow: hidden;
+}
+#terminal-wrap.minimized { height: 32px !important; }
+#term-strip {
+  flex-shrink: 0; height: 24px; background: var(--surf2);
+  border-top: 1px solid var(--border); display: none; align-items: center;
+  justify-content: center; cursor: pointer; font-size: 11px; color: var(--muted);
+  letter-spacing: .04em; user-select: none;
+}
+#term-strip:hover { color: var(--text); background: var(--border); }
+#term-header {
+  display: flex; align-items: center; gap: 8px; padding: 0 10px;
+  height: 32px; background: var(--surf2); border-bottom: 1px solid var(--border);
+  flex-shrink: 0; cursor: row-resize; user-select: none;
+}
+#term-header .th-title { font-size: 12px; font-weight: 600; }
+#term-proc { font-size: 11px; color: var(--muted); flex: 1; font-family: var(--mono); }
+.term-btn {
+  background: none; border: 1px solid var(--border); color: var(--muted);
+  cursor: pointer; padding: 2px 8px; border-radius: 4px; font-size: 11px;
+}
+.term-btn:hover { color: var(--text); border-color: var(--muted); }
+#terminal { flex: 1; overflow: hidden; padding: 4px; min-height: 0; }
+
+/* ── Misc ── */
+.sep { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
+.muted { color: var(--muted); font-size: 12px; }
+.mono  { font-family: var(--mono); }
+
+/* ── Directory browser modal ── */
+#dir-modal {
+  position: fixed; inset: 0; z-index: 9999;
+  background: rgba(0,0,0,0.65); display: none;
+  align-items: center; justify-content: center;
+}
+.dir-modal-box {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); width: 540px; max-width: 90vw;
+  display: flex; flex-direction: column; max-height: 72vh;
+}
+.dir-modal-hdr {
+  display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.dir-modal-hdr span { font-size: 13px; font-weight: 600; flex: 1; }
+.dir-modal-crumb {
+  padding: 7px 14px; font-family: var(--mono); font-size: 11px;
+  color: var(--muted); background: var(--surf2);
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+  overflow-x: auto; white-space: nowrap;
+}
+.dir-modal-list { flex: 1; overflow-y: auto; padding: 6px; }
+.dir-entry {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 12px;
+}
+.dir-entry:hover { background: var(--surf2); }
+.dir-entry .de-icon { font-size: 14px; flex-shrink: 0; }
+.dir-entry .de-name { font-family: var(--mono); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dir-modal-ftr {
+  display: flex; gap: 8px; padding: 12px 14px;
+  border-top: 1px solid var(--border); flex-shrink: 0;
+}
+</style>
+</head>
+<body>
+
+<!-- ═══ HEADER ═══ -->
+<div id="header">
+  <h1>Web Server Benchmark Framework</h1>
+  <span id="status-dot"></span>
+  <span id="status-label">idle</span>
+  <button id="btn-theme">Light</button>
+</div>
+
+<!-- ═══ NAV ═══ -->
+<nav id="nav">
+  <button class="tab-btn active" data-tab="setup">Setup</button>
+  <button class="tab-btn" data-tab="run">Run</button>
+  <button class="tab-btn" data-tab="results">Results</button>
+  <button class="tab-btn" data-tab="export">Export</button>
+  <button class="tab-btn" data-tab="model-selector">Model Selector</button>
+</nav>
+
+<!-- ═══ MAIN ═══ -->
+<div id="main">
+
+<!-- ─── SETUP ─── -->
+<div id="tab-setup" class="tab-pane active">
+
+  <div class="card">
+    <h2>System Status</h2>
+    <div class="stat-grid">
+      <div class="stat-cell"><div class="lbl">Status</div><div class="val" id="si-status">—</div></div>
+      <div class="stat-cell"><div class="lbl">CPU</div><div class="val" id="si-cpu">—</div></div>
+      <div class="stat-cell"><div class="lbl">Memory</div><div class="val" id="si-mem">—</div></div>
+      <div class="stat-cell"><div class="lbl">OS</div><div class="val" id="si-os">—</div></div>
+      <div class="stat-cell"><div class="lbl">Governor</div><div class="val" id="si-gov">—</div></div>
+      <div class="stat-cell"><div class="lbl">Temperature</div><div class="val" id="si-temp">—</div></div>
+      <div class="stat-cell"><div class="lbl">Scaphandre</div><div class="val" id="si-scap">—</div></div>
+      <div class="stat-cell"><div class="lbl">Docker</div><div class="val" id="si-docker">—</div></div>
+      <div class="stat-cell"><div class="lbl">RAPL</div><div class="val" id="si-rapl">—</div></div>
+      <div class="stat-cell"><div class="lbl">Filter Model</div><div class="val" id="si-filter">—</div></div>
+      <div class="stat-cell"><div class="lbl">Runs</div><div class="val" id="si-runs">—</div></div>
+      <div class="stat-cell"><div class="lbl">Isolation</div><div class="val" id="si-isolation">—</div></div>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:8px">
+      <button class="btn btn-primary" id="btn-profiler">Run Profiler</button>
+      <button class="btn btn-ghost" id="btn-reload-sysinfo">↻ Refresh</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Isolation Level</h2>
+    <div style="display:flex;gap:16px">
+      <label style="display:flex;align-items:center;gap:6px;color:var(--text)"><input type="radio" name="cfg-isolation" value="none"> None</label>
+      <label style="display:flex;align-items:center;gap:6px;color:var(--text)"><input type="radio" name="cfg-isolation" value="basic"> Basic</label>
+      <label style="display:flex;align-items:center;gap:6px;color:var(--text)"><input type="radio" name="cfg-isolation" value="full"> Full (sudo)</label>
+    </div>
+  </div>
+
+  <div class="form-row">
+    <div class="card" style="margin-bottom:0">
+      <h2>Measurement</h2>
+      <div class="form-group"><label>Runs (repeats per measurement)</label><input type="number" id="cfg-runs" min="1" max="100" value="10"></div>
+      <div class="form-group"><label>Confidence Level</label><input type="number" id="cfg-confidence" min="0.5" max="0.999" step="0.01" value="0.95"></div>
+      <div class="form-group"><label>Baseline Duration (s)</label><input type="number" id="cfg-baseline" min="0" max="60" value="10"></div>
+    </div>
+    <div class="card" style="margin-bottom:0">
+      <h2>CPU</h2>
+      <div class="form-group"><label>Governor</label>
+        <select id="cfg-governor">
+          <option>performance</option><option>powersave</option><option>ondemand</option><option>schedutil</option>
+        </select>
+      </div>
+      <div class="form-group"><label style="display:flex;align-items:center;gap:8px;color:var(--text)"><input type="checkbox" id="cfg-turbo"> Disable Turbo Boost</label></div>
+      <div class="form-group"><label style="display:flex;align-items:center;gap:8px;color:var(--text)"><input type="checkbox" id="cfg-cstates"> Disable C-States</label></div>
+      <div class="form-group"><label>CPU Set (blank = all)</label><input type="text" id="cfg-cpuset" placeholder="e.g. 0-3"></div>
+    </div>
+  </div>
+
+  <div class="form-row" style="margin-top:12px">
+    <div class="card" style="margin-bottom:0">
+      <h2>Memory</h2>
+      <div class="form-group"><label style="display:flex;align-items:center;gap:8px;color:var(--text)"><input type="checkbox" id="cfg-thp"> Disable Transparent Huge Pages</label></div>
+      <div class="form-group"><label style="display:flex;align-items:center;gap:8px;color:var(--text)"><input type="checkbox" id="cfg-swap"> Check Swap</label></div>
+      <div class="form-group"><label style="display:flex;align-items:center;gap:8px;color:var(--text)"><input type="checkbox" id="cfg-dropcaches"> Drop Caches Before Run</label></div>
+    </div>
+    <div class="card" style="margin-bottom:0">
+      <h2>Thermal</h2>
+      <div class="form-group"><label>Cooldown Temp (°C)</label><input type="number" id="cfg-cooltemp" value="60"></div>
+      <div class="form-group"><label>Cooldown CPU% Max</label><input type="number" id="cfg-coolcpu" value="5"></div>
+      <div class="form-group"><label>Cooldown Timeout (s)</label><input type="number" id="cfg-cooltimeout" value="120"></div>
+    </div>
+  </div>
+
+  <div class="form-row" style="margin-top:12px">
+    <div class="card" style="margin-bottom:0">
+      <h2>Display</h2>
+      <div class="form-group"><label>Brightness (0–100)</label><input type="number" id="cfg-brightness" value="85" min="0" max="100"></div>
+      <div class="form-group"><label style="display:flex;align-items:center;gap:8px;color:var(--text)"><input type="checkbox" id="cfg-screensaver"> Disable Screensaver</label></div>
+    </div>
+    <div class="card" style="margin-bottom:0">
+      <h2>Services to Stop</h2>
+      <div class="form-group"><label>Comma-separated systemd units</label>
+        <textarea id="cfg-services" rows="3" style="resize:vertical">cups.service,bluetooth.service</textarea>
+      </div>
+    </div>
+  </div>
+
+  <div class="form-row" style="margin-top:12px">
+    <div class="card" style="margin-bottom:0">
+      <h2>Outlier Filter</h2>
+      <div class="form-group"><label>Model</label>
+        <select id="cfg-filter-model">
+          <option value="none">none (passthrough)</option>
+          <option value="iqr">iqr</option>
+          <option value="hampel">hampel</option>
+          <option value="isolation_forest">isolation_forest</option>
+          <option value="lof">lof</option>
+          <option value="elliptic">elliptic</option>
+          <option value="dbscan">dbscan</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Contamination (IF/LOF/Elliptic)</label><input type="number" id="cfg-contamination" value="0.10" step="0.01"></div>
+        <div class="form-group"><label>IQR Factor</label><input type="number" id="cfg-iqr-factor" value="1.5" step="0.1"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Hampel Window</label><input type="number" id="cfg-hampel-win" value="7" step="2"></div>
+        <div class="form-group"><label>Hampel Threshold</label><input type="number" id="cfg-hampel-thr" value="1.5" step="0.1"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>DBSCAN Eps (µW)</label><input type="number" id="cfg-dbscan-eps" value="150"></div>
+        <div class="form-group"><label>DBSCAN Min Pts</label><input type="number" id="cfg-dbscan-mp" value="10"></div>
+      </div>
+      <div class="form-group"><label>LOF Neighbors</label><input type="number" id="cfg-lof-n" value="20"></div>
+    </div>
+    <div class="card" style="margin-bottom:0">
+      <h2>Cross-Run Filter</h2>
+      <div class="form-group"><label>Model</label>
+        <select id="cfg-xrun-model"><option value="iqr">iqr</option><option value="none">none</option></select>
+      </div>
+      <div class="form-group"><label>IQR Factor</label><input type="number" id="cfg-xrun-factor" value="1.5" step="0.1"></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <h2>Email Notifications</h2>
+    <p class="muted" style="margin-bottom:10px;font-size:12px">
+      Sent via the system <code>sendmail</code> command when a benchmark job finishes.
+    </p>
+    <div class="form-row">
+      <div class="form-group">
+        <label>From address</label>
+        <input type="text" id="cfg-email-from" placeholder="benchmark@your-institution.edu">
+      </div>
+      <div class="form-group">
+        <label>Recipient email</label>
+        <input type="text" id="cfg-email-to" placeholder="you@example.com">
+      </div>
+      <div class="form-group">
+        <label>Notify on</label>
+        <select id="cfg-notify-on">
+          <option value="always">Always (success + failure)</option>
+          <option value="failure">Failure only</option>
+          <option value="success">Success only</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:12px;display:flex;align-items:center;gap:10px">
+    <button class="btn btn-primary" id="btn-save-config">Save bench.config</button>
+    <span id="cfg-save-status" style="font-size:12px"></span>
+  </div>
+
+</div><!-- /setup -->
+
+
+<!-- ─── RUN ─── -->
+<div id="tab-run" class="tab-pane">
+
+  <div class="card">
+    <h2>Discovered Containers</h2>
+    <div id="run-containers" class="muted">Loading…</div>
+  </div>
+
+  <div class="card">
+    <h2>Benchmark Targets</h2>
+    <div class="target-grid" id="target-grid"></div>
+    <div id="single-wrap" style="display:none;margin-top:10px">
+      <label>Container image name (SERVER=)</label>
+      <select id="run-single-cont" style="width:auto;min-width:220px"></select>
+    </div>
+  </div>
+
+  <!-- Environment variables exposed by run_benchmarks.sh / measure_docker.py / measure_websocket.py -->
+  <details class="card" id="env-panel">
+    <summary>Environment Variables &amp; BENCH_DIR <span class="muted" style="font-size:11px">(optional overrides — leave blank to use defaults)</span></summary>
+    <div style="margin-top:10px">
+      <div class="form-row" style="margin-bottom:10px;align-items:flex-end">
+        <div class="form-group" style="max-width:320px;margin-bottom:0">
+          <label>BENCH_DIR <span class="muted">(default: benchmarks)</span></label>
+          <input type="text" id="env-bench-dir" placeholder="benchmarks">
+        </div>
+        <button class="btn btn-ghost" id="btn-bench-dir-browse" style="flex-shrink:0">Browse…</button>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>HTTP_MAX_WORKERS <span class="muted">(default: 100)</span></label>
+          <input type="text" id="env-http-workers" placeholder="100 · or · system">
+        </div>
+        <div class="form-group">
+          <label>HOST_PORT <span class="muted">(default: 8001)</span></label>
+          <input type="text" id="env-host-port" placeholder="8001">
+        </div>
+        <div class="form-group">
+          <label>BENCH_MEASURE_QUIET <span class="muted">(1=compact, 0=verbose)</span></label>
+          <select id="env-quiet">
+            <option value="">default (1 — compact)</option>
+            <option value="1">1 — compact</option>
+            <option value="0">0 — verbose</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>MEASURE_STARTUP_WAIT <span class="muted">(s, default: 15)</span></label>
+          <input type="number" id="env-startup-wait" placeholder="15" min="1">
+        </div>
+        <div class="form-group">
+          <label>MEASURE_HEALTH_RETRIES <span class="muted">(default: 25)</span></label>
+          <input type="number" id="env-health-retries" placeholder="25" min="1">
+        </div>
+        <div class="form-group">
+          <label>MEASURE_HEARTBEAT_SEC <span class="muted">(default: 60, min: 10)</span></label>
+          <input type="number" id="env-heartbeat" placeholder="60" min="10">
+        </div>
+      </div>
+    </div>
+  </details>
+
+  <div class="card" id="run-preview-card">
+    <h2>What Will Run</h2>
+    <div id="run-payload-wrap" style="margin-bottom:8px">
+      <div class="muted" style="margin-bottom:5px">Request levels / patterns</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px" id="run-chips"></div>
+    </div>
+    <div class="muted" id="run-summary"></div>
+    <div style="margin-top:8px;font-family:var(--mono);font-size:12px;color:var(--accent)" id="run-cmd-preview"></div>
+  </div>
+
+  <div class="card" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <button class="btn btn-ghost" id="btn-sudo-auth" title="Cache sudo credentials — click, then type your password in the terminal below">🔑 Authenticate sudo</button>
+    <span id="sudo-status" style="font-size:12px;color:var(--muted)">Run this once before launching benchmarks</span>
+  </div>
+
+  <div class="card" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <button class="btn btn-success btn-large" id="btn-launch">▶ Launch</button>
+    <button class="btn btn-danger" id="btn-stop" disabled>■ Stop</button>
+    <span class="muted" id="run-status"></span>
+  </div>
+
+  <details class="card">
+    <summary>Sequential Queue — run multiple targets one after another</summary>
+    <div style="margin-top:12px">
+      <div class="form-row" style="align-items:flex-end">
+        <div class="form-group" style="margin-bottom:0">
+          <label>Target</label>
+          <select id="q-target">
+            <option value="run">run — all containers, full (13 HTTP + full WS)</option>
+            <option value="run-quick">run-quick — all containers, quick (3 HTTP + quick WS)</option>
+            <option value="run-super-quick" selected>run-super-quick — all containers, 1 level</option>
+            <option value="run-static">run-static — static only, 13 levels</option>
+            <option value="run-dynamic">run-dynamic — dynamic only, 13 levels</option>
+            <option value="run-websocket">run-websocket — websocket only</option>
+            <option value="run-single">run-single — single container, full</option>
+            <option value="run-single-super-quick">run-single-super-quick — single, 1 level</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label>Container (SERVER= for run-single targets)</label>
+          <select id="q-server" style="width:auto;min-width:180px">
+            <option value="">— any / not applicable —</option>
+          </select>
+        </div>
+        <button class="btn btn-ghost" id="btn-q-add" style="flex-shrink:0;align-self:flex-end">+ Add</button>
+        <button class="btn btn-ghost" id="btn-q-add-all" style="flex-shrink:0;align-self:flex-end" title="Add one queue entry per discovered container (for run-single targets)">+ Add all</button>
+      </div>
+      <div id="queue-list" style="margin-top:10px;min-height:28px"></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+        <button class="btn btn-success" id="btn-q-run" disabled>▶ Run Queue</button>
+        <button class="btn btn-ghost" id="btn-q-clear">Clear</button>
+        <span class="muted" id="q-status"></span>
+      </div>
+    </div>
+  </details>
+
+  <details class="card">
+    <summary>Utilities — setup, build, health-check, clean</summary>
+    <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px">
+      <button class="btn btn-ghost util-btn" data-target="init"         title="make init — venv + deps + build + validate">init</button>
+      <button class="btn btn-ghost util-btn" data-target="setup"        title="make setup — create Python venv and install deps">setup</button>
+      <button class="btn btn-ghost util-btn" data-target="build"        title="make build — build all Docker images">build</button>
+      <button class="btn btn-ghost util-btn" data-target="validate"     title="make validate — check tools and health">validate</button>
+      <button class="btn btn-ghost util-btn" data-target="check-health" title="make check-health — health check only (no build)">check-health</button>
+      <button class="btn btn-ghost util-btn" data-target="test"         title="make test — build all images then health check every container">test</button>
+      <button class="btn btn-ghost util-btn" data-target="build-test-run" title="make build-test-run — build + health check + full run">build-test-run</button>
+      <span style="flex-basis:100%;height:0"></span>
+      <button class="btn btn-ghost util-btn" data-target="clean-results" title="make clean-results — remove results/, logs/, output/, __pycache__">clean-results</button>
+      <button class="btn btn-ghost util-btn" data-target="clean-build"   title="make clean-build — remove Docker containers and images">clean-build</button>
+      <button class="btn btn-ghost util-btn" data-target="clean-env"     title="make clean-env — remove Python venv (srv/)">clean-env</button>
+      <span style="flex-basis:100%;height:0"></span>
+      <input type="number" id="util-port" value="8001" min="1" max="65535"
+        style="width:74px;padding:5px 6px;background:var(--surf2);border:1px solid var(--border);color:var(--text);border-radius:5px;font-size:12px;font-family:var(--mono)"
+        placeholder="port" title="Port number for clean-port">
+      <button class="btn btn-ghost util-btn" data-target="clean-port" title="make clean-port PORT=N — stop Docker containers using this port">clean-port</button>
+    </div>
+  </details>
+
+</div><!-- /run -->
+
+
+<!-- ─── RESULTS ─── -->
+<div id="tab-results" class="tab-pane">
+  <div class="results-layout">
+
+    <!-- Sidebar -->
+    <div class="results-sidebar">
+      <div class="sidebar-section" style="display:flex;align-items:center;gap:6px">
+        <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);flex:1">Sessions</span>
+        <button class="btn btn-ghost" id="btn-refresh-results" style="padding:2px 7px;font-size:11px">↻</button>
+      </div>
+      <!-- Custom folder row -->
+      <div class="sidebar-section" style="padding:6px 8px;border-bottom:1px solid var(--border)">
+        <div style="display:flex;gap:4px;align-items:center">
+          <input type="text" id="results-custom-path" placeholder="results/ or any folder…"
+            style="flex:1;font-size:11px;padding:4px 6px;background:var(--surf2);border:1px solid var(--border);color:var(--text);border-radius:4px;font-family:var(--mono)">
+          <button class="term-btn" id="btn-results-browse" title="Browse filesystem">…</button>
+          <button class="term-btn" id="btn-results-load" title="Load CSVs from this folder">Load</button>
+        </div>
+      </div>
+      <div class="sidebar-scroll" id="session-list" style="flex:0 0 auto;max-height:180px;border-bottom:1px solid var(--border)">
+        <span class="muted">Loading…</span>
+      </div>
+      <div class="sidebar-section">
+        <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Files</span>
+      </div>
+      <div class="sidebar-scroll" id="file-list">
+        <span class="muted">Select a session</span>
+      </div>
+    </div>
+
+    <!-- Main chart area -->
+    <div class="results-main">
+      <div class="card" style="margin-bottom:0;flex-shrink:0">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+          <div class="form-group" style="margin-bottom:0;min-width:180px">
+            <label>Metric</label>
+            <select id="results-metric">
+              <option>Total Energy (J)</option>
+              <option>Avg Power (W)</option>
+              <option>Execution Time (s)</option>
+              <option>Requests/s</option>
+              <option>Successful Requests</option>
+              <option>Failed Requests</option>
+              <option>Avg CPU (%)</option>
+              <option>Peak CPU (%)</option>
+              <option>Avg Mem (MB)</option>
+              <option>Peak Mem (MB)</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label>Chart type</label>
+            <select id="results-chart-type">
+              <option value="auto">Auto</option>
+              <option value="bar">Bar</option>
+              <option value="line">Line</option>
+              <option value="heatmap">Heatmap</option>
+            </select>
+          </div>
+          <label style="display:flex;align-items:center;gap:6px;color:var(--text);margin-bottom:0">
+            <input type="checkbox" id="results-ci" checked> CI
+          </label>
+        </div>
+      </div>
+      <div class="card" style="flex:1;margin-bottom:0;display:flex;flex-direction:column;min-height:0">
+        <div style="position:relative;flex:1;min-height:200px">
+          <canvas id="results-chart"></canvas>
+        </div>
+        <div class="muted" id="results-status" style="margin-top:8px"></div>
+      </div>
+    </div>
+
+  </div>
+</div><!-- /results -->
+
+
+<!-- ─── EXPORT ─── -->
+<div id="tab-export" class="tab-pane">
+
+  <div class="card">
+    <h2>Select Session &amp; File</h2>
+    <div class="form-row">
+      <div class="form-group" style="margin-bottom:0">
+        <label>Session</label>
+        <select id="exp-session"><option value="">— select session —</option></select>
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label>CSV file</label>
+        <select id="exp-file"><option value="">— select file —</option></select>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Metrics to Export</h2>
+    <div class="metric-grid" id="exp-metric-grid"></div>
+    <div style="margin-top:6px;display:flex;gap:6px">
+      <button class="btn btn-ghost" id="btn-exp-selall">All</button>
+      <button class="btn btn-ghost" id="btn-exp-selnone">None</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Options</h2>
+    <div class="form-row">
+      <div class="form-group" style="margin-bottom:0">
+        <label>Format</label>
+        <select id="exp-format">
+          <option value="png">PNG</option>
+          <option value="svg">SVG (vector)</option>
+          <option value="pdf">PDF</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label>Size</label>
+        <select id="exp-size">
+          <option value="column">Single column (84 mm)</option>
+          <option value="half">Half page (120 mm)</option>
+          <option value="full">Full page (174 mm)</option>
+          <option value="a4">A4 landscape</option>
+          <option value="screen" selected>Screen</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label>Style</label>
+        <select id="exp-style">
+          <option value="color">Colour</option>
+          <option value="paper">Paper (greyscale)</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label>DPI</label>
+        <select id="exp-dpi">
+          <option value="96">96</option>
+          <option value="150" selected>150</option>
+          <option value="300">300</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-primary" id="btn-exp-chart">Export charts</button>
+      <button class="btn btn-ghost" id="btn-exp-csv">Export CSV</button>
+    </div>
+    <div class="muted" id="exp-status" style="margin-top:8px"></div>
+  </div>
+
+</div><!-- /export -->
+
+
+<!-- ─── MODEL SELECTOR ─── -->
+<div id="tab-model-selector" class="tab-pane">
+
+  <div class="card">
+    <h2>How it works</h2>
+    <p class="muted" style="line-height:1.6">
+      Evaluates all outlier filter models on your raw Scaphandre power samples and recommends the one that
+      produces the most consistent energy measurements.<br><br>
+      <b>CV scoring</b> — requires ≥ 3 separate benchmark sessions of the same containers.
+      Each session = one <code>make run</code> invocation.<br>
+      <b>Injection scoring</b> — works with a single session; injects synthetic spikes and measures recovery.
+    </p>
+  </div>
+
+  <!-- Step 1: Sessions -->
+  <div class="card">
+    <div class="ms-step">
+      <div class="ms-num active">1</div>
+      <div class="ms-body">
+        <h2 style="margin-bottom:6px">Select Session(s)</h2>
+        <p class="muted" style="margin-bottom:10px;line-height:1.5">
+          For <b>CV scoring</b> select ≥ 3 sessions that ran the same containers.<br>
+          For <b>injection scoring</b> one session is enough.
+        </p>
+        <div id="ms-session-list" style="max-height:200px;overflow-y:auto;margin-bottom:10px">
+          <span class="muted">Switch to this tab to load sessions.</span>
+        </div>
+        <div style="margin-bottom:8px">
+          <label style="font-size:12px;color:var(--muted)">JSON output folder (default: output)</label>
+          <input type="text" id="ms-json-folder" value="output" style="width:240px;display:inline-block;margin-left:8px">
+        </div>
+        <button class="btn btn-ghost" id="btn-ms-scan">Scan</button>
+        <span class="muted" id="ms-scan-status" style="margin-left:10px"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 2: Container -->
+  <div class="card" id="ms-cont-card" style="display:none">
+    <div class="ms-step">
+      <div class="ms-num active">2</div>
+      <div class="ms-body">
+        <h2 style="margin-bottom:8px">Select Container</h2>
+        <div id="ms-cont-list" class="cont-list" style="max-height:200px;overflow-y:auto"></div>
+        <div class="muted" id="ms-json-count" style="margin-top:6px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 3: Config -->
+  <div class="card" id="ms-config-card" style="display:none">
+    <div class="ms-step">
+      <div class="ms-num active">3</div>
+      <div class="ms-body">
+        <h2 style="margin-bottom:8px">Scoring &amp; Run</h2>
+        <div class="form-row" style="margin-bottom:10px">
+          <div class="form-group" style="margin-bottom:0">
+            <label>Scoring method</label>
+            <select id="ms-metric">
+              <option value="cv">CV — cross-session consistency (≥ 3 sessions)</option>
+              <option value="injection">Injection — spike recovery (1 session OK)</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label style="display:flex;align-items:center;gap:8px;color:var(--text)">
+              <input type="checkbox" id="ms-apply"> Write winner to bench.config
+            </label>
+          </div>
+        </div>
+        <div id="ms-cv-warn" class="note-box" style="display:none;margin-bottom:10px">
+          ⚠ CV scoring needs ≥ 3 sessions — <span id="ms-sessions-found">0</span> selected.
+          Injection scoring will be used instead.
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-primary" id="btn-ms-run">▶ Run Comparison</button>
+          <div id="ms-cmd-preview" class="mono muted" style="font-size:11px;background:var(--surf2);padding:5px 10px;border-radius:4px;flex:1;overflow-x:auto;white-space:nowrap"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 4: Results -->
+  <div class="card" id="ms-results-card" style="display:none">
+    <div class="ms-step">
+      <div class="ms-num active">4</div>
+      <div class="ms-body">
+        <h2 style="margin-bottom:8px">Results</h2>
+        <table class="ms-table">
+          <thead>
+            <tr>
+              <th>Model</th><th>Score</th><th>Mean (W)</th><th>Kept %</th><th>Sessions</th>
+              <th style="width:100px">Noise bar</th>
+            </tr>
+          </thead>
+          <tbody id="ms-result-body"></tbody>
+        </table>
+        <div id="ms-winner-note" style="margin-top:10px;font-size:13px;color:var(--green)"></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /model-selector -->
+
+</div><!-- /main -->
+
+
+<!-- ═══ TERMINAL ═══ -->
+<div id="terminal-wrap">
+  <div id="term-header">
+    <span class="th-title">Terminal</span>
+    <span id="term-proc"></span>
+    <div style="display:flex;gap:4px;margin-left:auto">
+      <button class="term-btn" id="btn-term-clear">Clear</button>
+      <button class="term-btn" id="btn-term-copy" title="Copy last command">Copy cmd</button>
+      <button class="term-btn" id="btn-term-minimize">Minimize ▾</button>
+      <button class="term-btn" id="btn-term-hide">Hide</button>
+    </div>
+  </div>
+  <div id="terminal"></div>
+</div>
+
+<!-- ═══ DIRECTORY BROWSER MODAL ═══ -->
+<div id="dir-modal">
+  <div class="dir-modal-box">
+    <div class="dir-modal-hdr">
+      <span>Select Folder</span>
+      <button class="term-btn" id="dir-modal-close">✕</button>
+    </div>
+    <div id="dir-modal-crumb" class="dir-modal-crumb">/</div>
+    <div id="dir-modal-list" class="dir-modal-list"></div>
+    <div class="dir-modal-ftr">
+      <button class="btn btn-primary" id="dir-modal-select">Select This Folder</button>
+      <button class="btn btn-ghost" id="dir-modal-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="term-strip">▸ Terminal</div>
+
+<script src="/static/charts.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

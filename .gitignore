@@ -12,6 +12,7 @@ graphs/
 localhost:8001.auth
 report.log
 TODO
+TODO.claude
 .vscode/
 .ruff_cache/
 __pycache__/

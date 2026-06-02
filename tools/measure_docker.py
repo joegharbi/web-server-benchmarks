@@ -4,6 +4,7 @@ import time
 import subprocess
 import requests
 import csv
+import statistics
 from concurrent.futures import ThreadPoolExecutor
 from collections import Counter
 import argparse
@@ -12,6 +13,12 @@ import threading
 from datetime import datetime
 import logging
 import psutil
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from tools.stats import apply_filter, summarise_runs, FILTER_MODELS
+from tools.bench_profile import load_config, resolve, DEFAULT_CONFIG_PATH
+from tools.env_control import IsolationContext, detect_temperatures
 
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger()
@@ -234,12 +241,15 @@ def _pid_in_container(pid, container_id):
 
 
 def parse_json_and_compute_energy(file_name, container_name, runtime, container_id=None):
-    """Extract energy from Scaphandre JSON. Prefers Scaphandre's container field; falls back to cgroup when all container=null."""
+    """Extract energy from Scaphandre JSON. Prefers Scaphandre's container field; falls back to cgroup when all container=null.
+
+    Returns (energy_joules, avg_power_watts, n_samples, raw_samples_uw)
+    raw_samples_uw is the list of per-entry power values in microwatts (>0 only).
+    """
     with open(file_name, "r") as file:
         data = json.load(file)
 
-    total_power_microwatts = 0.0
-    number_samples = 0
+    raw_samples_uw = []
     found_containers = set()
 
     for entry in data:
@@ -250,11 +260,10 @@ def parse_json_and_compute_energy(file_name, container_name, runtime, container_
             if container and container.get("name") == container_name:
                 power = consumer.get("consumption", 0.0)
                 if power > 0:
-                    total_power_microwatts += power
-                    number_samples += 1
+                    raw_samples_uw.append(float(power))
 
     # Fallback: when Scaphandre reports container=null for all (e.g. cgroups v2), attribute by cgroup path
-    if number_samples == 0 and container_id and not found_containers:
+    if not raw_samples_uw and container_id and not found_containers:
         for entry in data:
             for consumer in entry.get("consumers", []):
                 if consumer.get("container"):
@@ -262,26 +271,25 @@ def parse_json_and_compute_energy(file_name, container_name, runtime, container_
                 pid = consumer.get("pid", 0)
                 power = consumer.get("consumption", 0.0)
                 if power > 0 and _pid_in_container(pid, container_id):
-                    total_power_microwatts += power
-                    number_samples += 1
-        if number_samples > 0:
+                    raw_samples_uw.append(float(power))
+        if raw_samples_uw:
             logger.info(f"Using cgroup fallback for '{container_name}' (Scaphandre container=null on this system)")
 
-    if not found_containers and number_samples == 0:
+    if not found_containers and not raw_samples_uw:
         logger.warning(f"No containers found in Scaphandre output {file_name}")
     elif found_containers:
         logger.info(f"Containers found in Scaphandre output: {found_containers}")
-    if container_name not in found_containers and number_samples == 0:
+    if container_name not in found_containers and not raw_samples_uw:
         logger.warning(f"Container '{container_name}' not found in Scaphandre output!")
-    if number_samples == 0:
+    if not raw_samples_uw:
         logger.warning(f"No energy samples found for container '{container_name}' in {file_name}")
-        return 0.0, 0.0, 0
+        return 0.0, 0.0, 0, []
 
-    avg_power_watts = (total_power_microwatts / number_samples) * 1e-6
+    avg_power_watts = (statistics.mean(raw_samples_uw)) * 1e-6
     total_energy_joules = avg_power_watts * runtime
-    return total_energy_joules, avg_power_watts, number_samples
+    return total_energy_joules, avg_power_watts, len(raw_samples_uw), raw_samples_uw
 
-def save_results_to_csv(filename, results, total_energy, average_power, runtime, requests_per_second, total_samples, 
+def save_results_to_csv(filename, results, total_energy, average_power, runtime, requests_per_second, total_samples,
                        cpu_metrics, mem_metrics, num_cores, container_name, measurement_type, extra_fields=None):
     extra_fields = extra_fields or {}
     base_headers = ["Container Name", "Type", "Num CPUs", "Total Requests", "Successful Requests", "Failed Requests", "Execution Time (s)", "Requests/s",
@@ -362,50 +370,34 @@ def print_summary(results, total_energy, average_power, runtime, requests_per_se
     logger.info(f"JSON: {output_json}, CSV: {output_csv or f'results_docker/{container_name}.csv'}")
     logger.info("==========================")
 
-def main():
-    parser = argparse.ArgumentParser(description="Measure web server energy with Scaphandre in Docker")
-    parser.add_argument('--server_image', type=str, required=True, help="Docker image of the server (e.g., nginx-deb)")
-    parser.add_argument('--container_name', type=str, default=None, help="Name of the Docker container (defaults to server_image)")
-    parser.add_argument('--port_mapping', type=str, default='8001:80', help="Port mapping (default: 8001:80)")
-    parser.add_argument('--network', type=str, default='bridge', choices=['bridge', 'host'], help="Network mode (default: bridge)")
-    parser.add_argument('--num_requests', type=int, default=500, help="Number of requests to send (default: 500)")
-    parser.add_argument('--max_workers', type=int, default=None, help="Max workers for ThreadPoolExecutor (default: None; CSV records System default when unset)")
-    parser.add_argument('--output_csv', type=str, default=None, help="Output CSV file path (default: results_docker/<container_name>.csv)")
-    parser.add_argument('--output_json', type=str, default=None, help="Output JSON file path (default: output/<timestamp>.json)")
-    parser.add_argument('--verbose', action='store_true', help="Enable verbose logging")
-    parser.add_argument('--measurement_type', type=str, default=None, help="Type of measurement (static, dynamic, etc.)")
-    
-    args = parser.parse_args()
-    if args.verbose:
-        logger.setLevel(logging.DEBUG)
-    elif is_measure_quiet():
-        logger.setLevel(logging.WARNING)
 
-    check_prerequisites()  # Exit with error before any measurement if anything is missing
-    scaphandre_path = get_binary_path("scaphandre")
-    docker_path = get_binary_path("docker")
-    num_cores = os.cpu_count()
-    
-    output_json = args.output_json or os.path.join("output", datetime.now().strftime("%Y-%m-%d-%H%M%S") + ".json")
-    url = "http://localhost:80/" if args.network == "host" else f"http://localhost:{args.port_mapping.split(':')[0]}/"
+# ---------------------------------------------------------------------------
+# Per-iteration runner
+# ---------------------------------------------------------------------------
+
+def run_single_iteration(args, docker_path, scaphandre_path, num_cores,
+                          run_num, total_runs, output_json):
+    """
+    Run one complete benchmark iteration (start container → load → stop).
+
+    Returns a dict with keys:
+      energy_j, power_w, runtime, requests_total, requests_success,
+      raw_samples_uw, temp_peak_c, cpu_metrics, mem_metrics, output_json
+    Returns None if the container failed health check.
+    """
+    global results_counter, runtime_data
+    results_counter.clear()
+
     container_name = args.container_name or args.server_image
+    url = ("http://localhost:80/"
+           if args.network == "host"
+           else f"http://localhost:{args.port_mapping.split(':')[0]}/")
 
-    # Port-in-use check before starting container
-    host_port = args.port_mapping.split(":")[0]
-    import subprocess
-    result = subprocess.run(["ss", "-ltn"], capture_output=True, text=True)
-    if f":{host_port} " in result.stdout:
-        logger.error(f"[ERROR] Port {host_port} is already in use. Please stop the process or container using it before running the benchmark.")
-        result2 = subprocess.run(["ss", "-ltnp"], capture_output=True, text=True)
-        logger.error("[INFO] The following processes are using port %s:\n%s", host_port, '\n'.join([line for line in result2.stdout.splitlines() if f":{host_port} " in line]))
-        result3 = subprocess.run(["docker", "ps", "--filter", f"publish={host_port}"], capture_output=True, text=True)
-        logger.error("[INFO] Docker containers using this port:\n%s", result3.stdout)
-        exit(1)
+    run_label = f"run {run_num}/{total_runs}" if total_runs > 1 else "run"
 
-    cleanup_existing_scaphandre()
     if is_measure_quiet() and not args.verbose:
-        measure_quiet_msg(f"{container_name} | Docker start + HTTP readiness wait …")
-    logger.info(f"Starting container '{container_name}'...")
+        measure_quiet_msg(f"{container_name} | {run_label} | Docker start + HTTP readiness wait …")
+    logger.info(f"Starting container '{container_name}' ({run_label})...")
     start_server_container(args.server_image, args.port_mapping, container_name, docker_path, args.network)
 
     if not check_container_health(url):
@@ -421,11 +413,11 @@ def main():
             logger.debug("Could not get container logs: %s", e)
         logger.error("To allow more boot time: MEASURE_STARTUP_WAIT=25 MEASURE_HEALTH_RETRIES=30 make run")
         stop_server_container(container_name, docker_path)
-        return
+        return None
 
     if is_measure_quiet() and not args.verbose:
         measure_quiet_msg(
-            f"{container_name} | Scaphandre power sampling + HTTP load | "
+            f"{container_name} | {run_label} | Scaphandre + HTTP load | "
             f"{args.num_requests} GET → {url}"
         )
     logger.info("Starting Scaphandre...")
@@ -434,12 +426,16 @@ def main():
     logger.info(f"Sending {args.num_requests} requests to {url}...")
     time.sleep(2)
 
+    # Record temperature before load
+    temps_before = detect_temperatures()
+
     stop_event = threading.Event()
     resource_results = {'cpu': {}, 'mem': {}}
+
     def collect():
-        cpu_metrics, mem_metrics = collect_resources_docker_stats(container_name, stop_event, docker_path)
-        resource_results['cpu'] = cpu_metrics
-        resource_results['mem'] = mem_metrics
+        cpu_m, mem_m = collect_resources_docker_stats(container_name, stop_event, docker_path)
+        resource_results['cpu'] = cpu_m
+        resource_results['mem'] = mem_m
 
     resource_thread = threading.Thread(target=collect)
     resource_thread.start()
@@ -458,7 +454,7 @@ def main():
                 with results_lock:
                     done = results_counter["total"]
                 measure_quiet_msg(
-                    f"{container_name} | HTTP requests {done}/{args.num_requests} "
+                    f"{container_name} | {run_label} | HTTP requests {done}/{args.num_requests} "
                     f"({int(time.time() - load_t0)}s elapsed)"
                 )
 
@@ -473,20 +469,23 @@ def main():
         if hb_thread is not None:
             hb_stop.set()
             hb_thread.join(timeout=3)
-    runtime = time.time() - start_time
-    runtime_data['runtime'] = runtime
+    run_runtime = time.time() - start_time
 
     time.sleep(3)
     stop_event.set()
     resource_thread.join()
 
-    requests_per_second = results_counter['total'] / runtime if runtime > 0 else 0
+    # Record temperature after load
+    temps_after = detect_temperatures()
+    all_temps = temps_before + temps_after
+    temp_peak = max(all_temps) if all_temps else -1.0
 
     if is_measure_quiet() and not args.verbose:
-        measure_quiet_msg(f"{container_name} | stopping Scaphandre + appending CSV …")
+        measure_quiet_msg(f"{container_name} | {run_label} | stopping Scaphandre …")
     logger.info("Waiting for Scaphandre...")
     time.sleep(5)
     stop_scaphandre(scaphandre_process)
+
     container_id = None
     result = subprocess.run(
         [docker_path, "ps", "-q", "-f", f"name={container_name}"],
@@ -494,31 +493,361 @@ def main():
     )
     if result.returncode == 0 and result.stdout.strip():
         container_id = result.stdout.strip()
-    total_energy, average_power, total_samples = parse_json_and_compute_energy(
-        output_json, container_name, runtime, container_id=container_id
+
+    total_energy, average_power, total_samples, raw_samples_uw = parse_json_and_compute_energy(
+        output_json, container_name, run_runtime, container_id=container_id
     )
     stop_server_container(container_name, docker_path)
-    measurement_type = getattr(args, 'measurement_type', None) or "unknown"
+
+    requests_per_second = results_counter['total'] / run_runtime if run_runtime > 0 else 0
+
+    return {
+        "energy_j": total_energy,
+        "power_w": average_power,
+        "runtime": run_runtime,
+        "requests_total": results_counter['total'],
+        "requests_success": results_counter['success'],
+        "requests_failure": results_counter['failure'],
+        "requests_per_second": requests_per_second,
+        "raw_samples_uw": raw_samples_uw,
+        "temp_peak_c": temp_peak,
+        "cpu_metrics": resource_results['cpu'],
+        "mem_metrics": resource_results['mem'],
+        "total_samples": total_samples,
+        "output_json": output_json,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Filter kwargs builder
+# ---------------------------------------------------------------------------
+
+def _build_filter_kwargs(model: str, args) -> dict:
+    kw = {}
+    if model == "iqr":
+        kw["factor"] = args.iqr_factor
+    elif model == "hampel":
+        kw["window"] = args.hampel_window
+        kw["threshold"] = args.hampel_threshold
+    elif model in ("isolation_forest", "elliptic"):
+        kw["contamination"] = args.contamination
+    elif model == "lof":
+        kw["contamination"] = args.contamination
+        kw["n_neighbors"] = args.lof_neighbors
+    elif model == "dbscan":
+        kw["eps"] = args.dbscan_eps
+        kw["min_samples"] = args.dbscan_minpts
+    return kw
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Measure web server energy with Scaphandre in Docker")
+    parser.add_argument('--server_image', type=str, required=True, help="Docker image of the server (e.g., nginx-deb)")
+    parser.add_argument('--container_name', type=str, default=None, help="Name of the Docker container (defaults to server_image)")
+    parser.add_argument('--port_mapping', type=str, default='8001:80', help="Port mapping (default: 8001:80)")
+    parser.add_argument('--network', type=str, default='bridge', choices=['bridge', 'host'], help="Network mode (default: bridge)")
+    parser.add_argument('--num_requests', type=int, default=500, help="Number of requests to send (default: 500)")
+    parser.add_argument('--max_workers', type=int, default=None, help="Max workers for ThreadPoolExecutor (default: None; CSV records System default when unset)")
+    parser.add_argument('--output_csv', type=str, default=None, help="Output CSV file path (default: results_docker/<container_name>.csv)")
+    parser.add_argument('--output_json', type=str, default=None, help="Output JSON file path (default: output/<timestamp>.json)")
+    parser.add_argument('--verbose', action='store_true', help="Enable verbose logging")
+    parser.add_argument('--measurement_type', type=str, default=None, help="Type of measurement (static, dynamic, etc.)")
+
+    # --- Repetition and isolation ---
+    parser.add_argument('--runs', type=int, default=None,
+                        help="Number of benchmark repetitions (default: from bench.config or BENCH_RUNS, fallback 1)")
+    parser.add_argument('--isolation', type=str, default=None,
+                        choices=["none", "basic", "full"],
+                        help="Isolation level (default: from bench.config or BENCH_ISOLATION, fallback none)")
+
+    # --- Filter model ---
+    parser.add_argument('--filter-model', type=str, default=None,
+                        choices=list(FILTER_MODELS),
+                        help="Outlier filter model (default: from bench.config or BENCH_FILTER_MODEL, fallback none)")
+    parser.add_argument('--contamination', type=float, default=None,
+                        help="Contamination for IF/LOF/Elliptic (default: from bench.config, fallback 0.1)")
+    parser.add_argument('--iqr-factor', type=float, default=None,
+                        help="IQR factor (default: from bench.config, fallback 1.5)")
+    parser.add_argument('--hampel-window', type=int, default=None,
+                        help="Hampel filter window (default: from bench.config, fallback 5)")
+    parser.add_argument('--hampel-threshold', type=float, default=None,
+                        help="Hampel filter threshold (default: from bench.config, fallback 3.0)")
+    parser.add_argument('--dbscan-eps', type=float, default=None,
+                        help="DBSCAN eps in µW (default: from bench.config, fallback 200.0)")
+    parser.add_argument('--dbscan-minpts', type=int, default=None,
+                        help="DBSCAN min_samples (default: from bench.config, fallback 5)")
+    parser.add_argument('--lof-neighbors', type=int, default=None,
+                        help="LOF n_neighbors (default: from bench.config, fallback 10)")
+
+    # --- Thermal ---
+    parser.add_argument('--cooldown-temp', type=float, default=None,
+                        help="Cooldown temperature ceiling °C (default: from bench.config, fallback 50.0)")
+    parser.add_argument('--cooldown-cpu', type=float, default=None,
+                        help="Cooldown max CPU%% usage (default: from bench.config, fallback 5.0)")
+    parser.add_argument('--cooldown-timeout', type=int, default=None,
+                        help="Cooldown timeout seconds (default: from bench.config, fallback 120)")
+
+    # --- Measurement quality ---
+    parser.add_argument('--baseline-duration', type=int, default=None,
+                        help="Idle baseline measurement duration in seconds (default: from bench.config, fallback 10)")
+    parser.add_argument('--confidence', type=float, default=None,
+                        help="CI confidence level (default: from bench.config, fallback 0.95)")
+    parser.add_argument('--cross-run-factor', type=float, default=None,
+                        help="IQR factor for cross-run outlier rejection (default: from bench.config, fallback 1.5)")
+
+    # --- Config path ---
+    parser.add_argument('--config', type=str, default=DEFAULT_CONFIG_PATH,
+                        help="Path to bench.config (default: bench.config)")
+
+    args = parser.parse_args()
+
+    if args.verbose:
+        logger.setLevel(logging.DEBUG)
+    elif is_measure_quiet():
+        logger.setLevel(logging.WARNING)
+
+    # --- Load bench.config and resolve all parameters ---
+    cfg = load_config(args.config)
+
+    def _r(section, key, env_var, cli_val, fallback):
+        return resolve(cfg, section, key, env_var, cli_val=cli_val, fallback=str(fallback))
+
+    runs           = int(_r("measurement", "runs",             "BENCH_RUNS",           args.runs,             1))
+    isolation      = _r("isolation",   "level",               "BENCH_ISOLATION",      args.isolation,        "none")
+    filter_model   = _r("filter",      "model",               "BENCH_FILTER_MODEL",   args.filter_model,     "none")
+    contamination  = float(_r("filter", "contamination",      "BENCH_CONTAMINATION",  args.contamination,    0.1))
+    iqr_factor_v   = float(_r("filter", "iqr_factor",         "BENCH_IQR_FACTOR",     args.iqr_factor,       1.5))
+    hampel_window_v = int(_r("filter", "hampel_window",       "BENCH_HAMPEL_WINDOW",  args.hampel_window,    5))
+    hampel_thresh_v = float(_r("filter","hampel_threshold",   "BENCH_HAMPEL_THRESH",  args.hampel_threshold, 3.0))
+    dbscan_eps_v   = float(_r("filter", "dbscan_eps",         "BENCH_DBSCAN_EPS",     args.dbscan_eps,       200.0))
+    dbscan_minpts_v = int(_r("filter", "dbscan_minpts",       "BENCH_DBSCAN_MINPTS",  args.dbscan_minpts,    5))
+    lof_neighbors_v = int(_r("filter", "lof_neighbors",       "BENCH_LOF_NEIGHBORS",  args.lof_neighbors,    10))
+    cooldown_temp_v  = float(_r("thermal","cooldown_temp_c",  "BENCH_COOLDOWN_TEMP",  args.cooldown_temp,    50.0))
+    cooldown_cpu_v   = float(_r("thermal","cooldown_cpu_pct", "BENCH_COOLDOWN_CPU",   args.cooldown_cpu,     5.0))
+    cooldown_to_v    = int(_r("thermal", "cooldown_timeout_s","BENCH_COOLDOWN_TO",    args.cooldown_timeout, 120))
+    baseline_dur_v   = int(_r("measurement","baseline_duration_s","BENCH_BASELINE_DUR",args.baseline_duration, 10))
+    confidence_v     = float(_r("measurement","confidence",   "BENCH_CONFIDENCE",     args.confidence,       0.95))
+    cross_run_fac_v  = float(_r("cross_run_filter","factor",  "BENCH_CROSS_RUN_FACTOR",args.cross_run_factor,1.5))
+
+    # Patch resolved filter params back into args so _build_filter_kwargs can read them
+    args.iqr_factor      = iqr_factor_v
+    args.hampel_window   = hampel_window_v
+    args.hampel_threshold = hampel_thresh_v
+    args.contamination   = contamination
+    args.dbscan_eps      = dbscan_eps_v
+    args.dbscan_minpts   = dbscan_minpts_v
+    args.lof_neighbors   = lof_neighbors_v
+
+    filter_kwargs = _build_filter_kwargs(filter_model, args)
+
+    check_prerequisites()
+    scaphandre_path = get_binary_path("scaphandre")
+    docker_path = get_binary_path("docker")
+    num_cores = os.cpu_count()
+
+    container_name = args.container_name or args.server_image
+
+    # Port-in-use check before starting container
+    host_port = args.port_mapping.split(":")[0]
+    result = subprocess.run(["ss", "-ltn"], capture_output=True, text=True)
+    if f":{host_port} " in result.stdout:
+        logger.error(f"[ERROR] Port {host_port} is already in use. Please stop the process or container using it before running the benchmark.")
+        result2 = subprocess.run(["ss", "-ltnp"], capture_output=True, text=True)
+        logger.error("[INFO] The following processes are using port %s:\n%s", host_port, '\n'.join([line for line in result2.stdout.splitlines() if f":{host_port} " in line]))
+        result3 = subprocess.run(["docker", "ps", "--filter", f"publish={host_port}"], capture_output=True, text=True)
+        logger.error("[INFO] Docker containers using this port:\n%s", result3.stdout)
+        exit(1)
+
+    cleanup_existing_scaphandre()
+
+    timestamp = datetime.now().strftime("%Y-%m-%d-%H%M%S")
+
+    # --- Run with IsolationContext wrapping the entire session ---
+    with IsolationContext(
+        level=isolation,
+        cooldown_temp=cooldown_temp_v,
+        cooldown_cpu=cooldown_cpu_v,
+        cooldown_timeout=cooldown_to_v,
+        verbose=args.verbose,
+    ) as ctx:
+
+        baseline_power_w = 0.0
+        if runs > 1 or isolation != "none":
+            if is_measure_quiet() and not args.verbose:
+                measure_quiet_msg(f"{container_name} | measuring idle baseline ({baseline_dur_v}s)…")
+            baseline_power_w = ctx.measure_idle(duration=baseline_dur_v)
+            if baseline_power_w > 0:
+                logger.info(f"Idle baseline: {baseline_power_w:.3f} W")
+
+        iteration_results = []
+
+        for run_idx in range(runs):
+            run_num = run_idx + 1
+
+            if runs > 1:
+                output_json = (args.output_json or
+                               os.path.join("output", f"{timestamp}_run{run_num}of{runs}.json"))
+            else:
+                output_json = args.output_json or os.path.join("output", f"{timestamp}.json")
+
+            result = run_single_iteration(
+                args, docker_path, scaphandre_path, num_cores,
+                run_num, runs, output_json
+            )
+
+            if result is None:
+                logger.error(f"Run {run_num}/{runs} failed — skipping.")
+                continue
+
+            iteration_results.append(result)
+
+            if is_measure_quiet() and not args.verbose:
+                ok = result['requests_success'] == result['requests_total']
+                cnt_str = (
+                    f"{_M_GREEN}{result['requests_success']}/{result['requests_total']} ok{_M_NC}"
+                    if ok
+                    else f"{result['requests_success']}/{result['requests_total']}"
+                )
+                measure_quiet_msg(
+                    f"{container_name} | run {run_num}/{runs} | {cnt_str} | "
+                    f"{result['runtime']:.1f}s | {result['requests_per_second']:.0f} req/s | "
+                    f"temp_peak={result['temp_peak_c']:.1f}°C"
+                )
+
+            # Cooldown between runs (not after the last one)
+            if run_idx < runs - 1:
+                if is_measure_quiet() and not args.verbose:
+                    measure_quiet_msg(f"{container_name} | cooldown between runs…")
+                ctx.cooldown()
+
+        ctx.report()
+
+    # --- Post-loop: apply filter, cross-run rejection, CI ---
+    if not iteration_results:
+        logger.error("No successful runs — no CSV written.")
+        sys.exit(1)
+
+    # Apply per-run filter and recompute energy from cleaned samples
+    run_energies_filtered = []
+    run_powers_filtered = []
+    run_runtimes = []
+    run_requests = []
+    run_successes = []
+    temp_peaks = []
+
+    for r in iteration_results:
+        raw = r["raw_samples_uw"]
+        runtime = r["runtime"]
+        if raw and filter_model != "none":
+            try:
+                clean = apply_filter(raw, model=filter_model, **filter_kwargs)
+            except Exception:
+                clean = raw
+        else:
+            clean = raw
+
+        if clean:
+            avg_w = statistics.mean(clean) * 1e-6
+            energy_j = avg_w * runtime
+        else:
+            avg_w = r["power_w"]
+            energy_j = r["energy_j"]
+
+        run_energies_filtered.append(energy_j)
+        run_powers_filtered.append(avg_w)
+        run_runtimes.append(runtime)
+        run_requests.append(r["requests_total"])
+        run_successes.append(r["requests_success"])
+        temp_peaks.append(r["temp_peak_c"])
+
+    summary = summarise_runs(
+        run_energies=run_energies_filtered,
+        run_powers=run_powers_filtered,
+        run_runtimes=run_runtimes,
+        run_requests=run_requests,
+        run_successes=run_successes,
+        cross_run_factor=cross_run_fac_v,
+        confidence=confidence_v,
+    )
+
+    # Aggregate CPU/mem across runs (use last run's for single-run compat)
+    last = iteration_results[-1]
+    cpu_metrics_out = last["cpu_metrics"]
+    mem_metrics_out = last["mem_metrics"]
+
+    # Representative results counter (sum across used runs)
+    used_indices = [i for i in range(len(iteration_results))
+                    if i not in getattr(summary, '_rejected_indices', [])]
+    agg_results = Counter()
+    agg_results['total']   = int(summary["requests_mean"] * summary["runs_used"])
+    agg_results['success'] = int(summary["success_mean"] * summary["runs_used"])
+    agg_results['failure'] = agg_results['total'] - agg_results['success']
+
+    total_energy_out  = summary["energy_mean"]
+    average_power_out = summary["power_mean"]
+    runtime_out       = summary["runtime_mean"]
+    rps_out           = (summary["requests_mean"] / runtime_out
+                         if runtime_out > 0 else 0.0)
+    total_samples_out = last["total_samples"]
+    temp_peak_out     = max(t for t in temp_peaks if t >= 0) if temp_peaks else -1.0
+
     http_workers_label = http_max_workers_label(args)
-    save_results_to_csv(args.output_csv, results_counter, total_energy, average_power, runtime, requests_per_second, 
-                       int(total_samples), resource_results['cpu'], resource_results['mem'], num_cores, args.server_image, measurement_type,
-                       extra_fields={"HTTP Max Workers": http_workers_label})
+    measurement_type = getattr(args, 'measurement_type', None) or "unknown"
+
+    extra_fields = {
+        "HTTP Max Workers": http_workers_label,
+        "Runs Total": summary["runs_total"],
+        "Runs Used": summary["runs_used"],
+        "Energy Mean (J)": round(summary["energy_mean"], 6),
+        "Energy Std (J)": round(summary["energy_std"], 6),
+        "Energy CI Lo (J)": round(summary["energy_ci_lo"], 6),
+        "Energy CI Hi (J)": round(summary["energy_ci_hi"], 6),
+        "Temp Peak (°C)": round(temp_peak_out, 1),
+        "Baseline Power (W)": round(baseline_power_w, 4),
+        "Filter Model": filter_model,
+    }
+
+    save_results_to_csv(
+        args.output_csv, agg_results,
+        total_energy_out, average_power_out, runtime_out,
+        rps_out, total_samples_out,
+        cpu_metrics_out, mem_metrics_out,
+        num_cores, args.server_image, measurement_type,
+        extra_fields=extra_fields,
+    )
+
     csv_disp = args.output_csv or os.path.join("results_docker", f"{container_name}.csv")
+
     if is_measure_quiet() and not args.verbose:
-        ok = results_counter["success"] == results_counter["total"]
-        cnt = (
-            f"{_M_GREEN}{results_counter['success']}/{results_counter['total']} ok{_M_NC}"
+        ok = agg_results["success"] == agg_results["total"]
+        cnt_str = (
+            f"{_M_GREEN}{agg_results['success']}/{agg_results['total']} ok{_M_NC}"
             if ok
-            else f"{results_counter['success']}/{results_counter['total']}"
+            else f"{agg_results['success']}/{agg_results['total']}"
         )
+        run_info = (f"{summary['runs_used']}/{summary['runs_total']} runs"
+                    if summary["runs_total"] > 1 else "")
+        ci_info = (f" CI=[{summary['energy_ci_lo']:.3f},{summary['energy_ci_hi']:.3f}]J"
+                   if summary["runs_total"] > 1 else "")
         measure_quiet_msg(
-            f"{container_name} | {cnt} | {runtime:.1f}s | {requests_per_second:.0f} req/s | "
-            f"{csv_disp}"
+            f"{container_name} | {cnt_str} | {runtime_out:.1f}s | {rps_out:.0f} req/s | "
+            f"{run_info}{ci_info} | {csv_disp}"
         )
     else:
-        print_summary(results_counter, total_energy, average_power, runtime, requests_per_second, 
-                      resource_results['cpu'], resource_results['mem'], num_cores, output_json, args.output_csv, container_name,
-                      http_max_workers_label=http_workers_label)
+        print_summary(
+            agg_results, total_energy_out, average_power_out,
+            runtime_out, rps_out,
+            cpu_metrics_out, mem_metrics_out,
+            num_cores, last["output_json"], args.output_csv, container_name,
+            http_max_workers_label=http_workers_label,
+        )
+        if summary["runs_total"] > 1:
+            logger.info(
+                f"Runs: {summary['runs_used']}/{summary['runs_total']} used  "
+                f"Energy CI ({int(confidence_v*100)}%%): "
+                f"[{summary['energy_ci_lo']:.4f}, {summary['energy_ci_hi']:.4f}] J  "
+                f"Filter: {filter_model}"
+            )
 
 if __name__ == "__main__":
     main()

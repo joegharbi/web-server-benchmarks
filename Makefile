@@ -122,6 +122,11 @@ clean-port: ## Stop containers using a port (usage: make clean-port PORT=8001)
 		printf "${YELLOW}If a non-Docker process is using it, stop it manually or use a different port.${NC}\n"; \
 	fi
 
+test: check-env ## Run test suite (tools/stats.py and future modules)
+	@printf "${YELLOW}Running tests...${NC}\n"
+	@srv/bin/python3 -m pytest tests/ -v
+	@printf "${GREEN}All tests passed.${NC}\n"
+
 run: check-env ## Run all benchmarks (log: run plan, [PROGRESS] lines, tail -f logs/run_*.log)
 	@for v in ./*/bin/activate; do \
 		if [ -f "$$v" ]; then . "$$v"; break; fi; \
@@ -198,6 +203,11 @@ clean-all-build-run: ## Completely clean (results, srv, Docker), then setup, bui
 		$(MAKE) build; \
 		printf "\n"; \
 		$(MAKE) run'
+
+gui: check-env  ## Start the web benchmark GUI (http://localhost:8080)
+	@printf "$(YELLOW)Starting GUI server at http://localhost:8080$(NC)\n"
+	@(sleep 1 && xdg-open http://localhost:8080 2>/dev/null || open http://localhost:8080 2>/dev/null || true) &
+	@srv/bin/python3 tools/gui/server.py
 
 graph:  ## Launch the GUI graph generator (uses PyQt5 from requirements.txt)
 	@$(MAKE) check-env
