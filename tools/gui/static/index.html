@@ -3,412 +3,659 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Web Server Benchmark Framework</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
-<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<title>Benchmark GUI</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css"
+      crossorigin="anonymous">
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"
+        crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"
+        crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"
+        crossorigin="anonymous"></script>
 <style>
-/* ── Design tokens ── */
-:root {
-  --bg:      #0f1117;
-  --surface: #1a1d2e;
-  --surf2:   #232635;
-  --border:  #2e3148;
-  --text:    #e2e8f0;
-  --muted:   #8892a4;
-  --accent:  #4f8ef7;
-  --green:   #3ecf8e;
-  --yellow:  #f5c842;
-  --red:     #e05252;
-  --purple:  #a78bfa;
-  --radius:  8px;
-  --font:    -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --mono:    'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+/* ── Reset & Base ────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root,html[data-theme="dark"]{
+  --bg:        #0f1117;
+  --bg-card:   #181a20;
+  --bg-input:  #1e2028;
+  --bg-hover:  #252830;
+  --border:    #2a2d35;
+  --border-hi: #3a3d48;
+  --text:      #d1d5db;
+  --text-dim:  #8b8f98;
+  --text-head: #f3f4f6;
+  --accent:    #6366f1;
+  --accent-hi: #818cf8;
+  --green:     #22c55e;
+  --green-dim: #16a34a;
+  --red:       #ef4444;
+  --red-dim:   #dc2626;
+  --yellow:    #f59e0b;
+  --orange:    #f97316;
+  --cyan:      #06b6d4;
+  --radius:    6px;
+  --radius-lg: 10px;
+  --shadow:    0 1px 3px rgba(0,0,0,.4);
+  --font:      'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --mono:      'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', Consolas, monospace;
+  --term-bg:   #0f1117;
+  --term-fg:   #d1d5db;
 }
-.light {
-  --bg:      #f5f7fa;
-  --surface: #ffffff;
-  --surf2:   #eef0f5;
-  --border:  #d0d5e0;
-  --text:    #1a202c;
-  --muted:   #5a6480;
+html[data-theme="light"]{
+  --bg:        #f3f4f6;
+  --bg-card:   #ffffff;
+  --bg-input:  #f9fafb;
+  --bg-hover:  #e5e7eb;
+  --border:    #d1d5db;
+  --border-hi: #9ca3af;
+  --text:      #1f2937;
+  --text-dim:  #6b7280;
+  --text-head: #111827;
+  --accent:    #4f46e5;
+  --accent-hi: #6366f1;
+  --green:     #16a34a;
+  --green-dim: #15803d;
+  --red:       #dc2626;
+  --red-dim:   #b91c1c;
+  --yellow:    #d97706;
+  --orange:    #ea580c;
+  --cyan:      #0891b2;
+  --shadow:    0 1px 3px rgba(0,0,0,.1);
+  --term-bg:   #ffffff;
+  --term-fg:   #1f2937;
+}
+html{font-size:14px}
+body{
+  font-family:var(--font);color:var(--text);background:var(--bg);
+  display:flex;flex-direction:column;height:100vh;overflow:hidden;
+}
+a{color:var(--accent-hi);text-decoration:none}
+a:hover{text-decoration:underline}
+input,select,textarea,button{font-family:inherit;font-size:inherit}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border-hi);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--text-dim)}
+::selection{background:rgba(99,102,241,.3)}
+html[data-theme="light"] ::selection{background:rgba(79,70,229,.2)}
+
+/* ── Top bar ─────────────────────────────────────────────── */
+.topbar{
+  display:flex;align-items:center;gap:12px;
+  padding:0 16px;height:44px;min-height:44px;
+  background:var(--bg-card);border-bottom:1px solid var(--border);
+  user-select:none;
+}
+.topbar .logo{
+  font-weight:700;font-size:1.05rem;color:var(--text-head);
+  letter-spacing:-.02em;white-space:nowrap;
+}
+.topbar .logo span{color:var(--accent-hi);margin-right:4px}
+.topbar .status-chips{display:flex;gap:6px;margin-left:auto;align-items:center}
+.chip{
+  font-size:.72rem;padding:2px 8px;border-radius:10px;
+  background:var(--bg-input);border:1px solid var(--border);color:var(--text-dim);
+  display:inline-flex;align-items:center;gap:4px;white-space:nowrap;
+}
+.chip .dot{width:6px;height:6px;border-radius:50%;display:inline-block}
+.chip .dot.ok{background:var(--green)}
+.chip .dot.warn{background:var(--yellow)}
+.chip .dot.err{background:var(--red)}
+.theme-toggle-btn{
+  font-size:1.1rem!important;padding:3px 8px!important;
+  border-radius:var(--radius)!important;
+  transition:background .15s,transform .15s;
+}
+.theme-toggle-btn:hover{background:var(--bg-hover)!important;transform:scale(1.1)}
+
+/* ── Tabs ────────────────────────────────────────────────── */
+.tab-bar{
+  display:flex;gap:0;
+  background:var(--bg-card);border-bottom:1px solid var(--border);
+  padding:0 12px;user-select:none;
+  overflow-x:auto;overflow-y:hidden;
+  -webkit-overflow-scrolling:touch;
+  scrollbar-width:none;
+}
+.tab-bar::-webkit-scrollbar{display:none}
+.tab-btn{
+  padding:10px 18px;font-size:.82rem;font-weight:500;
+  color:var(--text-dim);background:none;border:none;cursor:pointer;
+  border-bottom:2px solid transparent;transition:all .15s;
+  white-space:nowrap;
+}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{color:var(--accent-hi);border-bottom-color:var(--accent)}
+
+/* ── Main content ────────────────────────────────────────── */
+.main{flex:1;overflow:hidden;display:flex;flex-direction:column}
+.tab-content{flex:1;overflow-y:auto;padding:20px 24px}
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+
+/* ── Cards & Sections ────────────────────────────────────── */
+.card{
+  background:var(--bg-card);border:1px solid var(--border);
+  border-radius:var(--radius-lg);padding:16px 20px;margin-bottom:16px;
+  box-shadow:var(--shadow);
+}
+.card-header{
+  font-size:.88rem;font-weight:600;color:var(--text-head);
+  margin-bottom:12px;display:flex;align-items:center;gap:8px;
+}
+.card-header .badge{
+  font-size:.68rem;padding:1px 7px;border-radius:8px;
+  background:var(--accent);color:#fff;font-weight:500;
+}
+.section-title{
+  font-size:.78rem;font-weight:600;color:var(--text-dim);
+  text-transform:uppercase;letter-spacing:.06em;
+  margin:20px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border);
+}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+.grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+@media(max-width:900px){
+  .grid-2,.grid-3,.grid-4{grid-template-columns:1fr}
 }
 
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; }
-body {
-  background: var(--bg); color: var(--text); font-family: var(--font);
-  font-size: 14px; display: flex; flex-direction: column; overflow: hidden;
+/* ── Form controls ───────────────────────────────────────── */
+.form-group{margin-bottom:12px}
+.form-group label{
+  display:block;font-size:.75rem;font-weight:500;
+  color:var(--text-dim);margin-bottom:4px;
+}
+.form-group input[type="text"],
+.form-group input[type="number"],
+.form-group input[type="password"],
+.form-group select,
+.form-group textarea{
+  width:100%;padding:7px 10px;
+  background:var(--bg-input);color:var(--text);
+  border:1px solid var(--border);border-radius:var(--radius);
+  outline:none;transition:border-color .15s;
+}
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus{border-color:var(--accent)}
+.form-group input[type="checkbox"]{
+  width:auto;margin-right:6px;accent-color:var(--accent);
+}
+.form-row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
+.form-row .form-group{flex:1;min-width:140px}
+.toggle-row{
+  display:flex;align-items:center;gap:8px;padding:4px 0;
+  font-size:.82rem;color:var(--text);
+}
+.toggle-row input[type="checkbox"]{margin:0}
+
+/* ── Buttons ─────────────────────────────────────────────── */
+.btn{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:7px 16px;font-size:.8rem;font-weight:500;
+  border:1px solid var(--border);border-radius:var(--radius);
+  background:var(--bg-input);color:var(--text);
+  cursor:pointer;transition:all .15s;white-space:nowrap;
+}
+.btn:hover{background:var(--bg-hover);border-color:var(--border-hi)}
+.btn:active{transform:scale(.98)}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn-primary:hover{background:var(--accent-hi);border-color:var(--accent-hi)}
+.btn-success{background:var(--green-dim);border-color:var(--green-dim);color:#fff}
+.btn-success:hover{background:var(--green);border-color:var(--green)}
+.btn-danger{background:var(--red-dim);border-color:var(--red-dim);color:#fff}
+.btn-danger:hover{background:var(--red);border-color:var(--red)}
+.btn-warn{background:var(--orange);border-color:var(--orange);color:#000}
+.btn-warn:hover{opacity:.9}
+.btn-sm{padding:4px 10px;font-size:.72rem}
+.btn-group{display:flex;gap:6px;flex-wrap:wrap}
+
+/* ── Tables ──────────────────────────────────────────────── */
+.table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius)}
+table{width:100%;border-collapse:collapse;font-size:.8rem}
+th{
+  text-align:left;padding:8px 12px;font-weight:600;
+  color:var(--text-dim);background:var(--bg-input);
+  border-bottom:1px solid var(--border);white-space:nowrap;
+  position:sticky;top:0;z-index:1;
+}
+td{
+  padding:6px 12px;border-bottom:1px solid var(--border);
+  color:var(--text);vertical-align:middle;
+}
+tr:hover td{background:var(--bg-hover)}
+tr.selected td{background:rgba(99,102,241,.12)}
+
+/* ── Status indicators ───────────────────────────────────── */
+.status-ok{color:var(--green)}
+.status-warn{color:var(--yellow)}
+.status-err{color:var(--red)}
+.status-dim{color:var(--text-dim)}
+.tag{
+  display:inline-block;font-size:.68rem;padding:1px 7px;
+  border-radius:8px;font-weight:500;
+}
+.tag-static{background:rgba(59,130,246,.12);color:#3b82f6;border:1px solid rgba(59,130,246,.25)}
+.tag-dynamic{background:rgba(139,92,246,.12);color:#8b5cf6;border:1px solid rgba(139,92,246,.25)}
+.tag-websocket{background:rgba(6,182,212,.12);color:#06b6d4;border:1px solid rgba(6,182,212,.25)}
+.tag-unknown{background:rgba(107,114,128,.12);color:#6b7280;border:1px solid rgba(107,114,128,.25)}
+html[data-theme="light"] .tag-static{color:#2563eb}
+html[data-theme="light"] .tag-dynamic{color:#7c3aed}
+html[data-theme="light"] .tag-websocket{color:#0891b2}
+html[data-theme="light"] .terminal-strip{border-top-color:var(--border)}
+html[data-theme="light"] th{background:#f3f4f6}
+html[data-theme="light"] .topbar{box-shadow:0 1px 2px rgba(0,0,0,.06)}
+html[data-theme="light"] .container-card{background:var(--bg-card);border-color:var(--border)}
+html[data-theme="light"] .file-tree-item.selected{background:rgba(79,70,229,.1);color:var(--accent)}
+
+/* ── Info grid (Dashboard) ───────────────────────────────── */
+.info-grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));
+  gap:10px;
+}
+.info-item{
+  background:var(--bg-input);border:1px solid var(--border);
+  border-radius:var(--radius);padding:10px 14px;
+}
+.info-item .label{font-size:.68rem;color:var(--text-dim);margin-bottom:2px;text-transform:uppercase;letter-spacing:.04em}
+.info-item .value{font-size:.92rem;color:var(--text-head);font-weight:500;word-break:break-all}
+
+/* ── Checklist (Dashboard) ───────────────────────────────── */
+.checklist{list-style:none;padding:0}
+.checklist li{
+  display:flex;align-items:center;gap:8px;
+  padding:6px 0;font-size:.82rem;
+  border-bottom:1px solid var(--border);
+}
+.checklist li:last-child{border-bottom:none}
+.check-icon{font-size:.9rem;width:18px;text-align:center}
+
+/* ── Container cards ─────────────────────────────────────── */
+.container-group{margin-bottom:20px}
+.container-group-header{
+  font-size:.82rem;font-weight:600;color:var(--text-head);
+  display:flex;align-items:center;gap:8px;margin-bottom:8px;
+}
+.container-list{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px;
+}
+.container-card{
+  background:var(--bg-input);border:1px solid var(--border);
+  border-radius:var(--radius);padding:10px 14px;
+  display:flex;flex-direction:column;gap:2px;
+  transition:border-color .15s;
+}
+.container-card:hover{border-color:var(--border-hi)}
+.container-card .c-name{font-size:.82rem;font-weight:500;color:var(--text-head)}
+.container-card .c-path{font-size:.68rem;color:var(--text-dim)}
+
+/* ── Run panel ───────────────────────────────────────────── */
+.run-controls{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px}
+.run-status{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 16px;border-radius:var(--radius);
+  background:var(--bg-input);border:1px solid var(--border);
+  font-size:.82rem;
+}
+.run-status .elapsed{font-family:var(--mono);font-size:.88rem;color:var(--accent-hi)}
+.spinner{
+  width:14px;height:14px;border:2px solid var(--border);
+  border-top-color:var(--accent);border-radius:50%;
+  animation:spin .7s linear infinite;display:inline-block;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Queue ───────────────────────────────────────────────── */
+.queue-list{list-style:none;padding:0}
+.queue-item{
+  display:flex;align-items:center;gap:10px;
+  padding:8px 12px;border:1px solid var(--border);
+  border-radius:var(--radius);margin-bottom:6px;
+  background:var(--bg-input);font-size:.8rem;
+}
+.queue-item .q-label{flex:1;color:var(--text-head)}
+.queue-item .q-status{font-size:.72rem;color:var(--text-dim)}
+.queue-item.q-running{border-color:var(--accent)}
+.queue-item.q-done{opacity:.5}
+.queue-item .q-remove{
+  background:none;border:none;color:var(--text-dim);cursor:pointer;
+  font-size:.9rem;padding:2px 4px;
+}
+.queue-item .q-remove:hover{color:var(--red)}
+
+/* ── Results file tree ───────────────────────────────────── */
+.file-tree{max-height:400px;overflow-y:auto}
+.file-tree-item{
+  display:flex;align-items:center;gap:8px;
+  padding:5px 10px;cursor:pointer;font-size:.8rem;
+  border-radius:var(--radius);transition:background .1s;
+}
+.file-tree-item:hover{background:var(--bg-hover)}
+.file-tree-item.selected{background:rgba(99,102,241,.15);color:var(--accent-hi)}
+.file-tree-group{
+  font-size:.72rem;font-weight:600;color:var(--text-dim);
+  text-transform:uppercase;padding:8px 10px 4px;letter-spacing:.04em;
 }
 
-/* ── Header ── */
-#header {
-  display: flex; align-items: center; gap: 10px;
-  padding: 0 16px; height: 44px; flex-shrink: 0;
-  background: var(--surface); border-bottom: 1px solid var(--border);
+/* ── Chart area ──────────────────────────────────────────── */
+.chart-controls{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px}
+.chart-controls .form-group{margin-bottom:0;min-width:150px;max-width:280px}
+.chart-controls select{text-overflow:ellipsis}
+.chart-area{
+  position:relative;background:var(--bg-input);
+  border:1px solid var(--border);border-radius:var(--radius);
+  padding:16px;min-height:360px;
 }
-#header h1 { font-size: 15px; font-weight: 600; flex: 1; }
-#status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
-#status-label { font-size: 12px; color: var(--muted); }
-/* #btn-term-show removed — replaced by #term-strip */
-#btn-theme {
-  background: var(--surf2); border: 1px solid var(--border);
-  color: var(--text); cursor: pointer; padding: 4px 12px; border-radius: 5px; font-size: 12px;
-}
-
-/* ── Nav ── */
-#nav {
-  display: flex; gap: 2px; padding: 0 12px;
-  background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0;
-}
-.tab-btn {
-  background: none; border: none; color: var(--muted); cursor: pointer;
-  padding: 10px 14px; font-size: 13px; border-bottom: 2px solid transparent;
-  transition: color .15s, border-color .15s;
-}
-.tab-btn:hover { color: var(--text); }
-.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
-
-/* ── Main scrollable ── */
-#main { flex: 1; overflow-y: auto; padding: 14px; min-height: 0; }
-.tab-pane { display: none; }
-.tab-pane.active { display: block; }
-
-/* ── Cards ── */
-.card {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 14px 16px; margin-bottom: 12px;
-}
-.card h2 {
-  font-size: 11px; font-weight: 600; text-transform: uppercase;
-  letter-spacing: .06em; color: var(--muted); margin-bottom: 10px;
+.chart-area canvas{width:100%!important;max-height:500px}
+.chart-placeholder{
+  display:flex;align-items:center;justify-content:center;
+  height:300px;color:var(--text-dim);font-size:.88rem;
 }
 
-/* ── Forms ── */
-label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px; }
-input[type=text], input[type=number], select, textarea {
-  width: 100%; background: var(--surf2); border: 1px solid var(--border);
-  color: var(--text); border-radius: 5px; padding: 7px 10px; font-size: 13px;
-  font-family: var(--font); outline: none;
-}
-input[type=text]:focus, input[type=number]:focus, select:focus { border-color: var(--accent); }
-input[type=checkbox] { accent-color: var(--accent); }
-select option { background: var(--surface); }
-.form-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: flex-start; }
-.form-row > * { flex: 1; }
-.form-group { margin-bottom: 10px; }
+/* ── CSV data table ──────────────────────────────────────── */
+.data-table-wrap{max-height:340px;overflow:auto;margin-top:12px}
+.data-table-wrap table{font-size:.75rem}
+.data-table-wrap th{font-size:.7rem;padding:6px 8px}
+.data-table-wrap td{padding:4px 8px;font-family:var(--mono);font-size:.72rem}
 
-/* ── Buttons ── */
-.btn {
-  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
-  border-radius: 5px; font-size: 13px; padding: 7px 14px; font-family: var(--font);
-  border: 1px solid transparent; transition: opacity .15s, filter .15s;
+/* ── Utilities ───────────────────────────────────────────── */
+.clean-group{margin-bottom:16px}
+.clean-group-title{
+  font-size:.78rem;font-weight:600;margin-bottom:8px;color:var(--text-head);
 }
-.btn:disabled { opacity: .4; cursor: not-allowed; }
-.btn:not(:disabled):hover { filter: brightness(1.1); }
-.btn-primary { background: var(--accent);  color: #fff; border-color: var(--accent); }
-.btn-success { background: var(--green);   color: #000; border-color: var(--green); }
-.btn-danger  { background: var(--red);     color: #fff; border-color: var(--red); }
-.btn-ghost   { background: var(--surf2);   color: var(--text); border-color: var(--border); }
-.btn-large   { padding: 10px 24px; font-size: 15px; font-weight: 600; }
-
-/* ── Badges / chips ── */
-.badge {
-  display: inline-block; font-size: 10px; padding: 1px 7px; border-radius: 10px; font-weight: 600;
+.clean-actions{display:flex;gap:8px;flex-wrap:wrap}
+.log-list{max-height:300px;overflow-y:auto}
+.log-item{
+  display:flex;align-items:center;gap:10px;
+  padding:6px 10px;cursor:pointer;font-size:.8rem;
+  border-radius:var(--radius);transition:background .1s;
 }
-.badge-s { background: #4f8ef720; color: var(--accent); border: 1px solid var(--accent); }
-.badge-d { background: #3ecf8e20; color: var(--green);  border: 1px solid var(--green); }
-.badge-w { background: #a78bfa20; color: var(--purple); border: 1px solid var(--purple); }
-
-.p-chip {
-  font-size: 11px; padding: 2px 8px; border-radius: 20px;
-  border: 1px solid var(--accent); color: var(--accent); background: #4f8ef710;
+.log-item:hover{background:var(--bg-hover)}
+.log-item .log-name{flex:1;color:var(--text-head)}
+.log-item .log-meta{font-size:.7rem;color:var(--text-dim)}
+.log-viewer{
+  background:var(--bg);border:1px solid var(--border);
+  border-radius:var(--radius);padding:12px;
+  font-family:var(--mono);font-size:.72rem;
+  max-height:400px;overflow:auto;line-height:1.5;
+  white-space:pre-wrap;word-break:break-all;color:var(--text);
 }
 
-/* ── Stat grid (setup) ── */
-.stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
-.stat-cell {
-  background: var(--surf2); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px;
+/* ── Terminal strip ──────────────────────────────────────── */
+.terminal-strip{
+  border-top:1px solid var(--border);background:var(--bg-card);
+  display:flex;flex-direction:column;
+  transition:height .2s ease;overflow:hidden;
 }
-.stat-cell .lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
-.stat-cell .val { font-size: 15px; font-weight: 600; margin-top: 2px; }
+.terminal-strip.hidden{height:28px}
+.terminal-strip.minimized{height:28px}
+.terminal-strip.visible{height:280px}
+.terminal-header{
+  display:flex;align-items:center;gap:8px;
+  padding:4px 12px;min-height:28px;cursor:pointer;
+  background:var(--bg-card);border-bottom:1px solid var(--border);
+  user-select:none;flex-shrink:0;
+}
+.terminal-header .t-title{
+  font-size:.72rem;font-weight:600;color:var(--text-dim);
+  text-transform:uppercase;letter-spacing:.04em;flex:1;
+}
+.terminal-header .t-label{
+  font-size:.72rem;color:var(--accent-hi);font-family:var(--mono);
+}
+.terminal-header .t-btn{
+  background:none;border:none;color:var(--text-dim);
+  cursor:pointer;font-size:.82rem;padding:2px 6px;
+  border-radius:3px;
+}
+.terminal-header .t-btn:hover{color:var(--text);background:var(--bg-hover)}
+.terminal-body{flex:1;overflow:hidden;padding:4px 8px}
+.terminal-body .xterm{height:100%}
+.terminal-resize{
+  height:4px;cursor:ns-resize;background:transparent;
+  flex-shrink:0;
+}
+.terminal-resize:hover{background:var(--accent)}
 
-/* ── Target cards (run) ── */
-.target-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
-.target-card {
-  background: var(--surf2); border: 2px solid var(--border); border-radius: var(--radius);
-  padding: 12px 14px; cursor: pointer; text-align: left; font-family: var(--font);
-  color: var(--text); transition: border-color .15s, background .15s;
+/* ── Browse modal ────────────────────────────────────────── */
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.6);
+  display:none;align-items:center;justify-content:center;z-index:100;
 }
-.target-card:hover { border-color: var(--muted); }
-.target-card.selected { border-color: var(--accent); background: #4f8ef710; }
-.tc-name { font-size: 13px; font-weight: 600; margin-bottom: 3px; }
-.tc-cmd  { font-size: 11px; color: var(--accent); font-family: var(--mono); margin-bottom: 5px; }
-.tc-desc { font-size: 11px; color: var(--muted); line-height: 1.4; }
+.modal-overlay.open{display:flex}
+.modal{
+  background:var(--bg-card);border:1px solid var(--border);
+  border-radius:var(--radius-lg);padding:20px;
+  width:90%;max-width:600px;max-height:80vh;
+  display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.5);
+}
+.modal-header{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:12px;
+}
+.modal-header h3{font-size:.92rem;color:var(--text-head)}
+.modal-close{
+  background:none;border:none;color:var(--text-dim);
+  font-size:1.2rem;cursor:pointer;padding:4px;
+}
+.modal-close:hover{color:var(--text)}
+.modal-body{flex:1;overflow-y:auto}
+.browse-path{
+  font-family:var(--mono);font-size:.75rem;color:var(--text-dim);
+  margin-bottom:8px;padding:6px 10px;
+  background:var(--bg);border-radius:var(--radius);
+}
+.browse-item{
+  display:flex;align-items:center;gap:8px;
+  padding:6px 10px;cursor:pointer;font-size:.82rem;
+  border-radius:var(--radius);
+}
+.browse-item:hover{background:var(--bg-hover)}
+.browse-item .b-icon{width:18px;text-align:center;color:var(--text-dim)}
+.browse-item.is-dir .b-name{color:var(--accent-hi)}
 
-/* ── Container list ── */
-.cont-list { display: flex; flex-direction: column; gap: 4px; }
-.cont-item {
-  display: flex; align-items: center; gap: 8px; padding: 5px 10px;
-  background: var(--surf2); border: 1px solid var(--border); border-radius: 5px;
+/* ── Misc ────────────────────────────────────────────────── */
+.empty-state{
+  text-align:center;padding:40px 20px;color:var(--text-dim);font-size:.88rem;
+  font-style:italic;
 }
-.cont-item .ci-name { font-family: var(--mono); font-size: 12px; flex: 1; }
+.loading{
+  display:flex;align-items:center;gap:8px;
+  color:var(--text-dim);font-size:.82rem;padding:16px;
+}
+.flash{
+  padding:8px 14px;border-radius:var(--radius);
+  font-size:.8rem;margin-bottom:10px;
+  display:none;align-items:center;gap:8px;
+  animation:flash-in .2s ease;
+}
+.flash.show{display:flex}
+.flash-ok{background:rgba(34,197,94,.12);color:var(--green);border:1px solid var(--green-dim)}
+.flash-err{background:rgba(239,68,68,.12);color:var(--red);border:1px solid var(--red-dim)}
+.flash-warn{background:rgba(245,158,11,.12);color:var(--yellow);border:1px solid var(--orange)}
+@keyframes flash-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
 
-/* ── Results layout ── */
-.results-layout { display: flex; gap: 12px; height: calc(100vh - 120px); min-height: 0; }
-.results-sidebar {
-  width: 220px; flex-shrink: 0; display: flex; flex-direction: column; gap: 0;
-  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-  overflow: hidden;
+/* ── Focus & transitions ─────────────────────────────────── */
+.btn:focus-visible,.tab-btn:focus-visible,input:focus-visible,select:focus-visible{
+  outline:2px solid var(--accent);outline-offset:1px;
 }
-.sidebar-section { padding: 10px 12px; border-bottom: 1px solid var(--border); }
-.sidebar-section h2 { margin-bottom: 6px; }
-.sidebar-scroll { flex: 1; overflow-y: auto; padding: 6px; }
-.results-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.tab-panel{animation:tab-fade .15s ease}
+@keyframes tab-fade{from{opacity:.6}to{opacity:1}}
+.card{transition:border-color .15s ease}
+.card:hover{border-color:var(--border-hi)}
 
-.sess-item {
-  padding: 7px 10px; border-radius: 5px; cursor: pointer;
-  border: 1px solid transparent; margin-bottom: 3px;
-}
-.sess-item:hover { background: var(--surf2); }
-.sess-item.active { background: var(--surf2); border-color: var(--accent); }
-.sess-item .sn { font-family: var(--mono); font-size: 11px; color: var(--accent); }
-.sess-item .st { font-size: 10px; color: var(--muted); margin-top: 2px; }
-
-.file-item {
-  display: flex; align-items: center; gap: 6px;
-  padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 12px;
-}
-.file-item:hover { background: var(--surf2); }
-.file-item.active { background: var(--surf2); color: var(--accent); }
-.fi-name { font-family: var(--mono); font-size: 11px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fi-sz   { font-size: 10px; color: var(--muted); flex-shrink: 0; }
-
-/* ── Model selector ── */
-.ms-step { display: flex; gap: 12px; margin-bottom: 12px; }
-.ms-num {
-  width: 24px; height: 24px; border-radius: 50%;
-  background: var(--surf2); border: 1px solid var(--border);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 12px; color: var(--muted); flex-shrink: 0; margin-top: 2px;
-}
-.ms-num.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-.ms-body { flex: 1; }
-.ms-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.ms-table th { text-align: left; padding: 6px 8px; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); }
-.ms-table td { padding: 5px 8px; border-bottom: 1px solid var(--surf2); font-family: var(--mono); }
-.ms-table tr.winner td { color: var(--green); font-weight: 600; }
-.ms-bar-wrap { background: var(--surf2); border-radius: 3px; height: 8px; overflow: hidden; }
-.ms-bar { height: 100%; border-radius: 3px; background: var(--accent); }
-tr.winner .ms-bar { background: var(--green); }
-.note-box {
-  font-size: 12px; padding: 8px 12px; border-left: 3px solid var(--yellow);
-  background: var(--surf2); border-radius: 0 4px 4px 0; line-height: 1.5;
-}
-
-/* ── Queue ── */
-details summary { cursor: pointer; list-style: none; font-size: 12px; color: var(--muted); }
-details summary::-webkit-details-marker { display: none; }
-details summary::before { content: '▶ '; font-size: 10px; }
-details[open] summary::before { content: '▼ '; }
-.q-item {
-  display: flex; align-items: center; gap: 8px; padding: 6px 10px;
-  background: var(--surf2); border: 1px solid var(--border); border-radius: 5px; margin-bottom: 4px;
-}
-.q-item .qi { font-size: 11px; color: var(--muted); width: 18px; text-align: center; }
-.q-item .qc { font-family: var(--mono); font-size: 12px; flex: 1; }
-.q-item .qs { font-size: 11px; }
-.q-item.running { border-color: var(--accent); }
-.q-item.done    { border-color: var(--green); opacity: .6; }
-.q-item.failed  { border-color: var(--red); }
-.q-item .qr { background: none; border: none; color: var(--muted); cursor: pointer; padding: 0 4px; font-size: 16px; }
-.q-item .qr:hover { color: var(--red); }
-
-/* ── Export ── */
-.metric-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 5px; }
-.metric-chk { display: flex; align-items: center; gap: 7px; font-size: 12px; padding: 3px 0; }
-
-/* ── Terminal ── */
-#terminal-wrap {
-  flex-shrink: 0; display: flex; flex-direction: column;
-  border-top: 1px solid var(--border); background: #000;
-  height: var(--term-h, 200px); transition: height .2s ease; overflow: hidden;
-}
-#terminal-wrap.minimized { height: 32px !important; }
-#term-strip {
-  flex-shrink: 0; height: 24px; background: var(--surf2);
-  border-top: 1px solid var(--border); display: none; align-items: center;
-  justify-content: center; cursor: pointer; font-size: 11px; color: var(--muted);
-  letter-spacing: .04em; user-select: none;
-}
-#term-strip:hover { color: var(--text); background: var(--border); }
-#term-header {
-  display: flex; align-items: center; gap: 8px; padding: 0 10px;
-  height: 32px; background: var(--surf2); border-bottom: 1px solid var(--border);
-  flex-shrink: 0; cursor: row-resize; user-select: none;
-}
-#term-header .th-title { font-size: 12px; font-weight: 600; }
-#term-proc { font-size: 11px; color: var(--muted); flex: 1; font-family: var(--mono); }
-.term-btn {
-  background: none; border: 1px solid var(--border); color: var(--muted);
-  cursor: pointer; padding: 2px 8px; border-radius: 4px; font-size: 11px;
-}
-.term-btn:hover { color: var(--text); border-color: var(--muted); }
-#terminal { flex: 1; overflow: hidden; padding: 4px; min-height: 0; }
-
-/* ── Misc ── */
-.sep { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
-.muted { color: var(--muted); font-size: 12px; }
-.mono  { font-family: var(--mono); }
-
-/* ── Directory browser modal ── */
-#dir-modal {
-  position: fixed; inset: 0; z-index: 9999;
-  background: rgba(0,0,0,0.65); display: none;
-  align-items: center; justify-content: center;
-}
-.dir-modal-box {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); width: 540px; max-width: 90vw;
-  display: flex; flex-direction: column; max-height: 72vh;
-}
-.dir-modal-hdr {
-  display: flex; align-items: center; gap: 10px; padding: 12px 14px;
-  border-bottom: 1px solid var(--border); flex-shrink: 0;
-}
-.dir-modal-hdr span { font-size: 13px; font-weight: 600; flex: 1; }
-.dir-modal-crumb {
-  padding: 7px 14px; font-family: var(--mono); font-size: 11px;
-  color: var(--muted); background: var(--surf2);
-  border-bottom: 1px solid var(--border); flex-shrink: 0;
-  overflow-x: auto; white-space: nowrap;
-}
-.dir-modal-list { flex: 1; overflow-y: auto; padding: 6px; }
-.dir-entry {
-  display: flex; align-items: center; gap: 8px;
-  padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 12px;
-}
-.dir-entry:hover { background: var(--surf2); }
-.dir-entry .de-icon { font-size: 14px; flex-shrink: 0; }
-.dir-entry .de-name { font-family: var(--mono); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dir-modal-ftr {
-  display: flex; gap: 8px; padding: 12px 14px;
-  border-top: 1px solid var(--border); flex-shrink: 0;
+/* ── Selected file count badge ────────────────────────────── */
+.sel-count{
+  font-size:.68rem;padding:1px 6px;border-radius:8px;
+  background:var(--accent);color:#fff;font-weight:500;
+  margin-left:4px;
 }
 </style>
 </head>
 <body>
 
-<!-- ═══ HEADER ═══ -->
-<div id="header">
-  <h1>Web Server Benchmark Framework</h1>
-  <span id="status-dot"></span>
-  <span id="status-label">idle</span>
-  <button id="btn-theme">Light</button>
+<!-- Top Bar -->
+<div class="topbar">
+  <div class="logo"><span>&#9881;</span> Benchmark GUI</div>
+  <div class="status-chips">
+    <span class="chip" id="chip-host"><span class="dot ok"></span> <span id="chip-host-text">localhost</span></span>
+    <span class="chip" id="chip-docker"><span class="dot" id="dot-docker"></span> Docker</span>
+    <span class="chip" id="chip-temp"><span class="dot" id="dot-temp"></span> <span id="chip-temp-text">--</span></span>
+    <span class="chip" id="chip-job"><span class="dot" id="dot-job"></span> <span id="chip-job-text">Idle</span></span>
+    <button class="t-btn theme-toggle-btn" id="theme-toggle" onclick="App.toggleTheme()" title="Toggle dark/light theme">&#9790;</button>
+  </div>
 </div>
 
-<!-- ═══ NAV ═══ -->
-<nav id="nav">
-  <button class="tab-btn active" data-tab="setup">Setup</button>
-  <button class="tab-btn" data-tab="run">Run</button>
-  <button class="tab-btn" data-tab="results">Results</button>
-  <button class="tab-btn" data-tab="export">Export</button>
-  <button class="tab-btn" data-tab="model-selector">Model Selector</button>
+<!-- Tab Bar -->
+<nav class="tab-bar">
+  <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+  <button class="tab-btn" data-tab="config">Configuration</button>
+  <button class="tab-btn" data-tab="containers">Containers</button>
+  <button class="tab-btn" data-tab="run">Run Benchmarks</button>
+  <button class="tab-btn" data-tab="results">Results &amp; Charts</button>
+  <button class="tab-btn" data-tab="utilities">Utilities</button>
 </nav>
 
-<!-- ═══ MAIN ═══ -->
-<div id="main">
+<!-- Main Content -->
+<div class="main">
+<div class="tab-content">
 
-<!-- ─── SETUP ─── -->
-<div id="tab-setup" class="tab-pane active">
+<!-- TAB 1: DASHBOARD -->
+<div id="tab-dashboard" class="tab-panel active">
+  <div id="flash-dashboard" class="flash"></div>
 
   <div class="card">
-    <h2>System Status</h2>
-    <div class="stat-grid">
-      <div class="stat-cell"><div class="lbl">Status</div><div class="val" id="si-status">—</div></div>
-      <div class="stat-cell"><div class="lbl">CPU</div><div class="val" id="si-cpu">—</div></div>
-      <div class="stat-cell"><div class="lbl">Memory</div><div class="val" id="si-mem">—</div></div>
-      <div class="stat-cell"><div class="lbl">OS</div><div class="val" id="si-os">—</div></div>
-      <div class="stat-cell"><div class="lbl">Governor</div><div class="val" id="si-gov">—</div></div>
-      <div class="stat-cell"><div class="lbl">Temperature</div><div class="val" id="si-temp">—</div></div>
-      <div class="stat-cell"><div class="lbl">Scaphandre</div><div class="val" id="si-scap">—</div></div>
-      <div class="stat-cell"><div class="lbl">Docker</div><div class="val" id="si-docker">—</div></div>
-      <div class="stat-cell"><div class="lbl">RAPL</div><div class="val" id="si-rapl">—</div></div>
-      <div class="stat-cell"><div class="lbl">Filter Model</div><div class="val" id="si-filter">—</div></div>
-      <div class="stat-cell"><div class="lbl">Runs</div><div class="val" id="si-runs">—</div></div>
-      <div class="stat-cell"><div class="lbl">Isolation</div><div class="val" id="si-isolation">—</div></div>
+    <div class="card-header">Machine Information</div>
+    <div class="info-grid" id="machine-info">
+      <div class="info-item"><div class="label">CPU</div><div class="value" id="si-cpu">--</div></div>
+      <div class="info-item"><div class="label">Cores</div><div class="value" id="si-cores">--</div></div>
+      <div class="info-item"><div class="label">Memory</div><div class="value" id="si-mem">--</div></div>
+      <div class="info-item"><div class="label">OS</div><div class="value" id="si-os">--</div></div>
+      <div class="info-item"><div class="label">Kernel</div><div class="value" id="si-kernel">--</div></div>
+      <div class="info-item"><div class="label">Hostname</div><div class="value" id="si-host">--</div></div>
+      <div class="info-item"><div class="label">Governor</div><div class="value" id="si-gov">--</div></div>
+      <div class="info-item"><div class="label">Temperature</div><div class="value" id="si-temp">--</div></div>
     </div>
-    <div style="margin-top:12px;display:flex;gap:8px">
-      <button class="btn btn-primary" id="btn-profiler">Run Profiler</button>
-      <button class="btn btn-ghost" id="btn-reload-sysinfo">↻ Refresh</button>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-header">Environment Status</div>
+      <ul class="checklist" id="env-checklist">
+        <li><span class="check-icon" id="chk-venv">&#9898;</span> Python venv (srv/)</li>
+        <li><span class="check-icon" id="chk-docker">&#9898;</span> Docker running</li>
+        <li><span class="check-icon" id="chk-scaph">&#9898;</span> Scaphandre available</li>
+        <li><span class="check-icon" id="chk-rapl">&#9898;</span> RAPL energy counters</li>
+        <li><span class="check-icon" id="chk-config">&#9898;</span> bench.config exists</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <div class="card-header">Config Summary</div>
+      <div class="info-grid" id="config-summary">
+        <div class="info-item"><div class="label">Isolation</div><div class="value" id="cs-isolation">--</div></div>
+        <div class="info-item"><div class="label">Runs</div><div class="value" id="cs-runs">--</div></div>
+        <div class="info-item"><div class="label">Filter</div><div class="value" id="cs-filter">--</div></div>
+        <div class="info-item"><div class="label">Bench Dir</div><div class="value" id="cs-benchdir">benchmarks</div></div>
+        <div class="info-item"><div class="label">Results Dir</div><div class="value" id="cs-resultsdir">results</div></div>
+      </div>
     </div>
   </div>
 
   <div class="card">
-    <h2>Isolation Level</h2>
-    <div style="display:flex;gap:16px">
-      <label style="display:flex;align-items:center;gap:6px;color:var(--text)"><input type="radio" name="cfg-isolation" value="none"> None</label>
-      <label style="display:flex;align-items:center;gap:6px;color:var(--text)"><input type="radio" name="cfg-isolation" value="basic"> Basic</label>
-      <label style="display:flex;align-items:center;gap:6px;color:var(--text)"><input type="radio" name="cfg-isolation" value="full"> Full (sudo)</label>
+    <div class="card-header">Quick Actions</div>
+    <div class="btn-group">
+      <button class="btn" onclick="App.quickAction('init')">make init</button>
+      <button class="btn" onclick="App.quickAction('validate')">make validate</button>
+      <button class="btn" onclick="App.quickAction('check-health')">make check-health</button>
+      <button class="btn btn-primary" onclick="App.quickAction('run-super-quick')">make run-super-quick</button>
+      <button class="btn" onclick="App.sudoAuth()">Sudo Auth</button>
     </div>
   </div>
 
-  <div class="form-row">
-    <div class="card" style="margin-bottom:0">
-      <h2>Measurement</h2>
-      <div class="form-group"><label>Runs (repeats per measurement)</label><input type="number" id="cfg-runs" min="1" max="100" value="10"></div>
-      <div class="form-group"><label>Confidence Level</label><input type="number" id="cfg-confidence" min="0.5" max="0.999" step="0.01" value="0.95"></div>
-      <div class="form-group"><label>Baseline Duration (s)</label><input type="number" id="cfg-baseline" min="0" max="60" value="10"></div>
+  <div class="card">
+    <div class="card-header">Recent Benchmark Sessions</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Session</th><th>Types</th><th>CSVs</th><th>Date</th><th></th></tr></thead>
+        <tbody id="recent-sessions"></tbody>
+      </table>
     </div>
-    <div class="card" style="margin-bottom:0">
-      <h2>CPU</h2>
-      <div class="form-group"><label>Governor</label>
-        <select id="cfg-governor">
-          <option>performance</option><option>powersave</option><option>ondemand</option><option>schedutil</option>
+  </div>
+</div>
+
+<!-- TAB 2: CONFIGURATION -->
+<div id="tab-config" class="tab-panel">
+  <div id="flash-config" class="flash"></div>
+
+  <div class="card">
+    <div class="card-header">
+      bench.config Editor
+      <div style="margin-left:auto" class="btn-group">
+        <button class="btn btn-sm" onclick="App.loadConfig()">Reload</button>
+        <button class="btn btn-sm btn-primary" onclick="App.saveConfig()">Save</button>
+      </div>
+    </div>
+
+    <div class="section-title">Isolation</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Level</label>
+        <select id="cfg-isolation-level">
+          <option value="none">none</option>
+          <option value="basic">basic</option>
+          <option value="full">full</option>
         </select>
       </div>
-      <div class="form-group"><label style="display:flex;align-items:center;gap:8px;color:var(--text)"><input type="checkbox" id="cfg-turbo"> Disable Turbo Boost</label></div>
-      <div class="form-group"><label style="display:flex;align-items:center;gap:8px;color:var(--text)"><input type="checkbox" id="cfg-cstates"> Disable C-States</label></div>
-      <div class="form-group"><label>CPU Set (blank = all)</label><input type="text" id="cfg-cpuset" placeholder="e.g. 0-3"></div>
     </div>
-  </div>
 
-  <div class="form-row" style="margin-top:12px">
-    <div class="card" style="margin-bottom:0">
-      <h2>Memory</h2>
-      <div class="form-group"><label style="display:flex;align-items:center;gap:8px;color:var(--text)"><input type="checkbox" id="cfg-thp"> Disable Transparent Huge Pages</label></div>
-      <div class="form-group"><label style="display:flex;align-items:center;gap:8px;color:var(--text)"><input type="checkbox" id="cfg-swap"> Check Swap</label></div>
-      <div class="form-group"><label style="display:flex;align-items:center;gap:8px;color:var(--text)"><input type="checkbox" id="cfg-dropcaches"> Drop Caches Before Run</label></div>
-    </div>
-    <div class="card" style="margin-bottom:0">
-      <h2>Thermal</h2>
-      <div class="form-group"><label>Cooldown Temp (°C)</label><input type="number" id="cfg-cooltemp" value="60"></div>
-      <div class="form-group"><label>Cooldown CPU% Max</label><input type="number" id="cfg-coolcpu" value="5"></div>
-      <div class="form-group"><label>Cooldown Timeout (s)</label><input type="number" id="cfg-cooltimeout" value="120"></div>
-    </div>
-  </div>
-
-  <div class="form-row" style="margin-top:12px">
-    <div class="card" style="margin-bottom:0">
-      <h2>Display</h2>
-      <div class="form-group"><label>Brightness (0–100)</label><input type="number" id="cfg-brightness" value="85" min="0" max="100"></div>
-      <div class="form-group"><label style="display:flex;align-items:center;gap:8px;color:var(--text)"><input type="checkbox" id="cfg-screensaver"> Disable Screensaver</label></div>
-    </div>
-    <div class="card" style="margin-bottom:0">
-      <h2>Services to Stop</h2>
-      <div class="form-group"><label>Comma-separated systemd units</label>
-        <textarea id="cfg-services" rows="3" style="resize:vertical">cups.service,bluetooth.service</textarea>
+    <div class="section-title">CPU</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Governor</label>
+        <select id="cfg-cpu-governor">
+          <option value="performance">performance</option>
+          <option value="powersave">powersave</option>
+          <option value="ondemand">ondemand</option>
+          <option value="schedutil">schedutil</option>
+        </select>
       </div>
+      <div class="form-group"><label>CPU Set</label><input type="text" id="cfg-cpu-cpuset" placeholder="e.g. 0-3"></div>
     </div>
-  </div>
+    <div class="form-row">
+      <div class="toggle-row"><input type="checkbox" id="cfg-cpu-disable_turbo"><label for="cfg-cpu-disable_turbo">Disable Turbo Boost</label></div>
+      <div class="toggle-row"><input type="checkbox" id="cfg-cpu-disable_cstates"><label for="cfg-cpu-disable_cstates">Disable C-states</label></div>
+    </div>
 
-  <div class="form-row" style="margin-top:12px">
-    <div class="card" style="margin-bottom:0">
-      <h2>Outlier Filter</h2>
-      <div class="form-group"><label>Model</label>
+    <div class="section-title">Memory</div>
+    <div class="form-row">
+      <div class="toggle-row"><input type="checkbox" id="cfg-memory-disable_thp"><label for="cfg-memory-disable_thp">Disable THP</label></div>
+      <div class="toggle-row"><input type="checkbox" id="cfg-memory-check_swap"><label for="cfg-memory-check_swap">Check swap</label></div>
+      <div class="toggle-row"><input type="checkbox" id="cfg-memory-drop_caches"><label for="cfg-memory-drop_caches">Drop caches</label></div>
+    </div>
+
+    <div class="section-title">Thermal</div>
+    <div class="form-row">
+      <div class="form-group"><label>Cooldown temp (C)</label><input type="number" id="cfg-thermal-cooldown_temp_c"></div>
+      <div class="form-group"><label>CPU idle threshold (%)</label><input type="number" id="cfg-thermal-cooldown_cpu_pct"></div>
+      <div class="form-group"><label>Timeout (s)</label><input type="number" id="cfg-thermal-cooldown_timeout_s"></div>
+    </div>
+
+    <div class="section-title">Measurement</div>
+    <div class="form-row">
+      <div class="form-group"><label>Runs</label><input type="number" id="cfg-measurement-runs" min="1"></div>
+      <div class="form-group"><label>Baseline duration (s)</label><input type="number" id="cfg-measurement-baseline_duration_s" min="0"></div>
+      <div class="form-group"><label>Confidence</label><input type="number" id="cfg-measurement-confidence" min="0" max="1" step="0.01"></div>
+    </div>
+
+    <div class="section-title">Filter</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Model</label>
         <select id="cfg-filter-model">
-          <option value="none">none (passthrough)</option>
+          <option value="none">none</option>
           <option value="iqr">iqr</option>
           <option value="hampel">hampel</option>
           <option value="isolation_forest">isolation_forest</option>
@@ -417,494 +664,381 @@ details[open] summary::before { content: '▼ '; }
           <option value="dbscan">dbscan</option>
         </select>
       </div>
-      <div class="form-row">
-        <div class="form-group"><label>Contamination (IF/LOF/Elliptic)</label><input type="number" id="cfg-contamination" value="0.10" step="0.01"></div>
-        <div class="form-group"><label>IQR Factor</label><input type="number" id="cfg-iqr-factor" value="1.5" step="0.1"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>Hampel Window</label><input type="number" id="cfg-hampel-win" value="7" step="2"></div>
-        <div class="form-group"><label>Hampel Threshold</label><input type="number" id="cfg-hampel-thr" value="1.5" step="0.1"></div>
-      </div>
-      <div class="form-row">
-        <div class="form-group"><label>DBSCAN Eps (µW)</label><input type="number" id="cfg-dbscan-eps" value="150"></div>
-        <div class="form-group"><label>DBSCAN Min Pts</label><input type="number" id="cfg-dbscan-mp" value="10"></div>
-      </div>
-      <div class="form-group"><label>LOF Neighbors</label><input type="number" id="cfg-lof-n" value="20"></div>
+      <div class="form-group"><label>Contamination</label><input type="number" id="cfg-filter-contamination" step="0.01"></div>
     </div>
-    <div class="card" style="margin-bottom:0">
-      <h2>Cross-Run Filter</h2>
-      <div class="form-group"><label>Model</label>
-        <select id="cfg-xrun-model"><option value="iqr">iqr</option><option value="none">none</option></select>
-      </div>
-      <div class="form-group"><label>IQR Factor</label><input type="number" id="cfg-xrun-factor" value="1.5" step="0.1"></div>
+    <div class="form-row">
+      <div class="form-group"><label>IQR factor</label><input type="number" id="cfg-filter-iqr_factor" step="0.1"></div>
+      <div class="form-group"><label>Hampel window</label><input type="number" id="cfg-filter-hampel_window"></div>
+      <div class="form-group"><label>Hampel threshold</label><input type="number" id="cfg-filter-hampel_threshold" step="0.1"></div>
     </div>
-  </div>
+    <div class="form-row">
+      <div class="form-group"><label>DBSCAN eps</label><input type="number" id="cfg-filter-dbscan_eps"></div>
+      <div class="form-group"><label>DBSCAN min pts</label><input type="number" id="cfg-filter-dbscan_minpts"></div>
+      <div class="form-group"><label>LOF neighbors</label><input type="number" id="cfg-filter-lof_neighbors"></div>
+    </div>
 
-  <div class="card" style="margin-top:12px">
-    <h2>Email Notifications</h2>
-    <p class="muted" style="margin-bottom:10px;font-size:12px">
-      Sent via the system <code>sendmail</code> command when a benchmark job finishes.
-    </p>
+    <div class="section-title">Cross-Run Filter</div>
     <div class="form-row">
       <div class="form-group">
-        <label>From address</label>
-        <input type="text" id="cfg-email-from" placeholder="benchmark@your-institution.edu">
-      </div>
-      <div class="form-group">
-        <label>Recipient email</label>
-        <input type="text" id="cfg-email-to" placeholder="you@example.com">
-      </div>
-      <div class="form-group">
-        <label>Notify on</label>
-        <select id="cfg-notify-on">
-          <option value="always">Always (success + failure)</option>
-          <option value="failure">Failure only</option>
-          <option value="success">Success only</option>
+        <label>Model</label>
+        <select id="cfg-cross_run_filter-model">
+          <option value="none">none</option>
+          <option value="iqr">iqr</option>
         </select>
       </div>
+      <div class="form-group"><label>Factor</label><input type="number" id="cfg-cross_run_filter-factor" step="0.1"></div>
+    </div>
+
+    <div class="section-title">Display</div>
+    <div class="form-row">
+      <div class="form-group"><label>Brightness (%)</label><input type="number" id="cfg-display-brightness" min="0" max="100"></div>
+      <div class="toggle-row"><input type="checkbox" id="cfg-display-disable_screensaver"><label for="cfg-display-disable_screensaver">Disable screensaver</label></div>
+    </div>
+
+    <div class="section-title">Services</div>
+    <div class="form-group">
+      <label>Stop before run (comma-separated)</label>
+      <input type="text" id="cfg-services-stop_before_run" placeholder="cups.service,bluetooth.service,...">
+    </div>
+
+    <div class="section-title">Agent</div>
+    <div class="form-row">
+      <div class="form-group"><label>Host</label><input type="text" id="cfg-agent-host"></div>
+      <div class="form-group"><label>Port</label><input type="number" id="cfg-agent-port"></div>
+      <div class="form-group"><label>User</label><input type="text" id="cfg-agent-user"></div>
+    </div>
+
+    <div class="section-title">GUI</div>
+    <div class="form-row">
+      <div class="form-group"><label>Port</label><input type="number" id="cfg-gui-port"></div>
     </div>
   </div>
-
-  <div style="margin-top:12px;display:flex;align-items:center;gap:10px">
-    <button class="btn btn-primary" id="btn-save-config">Save bench.config</button>
-    <span id="cfg-save-status" style="font-size:12px"></span>
-  </div>
-
-</div><!-- /setup -->
-
-
-<!-- ─── RUN ─── -->
-<div id="tab-run" class="tab-pane">
 
   <div class="card">
-    <h2>Discovered Containers</h2>
-    <div id="run-containers" class="muted">Loading…</div>
+    <div class="card-header">Tools</div>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="App.runProfiler()">Profile Machine</button>
+      <button class="btn btn-primary" onclick="App.runModelSelector()">Select Filter Model</button>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 3: CONTAINERS -->
+<div id="tab-containers" class="tab-panel">
+  <div id="flash-containers" class="flash"></div>
+
+  <div class="card">
+    <div class="card-header">
+      Discovered Containers
+      <span class="badge" id="container-count">0</span>
+      <div style="margin-left:auto" class="btn-group">
+        <button class="btn btn-sm" onclick="App.loadContainers()">Refresh</button>
+        <button class="btn btn-sm btn-primary" onclick="App.quickAction('build')">Build All</button>
+        <button class="btn btn-sm" onclick="App.quickAction('check-health')">Health Check</button>
+        <button class="btn btn-sm" onclick="App.quickAction('test')">Test All</button>
+      </div>
+    </div>
+    <div class="form-row" style="margin-bottom:12px">
+      <div class="form-group" style="flex:1;margin:0">
+        <label>Benchmark directory</label>
+        <div style="display:flex;gap:6px">
+          <input type="text" id="containers-bench-dir" placeholder="benchmarks" style="flex:1">
+          <button class="btn btn-sm" onclick="App.browseForField('containers-bench-dir')">Browse</button>
+          <button class="btn btn-sm btn-primary" onclick="App.loadContainers()">Discover</button>
+        </div>
+      </div>
+    </div>
+    <div id="containers-body">
+      <div class="loading">Loading containers...</div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 4: RUN BENCHMARKS -->
+<div id="tab-run" class="tab-panel">
+  <div id="flash-run" class="flash"></div>
+
+  <div class="card">
+    <div class="card-header">Run Configuration</div>
+    <div class="run-controls">
+      <div class="form-group" style="min-width:220px">
+        <label>Target</label>
+        <select id="run-target">
+          <optgroup label="Full suite">
+            <option value="run">run (full benchmark suite)</option>
+          </optgroup>
+          <optgroup label="Quick">
+            <option value="run-quick">run-quick (3 request counts)</option>
+            <option value="run-super-quick" selected>run-super-quick (1 request count)</option>
+          </optgroup>
+          <optgroup label="By type">
+            <option value="run-static">run-static</option>
+            <option value="run-dynamic">run-dynamic</option>
+            <option value="run-websocket">run-websocket</option>
+          </optgroup>
+          <optgroup label="Single server">
+            <option value="run-single">run-single</option>
+            <option value="run-single-super-quick">run-single-super-quick</option>
+          </optgroup>
+          <optgroup label="Compound">
+            <option value="build-test-run">build-test-run</option>
+            <option value="clean-build-run">clean-build-run</option>
+            <option value="clean-all-build-run">clean-all-build-run</option>
+          </optgroup>
+        </select>
+      </div>
+      <div class="form-group" id="server-group" style="min-width:200px;display:none">
+        <label>Server (container)</label>
+        <select id="run-server"><option value="">-- select --</option></select>
+      </div>
+      <button class="btn btn-success" id="btn-run" onclick="App.startRun()">Run</button>
+      <button class="btn btn-danger" id="btn-stop" onclick="App.stopJob()" disabled>Stop</button>
+    </div>
+
+    <div class="section-title">Directories</div>
+    <div class="form-row">
+      <div class="form-group" style="flex:2">
+        <label>BENCH_DIR (benchmark root)</label>
+        <div style="display:flex;gap:6px">
+          <input type="text" id="env-bench-dir" value="benchmarks" placeholder="benchmarks" style="flex:1">
+          <button class="btn btn-sm" onclick="App.browseForField('env-bench-dir')">Browse</button>
+        </div>
+      </div>
+      <div class="form-group" style="flex:2">
+        <label>Results directory</label>
+        <div style="display:flex;gap:6px">
+          <input type="text" id="env-results-dir" value="results" placeholder="results" style="flex:1">
+          <button class="btn btn-sm" onclick="App.browseForField('env-results-dir')">Browse</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-title">Environment Variables</div>
+    <div class="form-row">
+      <div class="form-group"><label>HOST_PORT</label><input type="number" id="env-host-port" value="8001"></div>
+      <div class="form-group"><label>HTTP_MAX_WORKERS</label><input type="text" id="env-max-workers" placeholder="100 (default)"></div>
+      <div class="form-group"><label>MEASURE_HEARTBEAT_SEC</label><input type="number" id="env-heartbeat" value="60"></div>
+    </div>
+    <div class="form-row">
+      <div class="toggle-row"><input type="checkbox" id="env-quiet" checked><label for="env-quiet">BENCH_MEASURE_QUIET (compact logs)</label></div>
+    </div>
+
+    <div class="section-title">Notification</div>
+    <div class="form-row">
+      <div class="form-group" style="flex:2"><label>Email (notify when done)</label><input type="text" id="notify-email" placeholder="user@example.com"></div>
+      <div class="toggle-row"><input type="checkbox" id="notify-enabled"><label for="notify-enabled">Enable</label></div>
+    </div>
+
+    <div id="run-status" class="run-status" style="display:none">
+      <span class="spinner"></span>
+      <span id="run-status-label">--</span>
+      <span class="elapsed" id="run-elapsed">00:00:00</span>
+    </div>
   </div>
 
   <div class="card">
-    <h2>Benchmark Targets</h2>
-    <div class="target-grid" id="target-grid"></div>
-    <div id="single-wrap" style="display:none;margin-top:10px">
-      <label>Container image name (SERVER=)</label>
-      <select id="run-single-cont" style="width:auto;min-width:220px"></select>
+    <div class="card-header">
+      Queue
+      <span class="badge" id="queue-count">0</span>
+      <div style="margin-left:auto" class="btn-group">
+        <button class="btn btn-sm" onclick="App.addToQueue()">Add Current</button>
+        <button class="btn btn-sm" onclick="App.addAllToQueue()">Add All Containers</button>
+        <button class="btn btn-sm btn-danger" onclick="App.clearQueue()">Clear</button>
+        <button class="btn btn-sm btn-success" id="btn-queue-start" onclick="App.startQueue()">Start Queue</button>
+      </div>
     </div>
+    <ul class="queue-list" id="queue-list">
+      <li class="empty-state" style="font-size:.8rem">Queue is empty. Add runs above.</li>
+    </ul>
   </div>
+</div>
 
-  <!-- Environment variables exposed by run_benchmarks.sh / measure_docker.py / measure_websocket.py -->
-  <details class="card" id="env-panel">
-    <summary>Environment Variables &amp; BENCH_DIR <span class="muted" style="font-size:11px">(optional overrides — leave blank to use defaults)</span></summary>
-    <div style="margin-top:10px">
-      <div class="form-row" style="margin-bottom:10px;align-items:flex-end">
-        <div class="form-group" style="max-width:320px;margin-bottom:0">
-          <label>BENCH_DIR <span class="muted">(default: benchmarks)</span></label>
-          <input type="text" id="env-bench-dir" placeholder="benchmarks">
+<!-- TAB 5: RESULTS & CHARTS -->
+<div id="tab-results" class="tab-panel">
+  <div id="flash-results" class="flash"></div>
+
+  <div class="grid-2" style="grid-template-columns:300px 1fr">
+    <div>
+      <div class="card">
+        <div class="card-header">
+          Benchmark Runs
+          <button class="btn btn-sm" style="margin-left:auto" onclick="App.loadSessions()">Refresh</button>
         </div>
-        <button class="btn btn-ghost" id="btn-bench-dir-browse" style="flex-shrink:0">Browse…</button>
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>HTTP_MAX_WORKERS <span class="muted">(default: 100)</span></label>
-          <input type="text" id="env-http-workers" placeholder="100 · or · system">
+        <div class="form-row" style="padding:0 4px 8px;gap:4px">
+          <div class="form-group" style="flex:1;margin:0"><input type="text" id="results-root-dir" placeholder="results" style="font-size:.75rem;padding:5px 8px"></div>
+          <button class="btn btn-sm" onclick="App.browseForField('results-root-dir')" style="padding:4px 8px">Browse</button>
+          <button class="btn btn-sm" onclick="App.loadSessions()" style="padding:4px 8px">Load</button>
         </div>
-        <div class="form-group">
-          <label>HOST_PORT <span class="muted">(default: 8001)</span></label>
-          <input type="text" id="env-host-port" placeholder="8001">
-        </div>
-        <div class="form-group">
-          <label>BENCH_MEASURE_QUIET <span class="muted">(1=compact, 0=verbose)</span></label>
-          <select id="env-quiet">
-            <option value="">default (1 — compact)</option>
-            <option value="1">1 — compact</option>
-            <option value="0">0 — verbose</option>
-          </select>
+        <div class="file-tree" id="session-list">
+          <div class="empty-state">No benchmark runs found</div>
         </div>
       </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>MEASURE_STARTUP_WAIT <span class="muted">(s, default: 15)</span></label>
-          <input type="number" id="env-startup-wait" placeholder="15" min="1">
-        </div>
-        <div class="form-group">
-          <label>MEASURE_HEALTH_RETRIES <span class="muted">(default: 25)</span></label>
-          <input type="number" id="env-health-retries" placeholder="25" min="1">
-        </div>
-        <div class="form-group">
-          <label>MEASURE_HEARTBEAT_SEC <span class="muted">(default: 60, min: 10)</span></label>
-          <input type="number" id="env-heartbeat" placeholder="60" min="10">
-        </div>
-      </div>
-    </div>
-  </details>
-
-  <div class="card" id="run-preview-card">
-    <h2>What Will Run</h2>
-    <div id="run-payload-wrap" style="margin-bottom:8px">
-      <div class="muted" style="margin-bottom:5px">Request levels / patterns</div>
-      <div style="display:flex;flex-wrap:wrap;gap:4px" id="run-chips"></div>
-    </div>
-    <div class="muted" id="run-summary"></div>
-    <div style="margin-top:8px;font-family:var(--mono);font-size:12px;color:var(--accent)" id="run-cmd-preview"></div>
-  </div>
-
-  <div class="card" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-    <button class="btn btn-ghost" id="btn-sudo-auth" title="Cache sudo credentials — click, then type your password in the terminal below">🔑 Authenticate sudo</button>
-    <span id="sudo-status" style="font-size:12px;color:var(--muted)">Run this once before launching benchmarks</span>
-  </div>
-
-  <div class="card" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-    <button class="btn btn-success btn-large" id="btn-launch">▶ Launch</button>
-    <button class="btn btn-danger" id="btn-stop" disabled>■ Stop</button>
-    <span class="muted" id="run-status"></span>
-  </div>
-
-  <details class="card">
-    <summary>Sequential Queue — run multiple targets one after another</summary>
-    <div style="margin-top:12px">
-      <div class="form-row" style="align-items:flex-end">
-        <div class="form-group" style="margin-bottom:0">
-          <label>Target</label>
-          <select id="q-target">
-            <option value="run">run — all containers, full (13 HTTP + full WS)</option>
-            <option value="run-quick">run-quick — all containers, quick (3 HTTP + quick WS)</option>
-            <option value="run-super-quick" selected>run-super-quick — all containers, 1 level</option>
-            <option value="run-static">run-static — static only, 13 levels</option>
-            <option value="run-dynamic">run-dynamic — dynamic only, 13 levels</option>
-            <option value="run-websocket">run-websocket — websocket only</option>
-            <option value="run-single">run-single — single container, full</option>
-            <option value="run-single-super-quick">run-single-super-quick — single, 1 level</option>
-          </select>
-        </div>
-        <div class="form-group" style="margin-bottom:0">
-          <label>Container (SERVER= for run-single targets)</label>
-          <select id="q-server" style="width:auto;min-width:180px">
-            <option value="">— any / not applicable —</option>
-          </select>
-        </div>
-        <button class="btn btn-ghost" id="btn-q-add" style="flex-shrink:0;align-self:flex-end">+ Add</button>
-        <button class="btn btn-ghost" id="btn-q-add-all" style="flex-shrink:0;align-self:flex-end" title="Add one queue entry per discovered container (for run-single targets)">+ Add all</button>
-      </div>
-      <div id="queue-list" style="margin-top:10px;min-height:28px"></div>
-      <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
-        <button class="btn btn-success" id="btn-q-run" disabled>▶ Run Queue</button>
-        <button class="btn btn-ghost" id="btn-q-clear">Clear</button>
-        <span class="muted" id="q-status"></span>
-      </div>
-    </div>
-  </details>
-
-  <details class="card">
-    <summary>Utilities — setup, build, health-check, clean</summary>
-    <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:8px">
-      <button class="btn btn-ghost util-btn" data-target="init"         title="make init — venv + deps + build + validate">init</button>
-      <button class="btn btn-ghost util-btn" data-target="setup"        title="make setup — create Python venv and install deps">setup</button>
-      <button class="btn btn-ghost util-btn" data-target="build"        title="make build — build all Docker images">build</button>
-      <button class="btn btn-ghost util-btn" data-target="validate"     title="make validate — check tools and health">validate</button>
-      <button class="btn btn-ghost util-btn" data-target="check-health" title="make check-health — health check only (no build)">check-health</button>
-      <button class="btn btn-ghost util-btn" data-target="test"         title="make test — build all images then health check every container">test</button>
-      <button class="btn btn-ghost util-btn" data-target="build-test-run" title="make build-test-run — build + health check + full run">build-test-run</button>
-      <span style="flex-basis:100%;height:0"></span>
-      <button class="btn btn-ghost util-btn" data-target="clean-results" title="make clean-results — remove results/, logs/, output/, __pycache__">clean-results</button>
-      <button class="btn btn-ghost util-btn" data-target="clean-build"   title="make clean-build — remove Docker containers and images">clean-build</button>
-      <button class="btn btn-ghost util-btn" data-target="clean-env"     title="make clean-env — remove Python venv (srv/)">clean-env</button>
-      <span style="flex-basis:100%;height:0"></span>
-      <input type="number" id="util-port" value="8001" min="1" max="65535"
-        style="width:74px;padding:5px 6px;background:var(--surf2);border:1px solid var(--border);color:var(--text);border-radius:5px;font-size:12px;font-family:var(--mono)"
-        placeholder="port" title="Port number for clean-port">
-      <button class="btn btn-ghost util-btn" data-target="clean-port" title="make clean-port PORT=N — stop Docker containers using this port">clean-port</button>
-    </div>
-  </details>
-
-</div><!-- /run -->
-
-
-<!-- ─── RESULTS ─── -->
-<div id="tab-results" class="tab-pane">
-  <div class="results-layout">
-
-    <!-- Sidebar -->
-    <div class="results-sidebar">
-      <div class="sidebar-section" style="display:flex;align-items:center;gap:6px">
-        <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);flex:1">Sessions</span>
-        <button class="btn btn-ghost" id="btn-refresh-results" style="padding:2px 7px;font-size:11px">↻</button>
-      </div>
-      <!-- Custom folder row -->
-      <div class="sidebar-section" style="padding:6px 8px;border-bottom:1px solid var(--border)">
-        <div style="display:flex;gap:4px;align-items:center">
-          <input type="text" id="results-custom-path" placeholder="results/ or any folder…"
-            style="flex:1;font-size:11px;padding:4px 6px;background:var(--surf2);border:1px solid var(--border);color:var(--text);border-radius:4px;font-family:var(--mono)">
-          <button class="term-btn" id="btn-results-browse" title="Browse filesystem">…</button>
-          <button class="term-btn" id="btn-results-load" title="Load CSVs from this folder">Load</button>
-        </div>
-      </div>
-      <div class="sidebar-scroll" id="session-list" style="flex:0 0 auto;max-height:180px;border-bottom:1px solid var(--border)">
-        <span class="muted">Loading…</span>
-      </div>
-      <div class="sidebar-section">
-        <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">Files</span>
-      </div>
-      <div class="sidebar-scroll" id="file-list">
-        <span class="muted">Select a session</span>
-      </div>
-    </div>
-
-    <!-- Main chart area -->
-    <div class="results-main">
-      <div class="card" style="margin-bottom:0;flex-shrink:0">
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
-          <div class="form-group" style="margin-bottom:0;min-width:180px">
-            <label>Metric</label>
-            <select id="results-metric">
-              <option>Total Energy (J)</option>
-              <option>Avg Power (W)</option>
-              <option>Execution Time (s)</option>
-              <option>Requests/s</option>
-              <option>Successful Requests</option>
-              <option>Failed Requests</option>
-              <option>Avg CPU (%)</option>
-              <option>Peak CPU (%)</option>
-              <option>Avg Mem (MB)</option>
-              <option>Peak Mem (MB)</option>
-            </select>
+      <div class="card">
+        <div class="card-header">
+          Files <span class="sel-count" id="file-sel-count" style="display:none"></span>
+          <div class="btn-group" id="file-sel-actions" style="margin-left:auto;display:none">
+            <button class="btn btn-sm" onclick="App.selectAllFiles()" title="Select all CSV files">All</button>
+            <button class="btn btn-sm" onclick="App.deselectAllFiles()" title="Deselect all">None</button>
           </div>
-          <div class="form-group" style="margin-bottom:0">
-            <label>Chart type</label>
-            <select id="results-chart-type">
-              <option value="auto">Auto</option>
+        </div>
+        <div class="file-tree" id="file-list">
+          <div class="empty-state">Select a session above</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">Custom Path</div>
+        <div class="form-row">
+          <div class="form-group" style="flex:1"><input type="text" id="custom-results-path" placeholder="/path/to/results"></div>
+          <button class="btn btn-sm" onclick="App.loadCustomPath()">Load</button>
+          <button class="btn btn-sm" onclick="App.browseForResults()">Browse</button>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <div class="card-header">Chart</div>
+        <div class="chart-controls">
+          <div class="form-group">
+            <label>Metric</label>
+            <select id="chart-metric"><option value="">-- load files first --</option></select>
+          </div>
+          <div class="form-group">
+            <label>Plot type</label>
+            <select id="chart-type">
+              <option value="line">Multi-line</option>
               <option value="bar">Bar</option>
-              <option value="line">Line</option>
               <option value="heatmap">Heatmap</option>
             </select>
           </div>
-          <label style="display:flex;align-items:center;gap:6px;color:var(--text);margin-bottom:0">
-            <input type="checkbox" id="results-ci" checked> CI
-          </label>
+          <button class="btn btn-sm btn-primary" onclick="App.plotChart()">Plot</button>
+          <button class="btn btn-sm" onclick="App.exportChart()">Export PNG</button>
+          <button class="btn btn-sm btn-success" onclick="App.batchExport()">Batch Export</button>
+        </div>
+        <div class="chart-area">
+          <canvas id="chart-canvas"></canvas>
+          <div class="chart-placeholder" id="chart-placeholder">Select files and a metric, then click Plot</div>
         </div>
       </div>
-      <div class="card" style="flex:1;margin-bottom:0;display:flex;flex-direction:column;min-height:0">
-        <div style="position:relative;flex:1;min-height:200px">
-          <canvas id="results-chart"></canvas>
-        </div>
-        <div class="muted" id="results-status" style="margin-top:8px"></div>
-      </div>
-    </div>
-
-  </div>
-</div><!-- /results -->
-
-
-<!-- ─── EXPORT ─── -->
-<div id="tab-export" class="tab-pane">
-
-  <div class="card">
-    <h2>Select Session &amp; File</h2>
-    <div class="form-row">
-      <div class="form-group" style="margin-bottom:0">
-        <label>Session</label>
-        <select id="exp-session"><option value="">— select session —</option></select>
-      </div>
-      <div class="form-group" style="margin-bottom:0">
-        <label>CSV file</label>
-        <select id="exp-file"><option value="">— select file —</option></select>
-      </div>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>Metrics to Export</h2>
-    <div class="metric-grid" id="exp-metric-grid"></div>
-    <div style="margin-top:6px;display:flex;gap:6px">
-      <button class="btn btn-ghost" id="btn-exp-selall">All</button>
-      <button class="btn btn-ghost" id="btn-exp-selnone">None</button>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>Options</h2>
-    <div class="form-row">
-      <div class="form-group" style="margin-bottom:0">
-        <label>Format</label>
-        <select id="exp-format">
-          <option value="png">PNG</option>
-          <option value="svg">SVG (vector)</option>
-          <option value="pdf">PDF</option>
-        </select>
-      </div>
-      <div class="form-group" style="margin-bottom:0">
-        <label>Size</label>
-        <select id="exp-size">
-          <option value="column">Single column (84 mm)</option>
-          <option value="half">Half page (120 mm)</option>
-          <option value="full">Full page (174 mm)</option>
-          <option value="a4">A4 landscape</option>
-          <option value="screen" selected>Screen</option>
-        </select>
-      </div>
-      <div class="form-group" style="margin-bottom:0">
-        <label>Style</label>
-        <select id="exp-style">
-          <option value="color">Colour</option>
-          <option value="paper">Paper (greyscale)</option>
-        </select>
-      </div>
-      <div class="form-group" style="margin-bottom:0">
-        <label>DPI</label>
-        <select id="exp-dpi">
-          <option value="96">96</option>
-          <option value="150" selected>150</option>
-          <option value="300">300</option>
-        </select>
-      </div>
-    </div>
-    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-primary" id="btn-exp-chart">Export charts</button>
-      <button class="btn btn-ghost" id="btn-exp-csv">Export CSV</button>
-    </div>
-    <div class="muted" id="exp-status" style="margin-top:8px"></div>
-  </div>
-
-</div><!-- /export -->
-
-
-<!-- ─── MODEL SELECTOR ─── -->
-<div id="tab-model-selector" class="tab-pane">
-
-  <div class="card">
-    <h2>How it works</h2>
-    <p class="muted" style="line-height:1.6">
-      Evaluates all outlier filter models on your raw Scaphandre power samples and recommends the one that
-      produces the most consistent energy measurements.<br><br>
-      <b>CV scoring</b> — requires ≥ 3 separate benchmark sessions of the same containers.
-      Each session = one <code>make run</code> invocation.<br>
-      <b>Injection scoring</b> — works with a single session; injects synthetic spikes and measures recovery.
-    </p>
-  </div>
-
-  <!-- Step 1: Sessions -->
-  <div class="card">
-    <div class="ms-step">
-      <div class="ms-num active">1</div>
-      <div class="ms-body">
-        <h2 style="margin-bottom:6px">Select Session(s)</h2>
-        <p class="muted" style="margin-bottom:10px;line-height:1.5">
-          For <b>CV scoring</b> select ≥ 3 sessions that ran the same containers.<br>
-          For <b>injection scoring</b> one session is enough.
-        </p>
-        <div id="ms-session-list" style="max-height:200px;overflow-y:auto;margin-bottom:10px">
-          <span class="muted">Switch to this tab to load sessions.</span>
-        </div>
-        <div style="margin-bottom:8px">
-          <label style="font-size:12px;color:var(--muted)">JSON output folder (default: output)</label>
-          <input type="text" id="ms-json-folder" value="output" style="width:240px;display:inline-block;margin-left:8px">
-        </div>
-        <button class="btn btn-ghost" id="btn-ms-scan">Scan</button>
-        <span class="muted" id="ms-scan-status" style="margin-left:10px"></span>
-      </div>
-    </div>
-  </div>
-
-  <!-- Step 2: Container -->
-  <div class="card" id="ms-cont-card" style="display:none">
-    <div class="ms-step">
-      <div class="ms-num active">2</div>
-      <div class="ms-body">
-        <h2 style="margin-bottom:8px">Select Container</h2>
-        <div id="ms-cont-list" class="cont-list" style="max-height:200px;overflow-y:auto"></div>
-        <div class="muted" id="ms-json-count" style="margin-top:6px"></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Step 3: Config -->
-  <div class="card" id="ms-config-card" style="display:none">
-    <div class="ms-step">
-      <div class="ms-num active">3</div>
-      <div class="ms-body">
-        <h2 style="margin-bottom:8px">Scoring &amp; Run</h2>
-        <div class="form-row" style="margin-bottom:10px">
-          <div class="form-group" style="margin-bottom:0">
-            <label>Scoring method</label>
-            <select id="ms-metric">
-              <option value="cv">CV — cross-session consistency (≥ 3 sessions)</option>
-              <option value="injection">Injection — spike recovery (1 session OK)</option>
-            </select>
-          </div>
-          <div class="form-group" style="margin-bottom:0">
-            <label style="display:flex;align-items:center;gap:8px;color:var(--text)">
-              <input type="checkbox" id="ms-apply"> Write winner to bench.config
-            </label>
-          </div>
-        </div>
-        <div id="ms-cv-warn" class="note-box" style="display:none;margin-bottom:10px">
-          ⚠ CV scoring needs ≥ 3 sessions — <span id="ms-sessions-found">0</span> selected.
-          Injection scoring will be used instead.
-        </div>
-        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <button class="btn btn-primary" id="btn-ms-run">▶ Run Comparison</button>
-          <div id="ms-cmd-preview" class="mono muted" style="font-size:11px;background:var(--surf2);padding:5px 10px;border-radius:4px;flex:1;overflow-x:auto;white-space:nowrap"></div>
+      <div class="card">
+        <div class="card-header">Data Table <span class="badge" id="dt-count">0 rows</span></div>
+        <div class="data-table-wrap">
+          <table>
+            <thead id="dt-head"><tr><th>--</th></tr></thead>
+            <tbody id="dt-body"><tr><td class="empty-state">No data loaded</td></tr></tbody>
+          </table>
         </div>
       </div>
-    </div>
-  </div>
-
-  <!-- Step 4: Results -->
-  <div class="card" id="ms-results-card" style="display:none">
-    <div class="ms-step">
-      <div class="ms-num active">4</div>
-      <div class="ms-body">
-        <h2 style="margin-bottom:8px">Results</h2>
-        <table class="ms-table">
-          <thead>
-            <tr>
-              <th>Model</th><th>Score</th><th>Mean (W)</th><th>Kept %</th><th>Sessions</th>
-              <th style="width:100px">Noise bar</th>
-            </tr>
-          </thead>
-          <tbody id="ms-result-body"></tbody>
-        </table>
-        <div id="ms-winner-note" style="margin-top:10px;font-size:13px;color:var(--green)"></div>
-      </div>
-    </div>
-  </div>
-
-</div><!-- /model-selector -->
-
-</div><!-- /main -->
-
-
-<!-- ═══ TERMINAL ═══ -->
-<div id="terminal-wrap">
-  <div id="term-header">
-    <span class="th-title">Terminal</span>
-    <span id="term-proc"></span>
-    <div style="display:flex;gap:4px;margin-left:auto">
-      <button class="term-btn" id="btn-term-clear">Clear</button>
-      <button class="term-btn" id="btn-term-copy" title="Copy last command">Copy cmd</button>
-      <button class="term-btn" id="btn-term-minimize">Minimize ▾</button>
-      <button class="term-btn" id="btn-term-hide">Hide</button>
-    </div>
-  </div>
-  <div id="terminal"></div>
-</div>
-
-<!-- ═══ DIRECTORY BROWSER MODAL ═══ -->
-<div id="dir-modal">
-  <div class="dir-modal-box">
-    <div class="dir-modal-hdr">
-      <span>Select Folder</span>
-      <button class="term-btn" id="dir-modal-close">✕</button>
-    </div>
-    <div id="dir-modal-crumb" class="dir-modal-crumb">/</div>
-    <div id="dir-modal-list" class="dir-modal-list"></div>
-    <div class="dir-modal-ftr">
-      <button class="btn btn-primary" id="dir-modal-select">Select This Folder</button>
-      <button class="btn btn-ghost" id="dir-modal-cancel">Cancel</button>
     </div>
   </div>
 </div>
 
-<div id="term-strip">▸ Terminal</div>
+<!-- TAB 6: UTILITIES -->
+<div id="tab-utilities" class="tab-panel">
+  <div id="flash-utilities" class="flash"></div>
 
-<script src="/static/charts.js"></script>
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-header">Clean Operations</div>
+
+      <div class="clean-group">
+        <div class="clean-group-title">Safe</div>
+        <div class="clean-actions">
+          <button class="btn btn-sm" onclick="App.quickAction('clean-results')">clean-results</button>
+          <button class="btn btn-sm" onclick="App.quickAction('clean-build')">clean-build</button>
+          <button class="btn btn-sm" onclick="App.quickAction('clean-env')">clean-env</button>
+          <button class="btn btn-sm" onclick="App.quickAction('clean-all')">clean-all</button>
+        </div>
+      </div>
+
+      <div class="clean-group">
+        <div class="clean-group-title">Port cleanup</div>
+        <div class="clean-actions">
+          <div class="form-row" style="gap:6px;align-items:center">
+            <input type="number" id="clean-port-input" value="8001" style="width:80px;padding:5px 8px;background:var(--bg-input);color:var(--text);border:1px solid var(--border);border-radius:var(--radius)">
+            <button class="btn btn-sm" onclick="App.cleanPort()">clean-port</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="clean-group">
+        <div class="clean-group-title" style="color:var(--orange)">Destructive (requires confirmation)</div>
+        <div class="clean-actions">
+          <button class="btn btn-sm btn-warn" onclick="App.confirmClean('clean-benchmarks')">clean-benchmarks</button>
+          <button class="btn btn-sm btn-warn" onclick="App.confirmClean('clean-nuclear')">clean-nuclear</button>
+          <button class="btn btn-sm btn-danger" onclick="App.confirmClean('clean-repo')">clean-repo</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        Logs
+        <button class="btn btn-sm" style="margin-left:auto" onclick="App.loadLogs()">Refresh</button>
+      </div>
+      <div class="log-list" id="log-list">
+        <div class="empty-state">No logs found</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="log-viewer-card" style="display:none">
+    <div class="card-header">
+      <span id="log-viewer-title">Log</span>
+      <button class="btn btn-sm" style="margin-left:auto" onclick="document.getElementById('log-viewer-card').style.display='none'">Close</button>
+    </div>
+    <div class="log-viewer" id="log-viewer-content"></div>
+  </div>
+</div>
+
+</div><!-- .tab-content -->
+</div><!-- .main -->
+
+<!-- Terminal Strip -->
+<div class="terminal-strip minimized" id="terminal-strip">
+  <div class="terminal-resize" id="terminal-resize"></div>
+  <div class="terminal-header" id="terminal-header">
+    <span class="t-title">Terminal</span>
+    <span class="t-label" id="terminal-label"></span>
+    <button class="t-btn" id="t-btn-toggle" title="Show / Hide terminal" onclick="App.termClickToggle()">&#9650;</button>
+    <button class="t-btn" id="t-btn-clear" title="Clear terminal" onclick="App.termClear()">&#10005;</button>
+  </div>
+  <div class="terminal-body" id="terminal-body">
+    <div id="xterm-container"></div>
+  </div>
+</div>
+
+<!-- Browse Modal -->
+<div class="modal-overlay" id="browse-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Browse</h3>
+      <button class="modal-close" onclick="App.closeBrowse()">&times;</button>
+    </div>
+    <div class="browse-path" id="browse-path">--</div>
+    <div class="modal-body" id="browse-body"></div>
+    <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-sm" onclick="App.browseSelect()">Select this folder</button>
+      <button class="btn btn-sm" onclick="App.closeBrowse()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm Modal -->
+<div class="modal-overlay" id="confirm-modal">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-header">
+      <h3 id="confirm-title">Confirm</h3>
+      <button class="modal-close" onclick="App.closeConfirm()">&times;</button>
+    </div>
+    <p style="font-size:.85rem;margin-bottom:16px;color:var(--text)" id="confirm-msg">Are you sure?</p>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-sm" onclick="App.closeConfirm()">Cancel</button>
+      <button class="btn btn-sm btn-danger" id="confirm-ok" onclick="App.confirmOk()">Confirm</button>
+    </div>
+  </div>
+</div>
+
 <script src="/static/app.js"></script>
 </body>
 </html>

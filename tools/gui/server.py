@@ -1,54 +1,26 @@
 """
 Benchmark GUI server — FastAPI backend.
 
-Start with:
-    python tools/gui/server.py   (or: make gui)
+Start with:  make gui   (or: python tools/gui/server.py)
 
 Architecture
 ------------
 Two execution modes:
 
-1. Interactive (PTY) — used for sudo-auth, profiler, model-selector:
+1. Interactive (PTY) — for sudo-auth, profiler, model-selector:
    SubprocessManager runs the process attached to a PTY so the user can type
    interactively in the browser terminal. Output streamed via WebSocket.
 
-2. Detached job — used for all `make run*` benchmark targets:
-   The benchmark subprocess is fully detached (new process group, stdin=DEVNULL,
-   stdout/stderr→log file). It survives GUI server restarts and SSH disconnects.
-   The server tails the log file and streams new lines to WebSocket clients.
-   An email is sent when the job finishes (configured in bench.config [notifications]).
-
-Endpoints
----------
-GET  /                          → index.html
-GET  /api/status                → server alive + active job/process info
-GET  /api/sysinfo               → live system readings (CPU, temp, governor, …)
-GET  /api/config                → read bench.config as JSON
-POST /api/config                → write bench.config from JSON body
-GET  /api/browse?path=DIR       → list files/dirs under DIR (filesystem browser)
-GET  /api/containers            → list discovered Docker containers (from benchmarks/)
-GET  /api/results               → list result CSVs (recursive under results/)
-GET  /api/results/sessions      → list benchmark sessions (results/<timestamp>/)
-GET  /api/results/file?path=P   → return CSV rows as JSON for any absolute path
-GET  /api/output-files          → scan output/*.json and return list of files
-GET  /api/json-containers       → scan Scaphandre JSON for unique container names
-GET  /api/json-processes        → scan Scaphandre JSON for unique process exe names
-GET  /api/json-for-session      → find output JSON files belonging to a specific session
-GET  /api/session-containers    → find container names from a session's CSV files
-POST /api/sudo-auth             → run sudo -v via PTY (cache credentials)
-POST /api/profile               → run bench_profile.py
-POST /api/model-selector        → run model_selector.py
-POST /api/run                   → submit detached benchmark job
-POST /api/stop                  → kill active job or interactive process
-POST /api/resize-pty            → resize PTY window
-WS   /ws/terminal               → live output (JSON lines); stdin forwarded to PTY
+2. Detached job — for all make targets (run, build, clean, etc.):
+   Subprocess is fully detached (new process group, stdin=DEVNULL,
+   stdout/stderr→log file). Survives server restarts / SSH disconnects.
+   Server tails log and streams new lines to WebSocket clients.
 """
 
 import asyncio
 import configparser
 import csv
 import fcntl
-import glob
 import json
 import os
 import pty
@@ -61,19 +33,17 @@ import termios
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-ROOT       = Path(__file__).resolve().parent.parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 STATIC_DIR = Path(__file__).resolve().parent / "static"
-TOOLS_DIR  = ROOT / "tools"
+TOOLS_DIR = ROOT / "tools"
 DEFAULT_CONFIG = ROOT / "bench.config"
-RESULTS_DIR    = ROOT / "results"
-LOGS_DIR       = ROOT / "logs"
 
 sys.path.insert(0, str(ROOT))
 from tools.bench_profile import load_config
@@ -83,41 +53,10 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 # ---------------------------------------------------------------------------
-# Subprocess manager — one active process at a time
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
-# Email helper
-# ---------------------------------------------------------------------------
-
-def _send_email_sync(cfg: configparser.ConfigParser, subject: str, body: str) -> bool:
-    """Send a notification email via the system sendmail command."""
-    try:
-        email_to   = cfg.get("notifications", "email_to",   fallback="").strip()
-        email_from = cfg.get("notifications", "email_from", fallback="benchmark@localhost").strip()
-        if not email_to:
-            return False
-        message = f"From: {email_from}\nTo: {email_to}\nSubject: {subject}\n\n{body}"
-        result = subprocess.run(
-            ["sendmail", "-t"],
-            input=message.encode(),
-            capture_output=True,
-            timeout=30,
-        )
-        return result.returncode == 0
-    except Exception as exc:
-        print(f"[EMAIL] Failed to send: {exc}", flush=True)
-        return False
-
-
-# ---------------------------------------------------------------------------
-# Interactive process manager — PTY or pipe, for sudo-auth / profiler / MS
+# Interactive process manager — PTY or pipe
 # ---------------------------------------------------------------------------
 
 class SubprocessManager:
-    """Runs short interactive processes (sudo-auth, profiler, model-selector).
-    Uses a PTY when requested so the user can type in the browser terminal."""
-
     def __init__(self):
         self._proc: Optional[asyncio.subprocess.Process] = None
         self._label: str = ""
@@ -139,7 +78,8 @@ class SubprocessManager:
 
             if use_pty:
                 master_fd, slave_fd = pty.openpty()
-                fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 220, 0, 0))
+                fcntl.ioctl(slave_fd, termios.TIOCSWINSZ,
+                            struct.pack("HHHH", 24, 220, 0, 0))
                 self._master_fd = master_fd
 
                 def _child_setup(sfd=slave_fd):
@@ -192,16 +132,16 @@ class SubprocessManager:
     async def _pump_pty(self):
         loop = asyncio.get_running_loop()
         done = loop.create_future()
-        mfd  = self._master_fd
+        mfd = self._master_fd
 
         def _read_ready():
             try:
                 data = os.read(mfd, 4096)
                 if data:
-                    asyncio.ensure_future(
-                        self._broadcast({"stream": "stdout",
-                                         "data": data.decode(errors="replace")})
-                    )
+                    asyncio.ensure_future(self._broadcast({
+                        "stream": "stdout",
+                        "data": data.decode(errors="replace"),
+                    }))
             except OSError:
                 loop.remove_reader(mfd)
                 if not done.done():
@@ -224,7 +164,7 @@ class SubprocessManager:
                 if not chunk:
                     break
                 await self._broadcast({"stream": name,
-                                        "data": chunk.decode(errors="replace")})
+                                       "data": chunk.decode(errors="replace")})
         await asyncio.gather(
             _read(self._proc.stdout, "stdout"),
             _read(self._proc.stderr, "stderr"),
@@ -257,33 +197,24 @@ class SubprocessManager:
     def info(self) -> dict:
         return {
             "running": self.is_running(),
-            "label":   self._label if self.is_running() else None,
-            "pid":     self._proc.pid if self.is_running() else None,
-            "pty":     self._master_fd is not None,
+            "label": self._label if self.is_running() else None,
+            "pid": self._proc.pid if self.is_running() else None,
+            "pty": self._master_fd is not None,
             "detached": False,
         }
 
 
 # ---------------------------------------------------------------------------
-# Job runner — fully detached benchmark processes with log-file tailing
+# Detached job runner — benchmark processes with log tailing
 # ---------------------------------------------------------------------------
 
 class JobRunner:
-    """Runs make benchmark targets as detached OS processes.
-
-    The subprocess is in its own process group (os.setsid) with stdin=DEVNULL
-    and stdout/stderr piped to a log file under logs/.  It survives GUI server
-    restarts and SSH session disconnects.  The runner tails the log file and
-    broadcasts new content to connected WebSocket clients.  An email is sent
-    on completion if bench.config [notifications] is configured.
-    """
-
     def __init__(self):
-        self._proc:     Optional[subprocess.Popen] = None
-        self._label:    str  = ""
+        self._proc: Optional[subprocess.Popen] = None
+        self._label: str = ""
         self._log_file: Optional[Path] = None
-        self._started:  float = 0.0
-        self._clients:  list[WebSocket] = []
+        self._started: float = 0.0
+        self._clients: list[WebSocket] = []
         self._lock = asyncio.Lock()
 
     def is_running(self) -> bool:
@@ -294,13 +225,13 @@ class JobRunner:
         async with self._lock:
             if self.is_running():
                 return False
-            self._label   = label
+            self._label = label
             self._started = time.time()
-            LOGS_DIR.mkdir(parents=True, exist_ok=True)
+            logs_dir = ROOT / "logs"
+            logs_dir.mkdir(parents=True, exist_ok=True)
             ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-            self._log_file = LOGS_DIR / f"gui_{ts}.log"
+            self._log_file = logs_dir / f"gui_{ts}.log"
             proc_env = {**os.environ, **(env or {})}
-            # Write a header so the log file exists before tailing starts
             self._log_file.write_text(
                 f"[GUI] {' '.join(cmd)}\n"
                 f"[GUI] Started: {datetime.now().isoformat()}\n"
@@ -314,7 +245,7 @@ class JobRunner:
                     stderr=lf,
                     cwd=str(ROOT),
                     env=proc_env,
-                    preexec_fn=os.setsid,   # detach from server's process group
+                    preexec_fn=os.setsid,
                     close_fds=True,
                 )
             asyncio.ensure_future(self._monitor())
@@ -336,7 +267,6 @@ class JobRunner:
             return True
 
     async def _force_kill(self, pgid: int):
-        """Send SIGKILL to the process group if still alive after 6 seconds."""
         await asyncio.sleep(6)
         if self.is_running():
             try:
@@ -345,13 +275,10 @@ class JobRunner:
                 pass
 
     async def _monitor(self):
-        """Tail log file → broadcast → email on completion."""
         pos = 0
         log_path = self._log_file
-
         while True:
             rc = self._proc.poll()
-            # Drain new log content
             try:
                 if log_path and log_path.exists():
                     with open(log_path, "rb") as f:
@@ -361,13 +288,12 @@ class JobRunner:
                         pos += len(chunk)
                         await self._broadcast({
                             "stream": "stdout",
-                            "data":   chunk.decode(errors="replace"),
+                            "data": chunk.decode(errors="replace"),
                         })
             except Exception:
                 pass
-
             if rc is not None:
-                await asyncio.sleep(0.3)   # final drain
+                await asyncio.sleep(0.3)
                 try:
                     if log_path and log_path.exists():
                         with open(log_path, "rb") as f:
@@ -376,43 +302,16 @@ class JobRunner:
                         if chunk:
                             await self._broadcast({
                                 "stream": "stdout",
-                                "data":   chunk.decode(errors="replace"),
+                                "data": chunk.decode(errors="replace"),
                             })
                 except Exception:
                     pass
-                duration = time.time() - self._started
-                await self._broadcast({"exit": rc, "label": self._label,
-                                        "log": str(log_path)})
-                asyncio.ensure_future(self._notify(rc, duration, log_path))
+                await self._broadcast({
+                    "exit": rc, "label": self._label,
+                    "log": str(log_path),
+                })
                 break
-
             await asyncio.sleep(0.4)
-
-    async def _notify(self, rc: int, duration: float, log_path: Path):
-        cfg = load_config(str(DEFAULT_CONFIG))
-        if not cfg.has_section("notifications"):
-            return
-        notify_on = cfg.get("notifications", "notify_on", fallback="always")
-        if notify_on == "success" and rc != 0:
-            return
-        if notify_on == "failure" and rc == 0:
-            return
-        mins, secs = divmod(int(duration), 60)
-        hours, mins = divmod(mins, 60)
-        dur_str = (f"{hours}h " if hours else "") + f"{mins}m {secs}s"
-        status  = "COMPLETED ✓" if rc == 0 else f"FAILED (exit {rc})"
-        subject = f"[Benchmark] {self._label} — {status}"
-        body    = (
-            f"Benchmark job: {self._label}\n"
-            f"Status:        {status}\n"
-            f"Duration:      {dur_str}\n"
-            f"Log file:      {log_path}\n"
-            f"Results dir:   {ROOT / 'results'}\n\n"
-            f"Started:  {datetime.fromtimestamp(self._started).strftime('%Y-%m-%d %H:%M:%S')}\n"
-            f"Finished: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-        )
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, _send_email_sync, cfg, subject, body)
 
     async def _broadcast(self, msg: dict):
         dead = []
@@ -438,24 +337,22 @@ class JobRunner:
 
     def info(self) -> dict:
         return {
-            "running":  self.is_running(),
-            "label":    self._label    if self.is_running() else None,
-            "pid":      self._proc.pid if self._proc else None,
+            "running": self.is_running(),
+            "label": self._label if self.is_running() else None,
+            "pid": self._proc.pid if self._proc else None,
             "log_file": str(self._log_file) if self._log_file else None,
-            "started":  self._started  if self.is_running() else None,
+            "started": self._started if self.is_running() else None,
             "detached": True,
         }
 
 
-mgr     = SubprocessManager()   # interactive: sudo-auth, profiler, model-selector
-job_mgr = JobRunner()            # detached:    all make benchmark targets
-
-# Path to the last model-selector JSON results (written by --json-output)
+mgr = SubprocessManager()
+job_mgr = JobRunner()
 _ms_results_path: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
-# Static / index
+# Routes
 # ---------------------------------------------------------------------------
 
 @app.get("/", include_in_schema=False)
@@ -463,13 +360,8 @@ async def index():
     return FileResponse(str(STATIC_DIR / "index.html"))
 
 
-# ---------------------------------------------------------------------------
-# Status + sysinfo
-# ---------------------------------------------------------------------------
-
 @app.get("/api/status")
 async def api_status():
-    # Job runner takes priority in status (benchmark runs are the primary use-case)
     if job_mgr.is_running():
         return {"ok": True, **job_mgr.info()}
     return {"ok": True, **mgr.info()}
@@ -477,44 +369,50 @@ async def api_status():
 
 @app.get("/api/sysinfo")
 async def api_sysinfo():
-    from tools.bench_profile import detect_cpu_model, detect_cpu_cores, detect_memory_gb, detect_os, detect_kernel
+    from tools.bench_profile import (detect_cpu_model, detect_cpu_cores,
+                                     detect_memory_gb, detect_os, detect_kernel)
     from tools.env_control import (detect_governor, detect_turbo, detect_thp,
-                                    detect_swap_active, detect_temperatures,
-                                    detect_rapl, detect_scaphandre_version)
-    import subprocess as _sp
+                                   detect_swap_active, detect_temperatures,
+                                   detect_rapl, detect_scaphandre_version)
     temps = detect_temperatures()
     physical, logical = detect_cpu_cores()
-    docker_ok = _sp.run(["docker", "info"], capture_output=True).returncode == 0
+    docker_ok = subprocess.run(
+        ["docker", "info"], capture_output=True
+    ).returncode == 0
 
-    # Pull current filter/runs/isolation from bench.config for the status grid
     cfg = load_config(str(DEFAULT_CONFIG))
-    filter_model = cfg.get("filter", "model", fallback="none") if cfg.has_section("filter") else "none"
-    runs         = cfg.get("measurement", "runs", fallback="—") if cfg.has_section("measurement") else "—"
-    isolation    = cfg.get("isolation", "level", fallback="—") if cfg.has_section("isolation") else "—"
+
+    def _cfg_get(section, key, fb="--"):
+        return cfg.get(section, key, fallback=fb) if cfg.has_section(section) else fb
+
+    venv_ok = (ROOT / "srv" / "bin" / "python3").exists()
 
     return {
-        "cpu_model":    detect_cpu_model(),
+        "cpu_model": detect_cpu_model(),
         "cpu_physical": physical,
-        "cpu_logical":  logical,
-        "memory_gb":    round(detect_memory_gb(), 1),
-        "os":           detect_os(),
-        "kernel":       detect_kernel(),
-        "governor":     detect_governor(),
-        "turbo":        detect_turbo(),
-        "thp":          detect_thp(),
-        "swap_active":  detect_swap_active(),
+        "cpu_logical": logical,
+        "memory_gb": round(detect_memory_gb(), 1),
+        "os": detect_os(),
+        "kernel": detect_kernel(),
+        "hostname": os.uname().nodename,
+        "governor": detect_governor(),
+        "turbo": detect_turbo(),
+        "thp": detect_thp(),
+        "swap_active": detect_swap_active(),
         "temp_current": round(max(temps), 1) if temps else None,
-        "rapl":         detect_rapl(),
-        "scaphandre":   detect_scaphandre_version(),
-        "docker_ok":    docker_ok,
-        "filter":       filter_model,
-        "runs":         runs,
-        "isolation":    isolation,
+        "rapl": detect_rapl(),
+        "scaphandre": detect_scaphandre_version(),
+        "docker_ok": docker_ok,
+        "venv_ok": venv_ok,
+        "config_exists": DEFAULT_CONFIG.exists(),
+        "filter": _cfg_get("filter", "model", "none"),
+        "runs": _cfg_get("measurement", "runs", "1"),
+        "isolation": _cfg_get("isolation", "level", "none"),
     }
 
 
 # ---------------------------------------------------------------------------
-# bench.config
+# Config
 # ---------------------------------------------------------------------------
 
 @app.get("/api/config")
@@ -535,7 +433,7 @@ async def post_config(body: dict):
             cfg.set(section, key, str(value))
     with open(str(DEFAULT_CONFIG), "w") as f:
         cfg.write(f)
-    return {"ok": True, "path": str(DEFAULT_CONFIG)}
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------
@@ -548,97 +446,85 @@ async def api_browse(path: str = Query(default=".")):
     try:
         base = base.resolve()
     except Exception:
-        raise HTTPException(status_code=400, detail="Invalid path")
-
+        raise HTTPException(400, "Invalid path")
     home = Path.home()
     if not (str(base).startswith(str(ROOT)) or str(base).startswith(str(home))):
-        raise HTTPException(status_code=403, detail="Access outside project root not allowed")
-
+        raise HTTPException(403, "Access outside home not allowed")
     if not base.exists():
-        raise HTTPException(status_code=404, detail=f"Path not found: {base}")
+        raise HTTPException(404, f"Not found: {base}")
     if not base.is_dir():
-        raise HTTPException(status_code=400, detail="Path is not a directory")
-
+        raise HTTPException(400, "Not a directory")
     entries = []
     try:
         for entry in sorted(base.iterdir(), key=lambda e: (e.is_file(), e.name.lower())):
-            item: dict = {"name": entry.name, "path": str(entry), "type": "dir" if entry.is_dir() else "file"}
+            item = {"name": entry.name, "path": str(entry),
+                    "type": "dir" if entry.is_dir() else "file"}
             if entry.is_file():
                 try:
-                    stat = entry.stat()
-                    item["size"] = stat.st_size
-                    item["mtime"] = stat.st_mtime
+                    st = entry.stat()
+                    item["size"] = st.st_size
+                    item["mtime"] = st.st_mtime
                 except OSError:
                     pass
             entries.append(item)
     except PermissionError:
-        raise HTTPException(status_code=403, detail="Permission denied")
-
+        raise HTTPException(403, "Permission denied")
     parent = str(base.parent) if base != base.parent else None
     return {"path": str(base), "parent": parent, "entries": entries}
 
 
 # ---------------------------------------------------------------------------
-# Containers — scanned from benchmarks/<type>/<name>/Dockerfile
+# Containers — recursive discovery under benchmarks/
 # ---------------------------------------------------------------------------
 
-@app.get("/api/containers")
-async def get_containers(bench_dir: str = Query(default="")):
-    """Discover containers from benchmarks/<type>/<name>/Dockerfile.
-    bench_dir overrides the default 'benchmarks' directory (matches BENCH_DIR Makefile var)."""
-    root_bench = (Path(bench_dir) if bench_dir else ROOT / "benchmarks")
-    if not root_bench.is_absolute():
-        root_bench = ROOT / root_bench
+def _discover_containers(bench_root: Path) -> list[dict]:
+    """Find all directories containing a Dockerfile under bench_root.
+    Handles both flat (type/container/) and nested (type/lang/fw/container/) layouts."""
     containers = []
-    if root_bench.exists():
-        for type_dir in sorted(root_bench.iterdir()):
-            if not type_dir.is_dir():
-                continue
-            type_name = type_dir.name
-            for entry in sorted(type_dir.iterdir()):
-                if not entry.is_dir():
-                    continue
-                if (entry / "Dockerfile").exists() or (entry / "docker-compose.yml").exists():
-                    try:
-                        rel = str(entry.relative_to(ROOT))
-                    except ValueError:
-                        rel = str(entry)
-                    containers.append({
-                        "name":  entry.name,
-                        "type":  type_name,
-                        "path":  rel,
-                    })
+    if not bench_root.exists():
+        return containers
+    for df in sorted(bench_root.rglob("Dockerfile")):
+        container_dir = df.parent
+        name = container_dir.name
+        try:
+            rel = container_dir.relative_to(bench_root)
+        except ValueError:
+            continue
+        parts = rel.parts
+        bench_type = parts[0] if parts else "unknown"
+        try:
+            path = str(container_dir.relative_to(ROOT))
+        except ValueError:
+            # Outside this repo — show relative to bench_root for cleaner display
+            path = str(rel)
+        containers.append({
+            "name": name,
+            "type": bench_type,
+            "path": path,
+        })
     return containers
 
 
-# ---------------------------------------------------------------------------
-# Results — recursive search
-# ---------------------------------------------------------------------------
+@app.get("/api/containers")
+async def get_containers(bench_dir: str = Query(default="")):
+    root_bench = (Path(bench_dir) if bench_dir else ROOT / "benchmarks")
+    if not root_bench.is_absolute():
+        root_bench = ROOT / root_bench
+    return _discover_containers(root_bench)
 
-def _find_csvs(root_dir: Path) -> list[dict]:
-    results = []
-    if not root_dir.exists():
-        return results
-    for p in sorted(root_dir.rglob("*.csv")):
-        try:
-            stat = p.stat()
-            results.append({
-                "name":  p.name,
-                "stem":  p.stem,
-                "path":  str(p),
-                "rel":   str(p.relative_to(ROOT)),
-                "size":  stat.st_size,
-                "mtime": stat.st_mtime,
-            })
-        except OSError:
-            pass
-    return results
 
+# ---------------------------------------------------------------------------
+# Results
+# ---------------------------------------------------------------------------
 
 @app.get("/api/results/sessions")
-async def list_sessions():
-    """List benchmark sessions as {name, path, mtime, types:[...]}."""
-    results_root = ROOT / "results"
+async def list_sessions(root: str = Query(default="")):
+    if root and Path(root).is_absolute():
+        results_root = Path(root)
+    elif root:
+        results_root = ROOT / root
+    else:
+        results_root = ROOT / "results"
     sessions = []
     if not results_root.exists():
         return sessions
@@ -646,126 +532,105 @@ async def list_sessions():
         if not entry.is_dir():
             continue
         types = [d.name for d in sorted(entry.iterdir()) if d.is_dir()]
+        csv_count = len(list(entry.rglob("*.csv")))
         try:
             mtime = entry.stat().st_mtime
         except OSError:
             mtime = 0
-        sessions.append({"name": entry.name, "path": str(entry), "mtime": mtime, "types": types})
+        sessions.append({
+            "name": entry.name, "path": str(entry),
+            "mtime": mtime, "types": types, "csv_count": csv_count,
+        })
     return sessions
 
 
-@app.get("/api/results")
-async def list_results(path: Optional[str] = None):
-    if path:
-        search_root = Path(path) if Path(path).is_absolute() else ROOT / path
-        return _find_csvs(search_root)
-    return _find_csvs(RESULTS_DIR)
+@app.get("/api/results/files")
+async def list_result_files(path: str = Query(default="")):
+    search = Path(path) if path and Path(path).is_absolute() else ROOT / (path or "results")
+    results = []
+    if not search.exists():
+        return results
+    for p in sorted(search.rglob("*.csv")):
+        try:
+            st = p.stat()
+            rel_parts = p.relative_to(search).parts
+            bench_type = rel_parts[0] if len(rel_parts) > 1 else "unknown"
+            results.append({
+                "name": p.name, "stem": p.stem,
+                "path": str(p), "type": bench_type,
+                "size": st.st_size, "mtime": st.st_mtime,
+            })
+        except (OSError, ValueError):
+            pass
+    return results
 
 
-@app.get("/api/results/file")
-async def get_result_file(path: str = Query(...)):
+@app.get("/api/results/csv")
+async def get_csv_data(path: str = Query(...)):
     p = Path(path) if Path(path).is_absolute() else ROOT / path
     if not p.exists() or p.suffix != ".csv":
-        raise HTTPException(status_code=404, detail=f"CSV not found: {path}")
+        raise HTTPException(404, f"CSV not found: {path}")
     rows = []
+    headers = []
     with open(p, newline="") as f:
         reader = csv.DictReader(f)
+        headers = reader.fieldnames or []
         for row in reader:
             rows.append(dict(row))
-    return rows
+    return {"headers": headers, "rows": rows, "path": str(p), "name": p.name}
 
 
 # ---------------------------------------------------------------------------
-# Output files (for Model Selector tab)
+# Logs
 # ---------------------------------------------------------------------------
 
-@app.get("/api/output-files")
-async def get_output_files(path: str = Query(default="output")):
-    """Scan output/*.json and return list of {name, path, mtime, size}."""
-    search_root = Path(path) if Path(path).is_absolute() else ROOT / path
+@app.get("/api/logs")
+async def list_logs():
+    logs_dir = ROOT / "logs"
+    if not logs_dir.exists():
+        return []
     files = []
-    if not search_root.exists():
-        return files
-    for p in sorted(search_root.rglob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True):
+    for p in sorted(logs_dir.glob("*.log"), reverse=True):
         try:
-            stat = p.stat()
-            files.append({
-                "name":  p.name,
-                "path":  str(p),
-                "mtime": stat.st_mtime,
-                "size":  stat.st_size,
-            })
+            st = p.stat()
+            files.append({"name": p.name, "path": str(p),
+                          "size": st.st_size, "mtime": st.st_mtime})
         except OSError:
             pass
     return files
 
 
-# ---------------------------------------------------------------------------
-# JSON container scanner (for Model Selector tab)
-# ---------------------------------------------------------------------------
-
-@app.get("/api/json-containers")
-async def get_json_containers(path: str = Query(default="output")):
-    """Scan Scaphandre JSON files and return unique container names found in consumers."""
-    search_root = Path(path) if Path(path).is_absolute() else ROOT / path
-    containers: set[str] = set()
-    if not search_root.exists():
-        return []
-    for p in sorted(search_root.rglob("*.json")):
-        try:
-            with open(p) as f:
-                data = json.load(f)
-            if not isinstance(data, list):
-                continue
-            for entry in data:
-                for consumer in entry.get("consumers", []):
-                    cname = (consumer.get("container") or {}).get("name", "").strip()
-                    if cname:
-                        containers.add(cname)
-        except Exception:
-            continue
-    return sorted(containers)
-
-
-@app.get("/api/json-processes")
-async def get_json_processes(path: str = Query(default="output")):
-    """Scan Scaphandre JSON files and return unique process exe basenames.
-    Used as a fallback when Scaphandre was not run with --containers."""
-    import os as _os
-    search_root = Path(path) if Path(path).is_absolute() else ROOT / path
-    processes: set[str] = set()
-    if not search_root.exists():
-        return []
-    for p in sorted(search_root.rglob("*.json")):
-        try:
-            with open(p) as f:
-                data = json.load(f)
-            if not isinstance(data, list):
-                continue
-            for entry in data:
-                for consumer in entry.get("consumers", []):
-                    power = consumer.get("consumption", 0.0)
-                    if not power or power <= 0:
-                        continue
-                    exe = consumer.get("exe", "") or consumer.get("cmdline", "") or ""
-                    if exe:
-                        name = _os.path.basename(exe.split()[0])
-                        if name:
-                            processes.add(name)
-        except Exception:
-            continue
-    return sorted(processes)
+@app.get("/api/logs/content")
+async def get_log_content(path: str = Query(...), tail: int = Query(default=200)):
+    p = Path(path) if Path(path).is_absolute() else ROOT / path
+    if not p.exists() or p.suffix != ".log":
+        raise HTTPException(404, "Log not found")
+    with open(p) as f:
+        lines = f.readlines()
+    return {"lines": lines[-tail:], "total": len(lines), "name": p.name}
 
 
 # ---------------------------------------------------------------------------
 # Subprocess launchers
 # ---------------------------------------------------------------------------
 
+VALID_TARGETS = {
+    "run", "run-all", "run-quick", "run-super-quick",
+    "run-single", "run-single-super-quick",
+    "run-static", "run-dynamic", "run-websocket",
+    "check-health", "test", "validate", "check-tools",
+    "build", "build-test-run", "setup", "init", "install",
+    "clean-results", "clean-build", "clean-env", "clean-all",
+    "clean-build-run", "clean-all-build-run",
+    "clean-port", "clean-benchmarks", "clean-nuclear", "clean-repo",
+    "graph",
+}
+
+
 @app.post("/api/sudo-auth")
 async def api_sudo_auth():
-    """Run sudo -v through a PTY so the user can type their password in the terminal."""
     if mgr.is_running():
-        raise HTTPException(status_code=409, detail="A process is already running")
+        raise HTTPException(409, "A process is already running")
     ok = await mgr.start(["sudo", "-v"], label="sudo-auth", use_pty=True)
     return {"ok": ok}
 
@@ -773,185 +638,52 @@ async def api_sudo_auth():
 @app.post("/api/profile")
 async def api_profile():
     if mgr.is_running():
-        raise HTTPException(status_code=409, detail="A process is already running")
-    cmd = [sys.executable, str(TOOLS_DIR / "bench_profile.py")]
-    await mgr.start(cmd, label="profiler")
+        raise HTTPException(409, "A process is already running")
+    await mgr.start([sys.executable, str(TOOLS_DIR / "bench_profile.py")],
+                    label="profiler")
     return {"ok": True}
-
-
-@app.get("/api/json-for-session")
-async def get_json_for_session(
-    session_path: str = Query(...),
-    folder: str = Query(default="output"),
-):
-    """
-    Return output JSON file paths that belong to a specific benchmark session.
-
-    A session directory is named YYYY-MM-DD_HHMMSS (when make run started).
-    Output JSON files are named YYYY-MM-DD-HHMMSS[_runXofY].json (per measurement).
-    We find JSON files whose filename timestamp falls between the session start
-    and the last CSV modification time in the session (+ a small buffer).
-    """
-    session_dir = Path(session_path) if Path(session_path).is_absolute() else ROOT / session_path
-    if not session_dir.exists():
-        raise HTTPException(status_code=404, detail=f"Session not found: {session_path}")
-
-    try:
-        session_start = datetime.strptime(session_dir.name, "%Y-%m-%d_%H%M%S")
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Session directory name must be YYYY-MM-DD_HHMMSS")
-
-    # Find session end time from latest CSV mtime
-    csv_files = list(session_dir.rglob("*.csv"))
-    if csv_files:
-        last_mtime = max(f.stat().st_mtime for f in csv_files)
-        session_end = datetime.fromtimestamp(last_mtime) + timedelta(minutes=10)
-    else:
-        session_end = session_start + timedelta(hours=24)
-
-    # Search output folder for matching JSON files
-    output_dir = Path(folder) if Path(folder).is_absolute() else ROOT / folder
-    matching = []
-    if not output_dir.exists():
-        return matching
-
-    for json_file in sorted(output_dir.rglob("*.json")):
-        stem = json_file.stem  # e.g. 2026-05-28-142135 or 2026-05-28-142135_run1of10
-        ts_part = stem.split("_")[0] if "_" in stem else stem
-        try:
-            file_dt = datetime.strptime(ts_part, "%Y-%m-%d-%H%M%S")
-        except ValueError:
-            continue
-        if session_start <= file_dt <= session_end:
-            matching.append(str(json_file))
-
-    return matching
-
-
-@app.get("/api/session-containers")
-async def get_session_containers(session_path: str = Query(...)):
-    """
-    Return unique container names found in a session's CSV files.
-    The 'Container Name' column is present in all benchmark result CSVs.
-    This is more reliable than scanning JSON files (which may lack container metadata).
-    """
-    session_dir = Path(session_path) if Path(session_path).is_absolute() else ROOT / session_path
-    if not session_dir.exists():
-        return []
-    containers: set[str] = set()
-    for csv_path in sorted(session_dir.rglob("*.csv")):
-        try:
-            with open(csv_path, newline="") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    name = (row.get("Container Name") or "").strip()
-                    if name:
-                        containers.add(name)
-        except Exception:
-            continue
-    return sorted(containers)
-
-
-@app.get("/api/model-selector-results")
-async def api_model_selector_results():
-    """Return the last model-selector JSON results (written by --json-output)."""
-    global _ms_results_path
-    if not _ms_results_path or not Path(_ms_results_path).exists():
-        raise HTTPException(status_code=404, detail="No results available yet")
-    try:
-        with open(_ms_results_path) as f:
-            return json.load(f)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/model-selector")
 async def api_model_selector(body: dict):
     global _ms_results_path
     if mgr.is_running():
-        raise HTTPException(status_code=409, detail="A process is already running")
-
-    container    = body.get("container")
-    process      = body.get("process")
-    process_mode = body.get("process_mode", False)
-    metric       = body.get("metric", "cv")
-    apply_flag   = body.get("apply", False)
-    json_files   = body.get("json_files", [])
-
-    if json_files:
-        first = Path(json_files[0])
-        input_glob = str(first.parent / "*.json")
-    else:
-        input_glob = body.get("input", "output/*.json")
-
-    # Temp file for structured JSON results (displayed in-page)
+        raise HTTPException(409, "A process is already running")
+    container = body.get("container")
+    metric = body.get("metric", "cv")
+    apply_flag = body.get("apply", False)
+    input_glob = body.get("input", "output/*.json")
     tmp = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
     tmp.close()
     _ms_results_path = tmp.name
-
     cmd = [sys.executable, str(TOOLS_DIR / "model_selector.py"),
            "--input", input_glob, "--metric", metric,
            "--json-output", _ms_results_path]
-
-    if process or process_mode:
-        if process:
-            cmd += ["--process", process]
-        else:
-            cmd.append("--process-mode")
-    elif container:
+    if container:
         cmd += ["--container", container]
-
     if apply_flag:
         cmd.append("--apply")
-
     await mgr.start(cmd, label="model-selector")
-    return {"ok": True, "cmd": " ".join(cmd)}
+    return {"ok": True}
 
 
 @app.post("/api/run")
 async def api_run(body: dict):
-    """
-    Invoke a make target.
-
-    Body fields
-    -----------
-    target  : make target (run, run-quick, run-super-quick, run-single, etc.)
-    env     : dict of env var overrides (e.g. {"HTTP_MAX_WORKERS": "50"})
-    server  : container image name for run-single / run-single-super-quick
-    """
-    if mgr.is_running():
-        raise HTTPException(status_code=409, detail="A process is already running")
-
     target = body.get("target", "run")
     env_overrides = body.get("env", {})
     server = body.get("server", "").strip()
-
-    # Valid targets
-    VALID_TARGETS = {
-        "run", "run-all", "run-quick", "run-super-quick",
-        "run-single", "run-single-super-quick",
-        "run-static", "run-dynamic", "run-websocket",
-        "check-health", "test", "validate", "check-tools",
-        "build", "build-test-run", "setup", "init", "install",
-        "clean-results", "clean-build", "clean-env", "clean-all",
-        "clean-build-run", "clean-all-build-run",
-        "clean-port", "clean-benchmarks", "clean-nuclear", "clean-repo",
-        "graph",
-    }
     if target not in VALID_TARGETS:
-        raise HTTPException(status_code=400, detail=f"Unknown target: {target}")
-
+        raise HTTPException(400, f"Unknown target: {target}")
     cmd = ["make", "-C", str(ROOT), target]
     if server:
         cmd.append(f"SERVER={server}")
     for k, v in env_overrides.items():
         cmd.append(f"{k}={v}")
-
     label = target + (f":{server}" if server else "")
-    ok = await job_mgr.submit(cmd, label=label, env=env_overrides if env_overrides else None)
+    ok = await job_mgr.submit(cmd, label=label, env=env_overrides or None)
     if not ok:
-        raise HTTPException(status_code=409, detail="A benchmark job is already running")
-    return {"ok": True, "cmd": " ".join(cmd), "log": str(job_mgr._log_file)}
+        raise HTTPException(409, "A job is already running")
+    return {"ok": True, "label": label, "log": str(job_mgr._log_file)}
 
 
 @app.post("/api/stop")
@@ -975,7 +707,6 @@ async def api_resize_pty(body: dict):
 @app.websocket("/ws/terminal")
 async def ws_terminal(ws: WebSocket):
     await ws.accept()
-    # Register with both managers so output from either reaches the browser
     mgr.add_client(ws)
     job_mgr.add_client(ws)
     try:
@@ -985,9 +716,10 @@ async def ws_terminal(ws: WebSocket):
                 try:
                     msg = json.loads(raw)
                     if msg.get("type") == "input":
-                        mgr.write_stdin(msg["data"])   # only PTY mgr accepts stdin
+                        mgr.write_stdin(msg["data"])
                     elif msg.get("type") == "resize":
-                        mgr.resize_pty(int(msg.get("rows", 24)), int(msg.get("cols", 220)))
+                        mgr.resize_pty(int(msg.get("rows", 24)),
+                                       int(msg.get("cols", 220)))
                 except (json.JSONDecodeError, KeyError):
                     mgr.write_stdin(raw)
             except asyncio.TimeoutError:
@@ -1010,16 +742,15 @@ def main():
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--reload", action="store_true")
     args = parser.parse_args()
-
     cfg = load_config(str(DEFAULT_CONFIG))
     if cfg.has_option("gui", "port"):
         try:
             args.port = int(cfg.get("gui", "port"))
         except ValueError:
             pass
-
-    print(f"GUI server: http://{args.host}:{args.port}")
-    uvicorn.run("tools.gui.server:app", host=args.host, port=args.port, reload=args.reload)
+    print(f"Benchmark GUI: http://{args.host}:{args.port}")
+    uvicorn.run("tools.gui.server:app", host=args.host, port=args.port,
+                reload=args.reload)
 
 
 if __name__ == "__main__":

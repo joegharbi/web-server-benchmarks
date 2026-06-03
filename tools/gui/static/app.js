@@ -1,1207 +1,1512 @@
-/* app.js — Benchmark GUI */
 'use strict';
 
 const $ = id => document.getElementById(id);
+const $$ = sel => document.querySelectorAll(sel);
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+// ─── Chart color palette ────────────────────────────────────────────────
+const COLORS = [
+  '#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#ec4899',
+  '#8b5cf6','#14b8a6','#f97316','#3b82f6','#a855f7','#84cc16',
+  '#e11d48','#0ea5e9','#d946ef','#facc15',
+];
 
-function fmtBytes(b) {
-  if (b == null) return '—';
+// ─── WebSocket x-axis detection (mirrors gui_graph_generator.py) ────────
+const WS_XAXIS_COLUMNS = [
+  'Num Clients','Message Size (KB)','Rate (msg/s)',
+  'Bursts','Duration (s)','Interval (s)',
+];
+const XAXIS_DISPLAY = {
+  'Num Clients':'Number of clients','Message Size (KB)':'Message size (KB)',
+  'Rate (msg/s)':'Rate (msg/s)','Bursts':'Bursts',
+  'Duration (s)':'Duration (s)','Interval (s)':'Interval (s)',
+  'Total Requests':'Total requests',
+};
+
+function safeFloat(v, def = 0) {
+  if (v === null || v === undefined || v === '' || v === 'NaN') return def;
+  const n = parseFloat(v);
+  return isNaN(n) ? def : n;
+}
+
+function detectWsSubtype(name, headers, rows) {
+  const lower = (name || '').toLowerCase();
+  if (lower.includes('_concurrency')) return 'concurrency';
+  if (lower.includes('_payload')) return 'payload';
+  if (lower.includes('_burst')) return 'burst';
+  if (lower.includes('_stream')) return 'stream';
+  if (!rows || !rows.length || !headers.includes('Pattern')) return null;
+  const patterns = new Set(rows.map(r => (r.Pattern || '').trim().toLowerCase()));
+  if (patterns.has('burst') && !patterns.has('stream')) return 'burst';
+  if (patterns.has('stream')) return 'stream';
+  return null;
+}
+
+function wsXaxisColumn(headers, rows, subtype) {
+  if (subtype === 'concurrency' && headers.includes('Num Clients')) return 'Num Clients';
+  if (subtype === 'payload' && headers.includes('Message Size (KB)')) return 'Message Size (KB)';
+  for (const col of WS_XAXIS_COLUMNS) {
+    if (!headers.includes(col)) continue;
+    const vals = rows.map(r => safeFloat(r[col])).filter(v => v !== 0);
+    if (new Set(vals).size > 1) return col;
+  }
+  for (const col of WS_XAXIS_COLUMNS) {
+    if (headers.includes(col)) return col;
+  }
+  return null;
+}
+
+function getNumericColumns(headers, sampleRows) {
+  // Show ALL columns that contain at least one numeric value
+  const skip = new Set(['Container Name', 'Type', 'Test Type', 'Pattern', 'HTTP Max Workers']);
+  return headers.filter(h => {
+    if (skip.has(h)) return false;
+    if (!sampleRows || !sampleRows.length) return true;  // include by default if no rows
+    // Check if any value in this column parses as a number
+    return sampleRows.some(r => {
+      const v = r[h];
+      return v !== null && v !== undefined && v !== '' && !isNaN(parseFloat(v));
+    });
+  });
+}
+
+function formatBytes(b) {
   if (b < 1024) return b + ' B';
-  if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
-  return (b / 1048576).toFixed(1) + ' MB';
+  if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+  return (b / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
-// ─── Theme ──────────────────────────────────────────────────────────────────
-
-const TERM_THEME_DARK  = { background: '#0d0d0d', foreground: '#e2e8f0', cursor: '#4f8ef7', selectionBackground: '#4f8ef740' };
-const TERM_THEME_LIGHT = { background: '#f0f2f5', foreground: '#1a202c', cursor: '#1a202c', selectionBackground: '#1a202c30' };
-
-let _dark = true;
-$('btn-theme').addEventListener('click', () => {
-  _dark = !_dark;
-  document.body.classList.toggle('light', !_dark);
-  $('btn-theme').textContent = _dark ? 'Light' : 'Dark';
-  term.options.theme = _dark ? TERM_THEME_DARK : TERM_THEME_LIGHT;
-});
-
-// ─── Tabs ───────────────────────────────────────────────────────────────────
-
-document.querySelectorAll('.tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-    btn.classList.add('active');
-    $('tab-' + btn.dataset.tab).classList.add('active');
-    if (btn.dataset.tab === 'run')            loadRunContainers();
-    if (btn.dataset.tab === 'results')        loadSessions();
-    if (btn.dataset.tab === 'export')         loadExportSessions();
-    if (btn.dataset.tab === 'model-selector') loadMsSessions();
-  });
-});
-
-// ─── Terminal ────────────────────────────────────────────────────────────────
-
-const term     = new Terminal({ theme: TERM_THEME_DARK, fontSize: 12, scrollback: 3000, cursorBlink: true });
-const fitAddon = new FitAddon.FitAddon();
-term.loadAddon(fitAddon);
-term.open($('terminal'));
-fitAddon.fit();
-
-// Forward keystrokes → subprocess stdin (for sudo password prompts etc.)
-term.onData(data => {
-  if (_ws && _ws.readyState === WebSocket.OPEN) {
-    _ws.send(JSON.stringify({ type: 'input', data }));
-  }
-});
-
-// Forward terminal resize → server PTY
-term.onResize(({ rows, cols }) => {
-  if (_ws && _ws.readyState === WebSocket.OPEN) {
-    _ws.send(JSON.stringify({ type: 'resize', rows, cols }));
-  }
-});
-
-const termWrap  = $('terminal-wrap');
-let _termState  = 'visible';
-
-function setTermState(s) {
-  _termState = s;
-  const strip = $('term-strip');
-  if (s === 'hidden') {
-    termWrap.style.display = 'none';
-    if (strip) strip.style.display = 'flex';
-  } else {
-    termWrap.style.display = '';
-    if (strip) strip.style.display = 'none';
-    termWrap.className = s === 'minimized' ? 'minimized' : '';
-    if (s === 'visible') setTimeout(() => fitAddon.fit(), 60);
-  }
-  $('btn-term-minimize').textContent = s === 'minimized' ? 'Expand ▴' : 'Minimize ▾';
-}
-$('btn-term-minimize').addEventListener('click', () => setTermState(_termState === 'minimized' ? 'visible' : 'minimized'));
-$('btn-term-hide').addEventListener('click',     () => setTermState('hidden'));
-const _termStrip = $('term-strip');
-if (_termStrip) _termStrip.addEventListener('click', () => setTermState('visible'));
-$('btn-term-clear').addEventListener('click',    () => term.clear());
-
-// Drag to resize — works from any part of the header except buttons
-let _dy = 0, _dh = 0;
-$('term-header').addEventListener('mousedown', e => {
-  if (e.target.closest('button')) return;
-  _dy = e.clientY; _dh = termWrap.offsetHeight;
-  const mv = e2 => {
-    if (_termState !== 'visible') return;
-    const h = Math.max(80, _dh - (e2.clientY - _dy));
-    termWrap.style.setProperty('--term-h', h + 'px');
-    fitAddon.fit();
-  };
-  const up = () => { removeEventListener('mousemove', mv); removeEventListener('mouseup', up); };
-  addEventListener('mousemove', mv);
-  addEventListener('mouseup', up);
-});
-
-function tw(text, color) {
-  const c = { cyan: '\x1b[36m', green: '\x1b[32m', yellow: '\x1b[33m', red: '\x1b[31m', reset: '\x1b[0m' };
-  term.write((c[color] || '') + text + (color ? c.reset : ''));
+function formatTime(sec) {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  return [h, m, s].map(v => String(v).padStart(2, '0')).join(':');
 }
 
-let _lastCmd = '';
-$('btn-term-copy').addEventListener('click', () => {
-  if (_lastCmd) navigator.clipboard?.writeText(_lastCmd).catch(() => {});
-});
-
-// ─── WebSocket ───────────────────────────────────────────────────────────────
-
-let _ws;
-let _exitResolvers = [];
-
-function connectWs() {
-  _ws = new WebSocket(`ws://${location.host}/ws/terminal`);
-  _ws.onmessage = e => {
-    const msg = JSON.parse(e.data);
-    if (msg.ping) return;
-    if (msg.stream) {
-      term.write(msg.data);
-    } else if ('exit' in msg) {
-      const ok = msg.exit === 0;
-      tw(`\n— process exited (code ${msg.exit}) —\n`, ok ? 'green' : 'red');
-      setStatus('idle');
-      _stopElapsed();
-      $('term-proc').textContent = '';
-      $('run-status').textContent = '';
-      if (msg.label === 'sudo-auth') {
-        const ss = $('sudo-status');
-        if (ok) {
-          ss.textContent = '✓ Credentials cached — you can now launch benchmarks';
-          ss.style.color = 'var(--green)';
-        } else {
-          ss.textContent = '✗ Authentication failed — try again';
-          ss.style.color = 'var(--red)';
-        }
-        $('btn-sudo-auth').disabled = false;
-      } else {
-        const activeTab = document.querySelector('.tab-btn.active')?.dataset?.tab;
-        if (activeTab === 'results') loadSessions();
-      }
-      enableRunControls();
-      _exitResolvers.splice(0).forEach(fn => fn(msg.exit));
-    }
-  };
-  _ws.onclose = () => setTimeout(connectWs, 1500);
-}
-connectWs();
-
-function waitForExit() {
-  return new Promise(r => _exitResolvers.push(r));
+function formatDate(ts) {
+  if (!ts) return '--';
+  return new Date(ts * 1000).toLocaleString();
 }
 
-// ─── Status ──────────────────────────────────────────────────────────────────
-
-function setStatus(state) {
-  const colors = { idle: 'var(--green)', busy: 'var(--yellow)', error: 'var(--red)' };
-  $('status-dot').style.background = colors[state] || colors.idle;
-  $('status-label').textContent = state;
+function typeTag(type) {
+  const cls = { static: 'tag-static', dynamic: 'tag-dynamic', websocket: 'tag-websocket' };
+  return `<span class="tag ${cls[type] || 'tag-unknown'}">${type}</span>`;
 }
 
-let _elapsedTimer = null;
-
-function _startElapsed(startedAt) {
-  if (_elapsedTimer) clearInterval(_elapsedTimer);
-  function tick() {
-    const secs = Math.floor(Date.now() / 1000 - startedAt);
-    const h = Math.floor(secs / 3600);
-    const m = Math.floor((secs % 3600) / 60);
-    const s = secs % 60;
-    const t = (h ? h + 'h ' : '') + (h || m ? String(m).padStart(2, '0') + 'm ' : '') + String(s).padStart(2, '0') + 's';
-    $('run-status').textContent = 'Running… ' + t;
-  }
-  tick();
-  _elapsedTimer = setInterval(tick, 1000);
+function escHtml(s) {
+  const el = document.createElement('span');
+  el.textContent = s;
+  return el.innerHTML;
 }
 
-function _stopElapsed() {
-  if (_elapsedTimer) { clearInterval(_elapsedTimer); _elapsedTimer = null; }
-}
-
-async function pollStatus() {
-  try {
-    const s = await fetch('/api/status').then(r => r.json());
-    setStatus(s.running ? 'busy' : 'idle');
-    if (s.running) {
-      $('term-proc').textContent = s.label || '';
-      $('btn-stop').disabled = false;
-      $('btn-launch').disabled = true;
-      if (s.started && !_elapsedTimer) _startElapsed(s.started);
-    } else {
-      _stopElapsed();
-    }
-  } catch {}
-  setTimeout(pollStatus, 3000);
-}
-pollStatus();
-
-// ─── Make launcher ───────────────────────────────────────────────────────────
-
-async function launchMake(target, server, envVars) {
-  const body = { target, env: envVars || {} };
-  if (server) body.server = server;
-  const r = await fetch('/api/run', {
-    method: 'POST',
+// ─── API helpers ────────────────────────────────────────────────────────
+async function api(path, opts = {}) {
+  const res = await fetch('/api/' + path, {
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    ...opts,
   });
-  if (!r.ok) throw new Error((await r.json()).detail);
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// SETUP TAB
-// ═══════════════════════════════════════════════════════════════════════════
-
-async function loadSysinfo() {
-  try {
-    const si = await fetch('/api/sysinfo').then(r => r.json());
-    $('si-status').textContent  = 'ready';
-    $('si-cpu').textContent     = `${si.cpu_physical}C/${si.cpu_logical}T`;
-    $('si-mem').textContent     = (si.memory_gb || 0) + ' GB';
-    $('si-os').textContent      = si.os || '—';
-    $('si-gov').textContent     = si.governor || '—';
-    $('si-temp').textContent    = si.temp_current != null ? si.temp_current + '°C' : '—';
-    $('si-scap').textContent    = si.scaphandre || '—';
-    $('si-docker').textContent  = si.docker_ok ? 'ok' : 'not found';
-    $('si-rapl').textContent    = si.rapl ? 'ok' : '—';
-    $('si-filter').textContent  = si.filter || 'none';
-    $('si-runs').textContent    = si.runs || '—';
-    $('si-isolation').textContent = si.isolation || '—';
-  } catch {}
-}
-
-async function loadConfig() {
-  try {
-    const cfg = await fetch('/api/config').then(r => r.json());
-    const g  = (sec, key) => cfg[sec]?.[key] ?? '';
-    const sv = (id, v)  => { const el = $(id); if (el) el.value = v; };
-    const sc = (id, v)  => { const el = $(id); if (el) el.checked = v === 'true' || v === true; };
-    const sr = (name, v) => {
-      const el = document.querySelector(`input[name="${name}"][value="${v}"]`);
-      if (el) el.checked = true;
-    };
-    sr('cfg-isolation', g('isolation', 'level') || 'basic');
-    sv('cfg-runs',          g('measurement', 'runs') || 10);
-    sv('cfg-confidence',    g('measurement', 'confidence') || 0.95);
-    sv('cfg-baseline',      g('measurement', 'baseline_duration_s') || 10);
-    sv('cfg-governor',      g('cpu', 'governor') || 'performance');
-    sc('cfg-turbo',         g('cpu', 'disable_turbo'));
-    sc('cfg-cstates',       g('cpu', 'disable_cstates'));
-    sv('cfg-cpuset',        g('cpu', 'cpuset'));
-    sc('cfg-thp',           g('memory', 'disable_thp'));
-    sc('cfg-swap',          g('memory', 'check_swap'));
-    sc('cfg-dropcaches',    g('memory', 'drop_caches'));
-    sv('cfg-brightness',    g('display', 'brightness'));
-    sc('cfg-screensaver',   g('display', 'disable_screensaver'));
-    sv('cfg-services',      g('services', 'stop_before_run'));
-    sv('cfg-cooltemp',      g('thermal', 'cooldown_temp_c'));
-    sv('cfg-coolcpu',       g('thermal', 'cooldown_cpu_pct'));
-    sv('cfg-cooltimeout',   g('thermal', 'cooldown_timeout_s'));
-    sv('cfg-filter-model',  g('filter', 'model') || 'none');
-    sv('cfg-contamination', g('filter', 'contamination') || 0.10);
-    sv('cfg-iqr-factor',    g('filter', 'iqr_factor') || 1.5);
-    sv('cfg-hampel-win',    g('filter', 'hampel_window') || 7);
-    sv('cfg-hampel-thr',    g('filter', 'hampel_threshold') || 1.5);
-    sv('cfg-dbscan-eps',    g('filter', 'dbscan_eps') || 150);
-    sv('cfg-dbscan-mp',     g('filter', 'dbscan_minpts') || 10);
-    sv('cfg-lof-n',         g('filter', 'lof_neighbors') || 20);
-    sv('cfg-xrun-model',    g('cross_run_filter', 'model') || 'iqr');
-    sv('cfg-xrun-factor',   g('cross_run_filter', 'factor') || 1.5);
-    // Email notifications
-    sv('cfg-email-from', g('notifications', 'email_from') || 'benchmark@localhost');
-    sv('cfg-email-to',   g('notifications', 'email_to')   || '');
-    const notifyOn = g('notifications', 'notify_on') || 'always';
-    const noEl = $('cfg-notify-on');
-    if (noEl) [...noEl.options].forEach(o => { if (o.value === notifyOn) o.selected = true; });
-    // Reflect in sysinfo
-    $('si-filter').textContent    = g('filter', 'model') || 'none';
-    $('si-runs').textContent      = g('measurement', 'runs') || '—';
-    $('si-isolation').textContent = g('isolation', 'level') || '—';
-  } catch {}
-}
-
-$('btn-save-config').addEventListener('click', async () => {
-  const rad = document.querySelector('input[name="cfg-isolation"]:checked');
-  const body = {
-    isolation:        { level: rad?.value || 'basic' },
-    measurement:      { runs: $('cfg-runs').value, confidence: $('cfg-confidence').value, baseline_duration_s: $('cfg-baseline').value },
-    cpu:              { governor: $('cfg-governor').value, disable_turbo: $('cfg-turbo').checked, disable_cstates: $('cfg-cstates').checked, cpuset: $('cfg-cpuset').value },
-    memory:           { disable_thp: $('cfg-thp').checked, check_swap: $('cfg-swap').checked, drop_caches: $('cfg-dropcaches').checked },
-    display:          { brightness: $('cfg-brightness').value, disable_screensaver: $('cfg-screensaver').checked },
-    services:         { stop_before_run: $('cfg-services').value },
-    thermal:          { cooldown_temp_c: $('cfg-cooltemp').value, cooldown_cpu_pct: $('cfg-coolcpu').value, cooldown_timeout_s: $('cfg-cooltimeout').value },
-    filter:           { model: $('cfg-filter-model').value, contamination: $('cfg-contamination').value, iqr_factor: $('cfg-iqr-factor').value, hampel_window: $('cfg-hampel-win').value, hampel_threshold: $('cfg-hampel-thr').value, dbscan_eps: $('cfg-dbscan-eps').value, dbscan_minpts: $('cfg-dbscan-mp').value, lof_neighbors: $('cfg-lof-n').value },
-    cross_run_filter: { model: $('cfg-xrun-model').value, factor: $('cfg-xrun-factor').value },
-    notifications: {
-      email_from: $('cfg-email-from').value.trim() || 'benchmark@localhost',
-      email_to:   $('cfg-email-to').value.trim(),
-      notify_on:  $('cfg-notify-on').value,
-    },
-  };
-  try {
-    await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    const s = $('cfg-save-status'); s.textContent = 'Saved.'; s.style.color = 'var(--green)';
-    setTimeout(() => s.textContent = '', 2500);
-    loadConfig();
-  } catch {
-    const s = $('cfg-save-status'); s.textContent = 'Save failed.'; s.style.color = 'var(--red)';
+  if (!res.ok) {
+    const detail = await res.text().catch(() => res.statusText);
+    throw new Error(detail);
   }
-});
-
-$('btn-reload-sysinfo').addEventListener('click', () => { loadSysinfo(); loadConfig(); });
-
-$('btn-profiler').addEventListener('click', async () => {
-  setTermState('visible');
-  setStatus('busy');
-  tw('\n[GUI] Running profiler…\n', 'cyan');
-  try {
-    const r = await fetch('/api/profile', { method: 'POST' });
-    if (!r.ok) tw('[ERROR] ' + (await r.json()).detail + '\n', 'red');
-  } catch (e) { tw('[ERROR] ' + e + '\n', 'red'); }
-});
-
-// ═══════════════════════════════════════════════════════════════════════════
-// RUN TAB
-// ═══════════════════════════════════════════════════════════════════════════
-
-// Full HTTP request levels as used by run_benchmarks.sh
-const HTTP_LEVELS = {
-  full:       [100, 1000, 5000, 8000, 10000, 15000, 20000, 30000, 40000, 50000, 60000, 70000, 80000],
-  quick:      [1000, 5000, 10000],
-  superquick: [1000],
-};
-
-// Make targets — names and descriptions mirror the Makefile exactly
-const TARGETS = [
-  { value: 'run-super-quick',        name: 'Super Quick',      cmd: 'make run-super-quick',
-    desc: 'All containers · 1 HTTP level + 1 WS burst/stream', levels: 'superquick', needsServer: false },
-  { value: 'run-quick',              name: 'Quick',            cmd: 'make run-quick',
-    desc: 'All containers · 3 HTTP levels + quick WS',         levels: 'quick',      needsServer: false },
-  { value: 'run',                    name: 'Full',             cmd: 'make run',
-    desc: 'All containers · 13 HTTP levels + full WS',         levels: 'full',       needsServer: false },
-  { value: 'run-static',             name: 'Static only',      cmd: 'make run-static',
-    desc: 'Static containers · 13 HTTP levels',                levels: 'full',       needsServer: false },
-  { value: 'run-dynamic',            name: 'Dynamic only',     cmd: 'make run-dynamic',
-    desc: 'Dynamic containers · 13 HTTP levels',               levels: 'full',       needsServer: false },
-  { value: 'run-websocket',          name: 'WebSocket only',   cmd: 'make run-websocket',
-    desc: 'WS containers · burst · stream · concurrency · payload',
-    levels: 'ws',         needsServer: false },
-  { value: 'run-single',             name: 'Single (full)',    cmd: 'make run-single SERVER=…',
-    desc: 'One container · full levels for its type',          levels: 'full',       needsServer: true  },
-  { value: 'run-single-super-quick', name: 'Single (quick)',   cmd: 'make run-single-super-quick SERVER=…',
-    desc: 'One container · 1 request level (super-quick)',     levels: 'superquick', needsServer: true  },
-];
-
-let _selectedTarget = TARGETS[0];
-let _containers     = [];
-
-function buildTargetGrid() {
-  const grid = $('target-grid');
-  grid.innerHTML = '';
-  TARGETS.forEach(t => {
-    const btn = document.createElement('button');
-    btn.className = 'target-card' + (t.value === _selectedTarget.value ? ' selected' : '');
-    btn.innerHTML = `<div class="tc-name">${t.name}</div><div class="tc-cmd">${t.cmd}</div><div class="tc-desc">${t.desc}</div>`;
-    btn.addEventListener('click', () => { _selectedTarget = t; buildTargetGrid(); updateRunPreview(); });
-    grid.appendChild(btn);
-  });
+  return res.json();
 }
 
-function updateRunPreview() {
-  const t = _selectedTarget;
-  $('single-wrap').style.display = t.needsServer ? '' : 'none';
+function apiPost(path, body = {}) {
+  return api(path, { method: 'POST', body: JSON.stringify(body) });
+}
 
-  // Payload chips
-  const chips = $('run-chips');
-  const wrap  = $('run-payload-wrap');
-  if (t.levels === 'ws') {
-    wrap.style.display = '';
-    chips.innerHTML = `
-      <span class="p-chip">5 clients</span>
-      <span class="p-chip">50 clients</span>
-      <span class="p-chip">100 clients</span>
-      <span class="p-chip" style="margin-left:8px;font-style:italic">burst · stream · concurrency · payload</span>`;
-  } else if (t.levels) {
-    wrap.style.display = '';
-    chips.innerHTML = HTTP_LEVELS[t.levels].map(n => `<span class="p-chip">${n.toLocaleString()}</span>`).join('');
-  } else {
-    wrap.style.display = 'none';
-  }
+// ─── Flash messages ─────────────────────────────────────────────────────
+function flash(tabId, msg, type = 'ok') {
+  const el = $('flash-' + tabId);
+  if (!el) return;
+  el.className = `flash show flash-${type}`;
+  el.textContent = msg;
+  clearTimeout(el._timer);
+  el._timer = setTimeout(() => { el.classList.remove('show'); }, 5000);
+}
 
-  // Summary line
-  const st = _containers.filter(c => c.type === 'static').length;
-  const dy = _containers.filter(c => c.type === 'dynamic').length;
-  const ws = _containers.filter(c => c.type === 'websocket').length;
-  let summary = '';
-  if (_containers.length) {
-    if      (t.value.includes('static'))    summary = `${st} static container${st !== 1 ? 's' : ''}`;
-    else if (t.value.includes('dynamic'))   summary = `${dy} dynamic container${dy !== 1 ? 's' : ''}`;
-    else if (t.value.includes('websocket')) summary = `${ws} WebSocket container${ws !== 1 ? 's' : ''}`;
-    else if (t.needsServer)                 summary = 'Selected container only';
-    else                                    summary = `${st} static + ${dy} dynamic + ${ws} WebSocket`;
-    if (t.levels && t.levels !== 'ws' && !t.needsServer) {
-      summary += ` × ${HTTP_LEVELS[t.levels].length} request level${HTTP_LEVELS[t.levels].length !== 1 ? 's' : ''}`;
+// ═══════════════════════════════════════════════════════════════════════
+//  APP — single global namespace
+// ═══════════════════════════════════════════════════════════════════════
+const App = {
+  // state
+  containers: [],
+  sessions: [],
+  selectedSession: null,
+  selectedFiles: [],
+  csvCache: {},
+  queue: [],
+  queueRunning: false,
+  chart: null,
+  browseCallback: null,
+  browseCurrent: '.',
+  confirmAction: null,
+  elapsedTimer: null,
+  elapsedStart: 0,
+
+  // ─── Unified paths (synced across tabs, persisted in localStorage) ──
+  getBenchDir() {
+    return localStorage.getItem('bench-gui-bench-dir') || 'benchmarks';
+  },
+  setBenchDir(v) {
+    localStorage.setItem('bench-gui-bench-dir', v || 'benchmarks');
+    this.syncBenchDir();
+  },
+  getResultsDir() {
+    return localStorage.getItem('bench-gui-results-dir') || 'results';
+  },
+  setResultsDir(v) {
+    localStorage.setItem('bench-gui-results-dir', v || 'results');
+    this.syncResultsDir();
+  },
+  syncBenchDir() {
+    const val = this.getBenchDir();
+    // Sync all bench-dir inputs across tabs
+    for (const id of ['env-bench-dir', 'containers-bench-dir']) {
+      if ($(id)) $(id).value = val;
     }
-  }
-  $('run-summary').textContent = summary;
-
-  // Command preview
-  let cmd = 'make ' + t.value;
-  if (t.needsServer) {
-    const server = $('run-single-cont')?.value || '';
-    if (server) cmd += ' SERVER=' + server;
-  }
-  const envStr = buildEnvString();
-  if (envStr) cmd = envStr + ' ' + cmd;
-  _lastCmd = 'make ' + t.value + (t.needsServer && $('run-single-cont')?.value ? ' SERVER=' + $('run-single-cont').value : '');
-  $('run-cmd-preview').textContent = '$ ' + cmd;
-}
-
-function buildEnvVars() {
-  const env = {};
-  const bd = $('env-bench-dir')?.value.trim();
-  const w  = $('env-http-workers')?.value.trim();
-  const p  = $('env-host-port')?.value.trim();
-  const q  = $('env-quiet')?.value;
-  const sw = $('env-startup-wait')?.value.trim();
-  const hr = $('env-health-retries')?.value.trim();
-  const hb = $('env-heartbeat')?.value.trim();
-  if (bd) env['BENCH_DIR']             = bd;
-  if (w)  env['HTTP_MAX_WORKERS']      = w;
-  if (p)  env['HOST_PORT']             = p;
-  if (q)  env['BENCH_MEASURE_QUIET']   = q;
-  if (sw) env['MEASURE_STARTUP_WAIT']  = sw;
-  if (hr) env['MEASURE_HEALTH_RETRIES']= hr;
-  if (hb) env['MEASURE_HEARTBEAT_SEC'] = hb;
-  return env;
-}
-
-function buildEnvString() {
-  return Object.entries(buildEnvVars()).map(([k,v]) => `${k}=${v}`).join(' ');
-}
-
-async function loadRunContainers() {
-  const el = $('run-containers');
-  try {
-    const benchDir = $('env-bench-dir')?.value.trim();
-    const url = '/api/containers' + (benchDir ? '?bench_dir=' + encodeURIComponent(benchDir) : '');
-    _containers = await fetch(url).then(r => r.json());
-    if (!_containers.length) {
-      el.innerHTML = '<span class="muted">No containers found. Add Dockerfiles under <code>benchmarks/{type}/{name}/</code>.</span>';
-      return;
+    if ($('cs-benchdir')) $('cs-benchdir').textContent = val;
+  },
+  syncResultsDir() {
+    const val = this.getResultsDir();
+    if ($('env-results-dir')) $('env-results-dir').value = val;
+    if ($('results-root-dir')) $('results-root-dir').value = val;
+    if ($('cs-resultsdir')) $('cs-resultsdir').textContent = val;
+  },
+  initPaths() {
+    this.syncBenchDir();
+    this.syncResultsDir();
+    // Sync on change from any input
+    for (const id of ['env-bench-dir', 'containers-bench-dir']) {
+      if ($(id)) $(id).addEventListener('change', () => this.setBenchDir($(id).value));
     }
-    const st = _containers.filter(c => c.type === 'static').length;
-    const dy = _containers.filter(c => c.type === 'dynamic').length;
-    const ws = _containers.filter(c => c.type === 'websocket').length;
-    el.innerHTML = `
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-        <span class="badge badge-s">${st} static</span>
-        <span class="badge badge-d">${dy} dynamic</span>
-        <span class="badge badge-w">${ws} websocket</span>
-        <span class="muted" style="margin-left:4px">${_containers.length} total</span>
-      </div>
-      <div class="cont-list" style="max-height:160px;overflow-y:auto">
-        ${_containers.map(c => `
-          <div class="cont-item">
-            <span class="badge badge-${c.type[0]}">${c.type[0].toUpperCase()}</span>
-            <span class="ci-name">${c.name}</span>
-          </div>`).join('')}
-      </div>`;
-
-    const sel = $('run-single-cont');
-    sel.innerHTML = _containers.map(c => `<option value="${c.name}">${c.name} (${c.type})</option>`).join('');
-    sel.addEventListener('change', updateRunPreview);
-    const qSel = $('q-server');
-    if (qSel) {
-      const qCur = qSel.value;
-      qSel.innerHTML = '<option value="">— any / not applicable —</option>' +
-        _containers.map(c => `<option value="${c.name}">${c.name} (${c.type})</option>`).join('');
-      if (qCur) qSel.value = qCur;
+    for (const id of ['env-results-dir', 'results-root-dir']) {
+      if ($(id)) $(id).addEventListener('change', () => this.setResultsDir($(id).value));
     }
+  },
 
-    buildTargetGrid();
-    updateRunPreview();
-  } catch {
-    el.textContent = 'Failed to load containers.';
-  }
-}
+  // ─── Init ───────────────────────────────────────────────────────────
+  init() {
+    this.initTheme();
+    this.initPaths();
+    this.initTabs();
+    this.initTerminal();
+    this.initTerminalResize();
+    this.initTargetWatcher();
+    this.initNotifyEmail();
+    this.loadDashboard();
+    this.pollStatus();
+  },
 
-function enableRunControls() {
-  $('btn-launch').disabled = false;
-  $('btn-stop').disabled   = true;
-}
+  // ─── Theme ──────────────────────────────────────────────────────────
+  initTheme() {
+    const saved = localStorage.getItem('bench-gui-theme') || 'dark';
+    this.applyTheme(saved);
+  },
 
-// ── Sudo auth ────────────────────────────────────────────────────────────────
+  toggleTheme() {
+    const current = document.documentElement.getAttribute('data-theme') || 'dark';
+    const next = current === 'dark' ? 'light' : 'dark';
+    this.applyTheme(next);
+    localStorage.setItem('bench-gui-theme', next);
+  },
 
-$('btn-sudo-auth').addEventListener('click', async () => {
-  if (mgr_running()) return;
-  setTermState('visible');
-  setTimeout(() => term.focus(), 80);
-  tw('\n[GUI] sudo -v  — type your password below, then press Enter\n', 'yellow');
-  $('sudo-status').textContent = 'Waiting for password…';
-  $('sudo-status').style.color = 'var(--yellow)';
-  $('btn-sudo-auth').disabled = true;
-  try {
-    const r = await fetch('/api/sudo-auth', { method: 'POST' });
-    if (!r.ok) {
-      tw('[ERROR] ' + (await r.json()).detail + '\n', 'red');
-      $('sudo-status').textContent = 'Failed.';
-      $('sudo-status').style.color = 'var(--red)';
-      $('btn-sudo-auth').disabled = false;
+  applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    $('theme-toggle').innerHTML = theme === 'dark' ? '&#9790;' : '&#9728;';
+    // Update xterm theme if terminal exists
+    if (this.term) {
+      const isDark = theme === 'dark';
+      this.term.options.theme = {
+        background: isDark ? '#0f1117' : '#ffffff',
+        foreground: isDark ? '#d1d5db' : '#1f2937',
+        cursor: isDark ? '#818cf8' : '#6366f1',
+        selectionBackground: isDark ? 'rgba(99,102,241,0.3)' : 'rgba(99,102,241,0.2)',
+      };
     }
-    // Result shown via WebSocket exit message
-  } catch (e) {
-    tw('[ERROR] ' + e + '\n', 'red');
-    $('btn-sudo-auth').disabled = false;
-  }
-});
+  },
 
-function mgr_running() {
-  return $('btn-launch').disabled && !$('btn-stop').disabled;
-}
-
-// Re-render command preview when env fields change
-['env-bench-dir','env-http-workers','env-host-port','env-quiet','env-startup-wait','env-health-retries','env-heartbeat']
-  .forEach(id => { const el = $(id); if (el) el.addEventListener('input', updateRunPreview); });
-// Reload container list when BENCH_DIR changes (debounced)
-let _benchDirTimer = null;
-const _benchDirEl = $('env-bench-dir');
-if (_benchDirEl) _benchDirEl.addEventListener('input', () => {
-  clearTimeout(_benchDirTimer);
-  _benchDirTimer = setTimeout(loadRunContainers, 600);
-});
-
-$('btn-launch').addEventListener('click', async () => {
-  const t = _selectedTarget;
-  const server = t.needsServer ? ($('run-single-cont')?.value || '') : '';
-  const envVars = buildEnvVars();
-  $('btn-launch').disabled = true;
-  $('btn-stop').disabled   = false;
-  setStatus('busy');
-  setTermState('visible');
-  setTimeout(() => term.focus(), 80);
-  const displayCmd = 'make ' + t.value + (server ? ' SERVER=' + server : '');
-  _lastCmd = displayCmd;
-  $('run-cmd-preview').textContent = '$ ' + (buildEnvString() ? buildEnvString() + ' ' : '') + displayCmd;
-  tw('\n[GUI] ' + displayCmd + '\n', 'cyan');
-  tw('[INFO] Benchmark runs as a detached job — the GUI stays responsive.\n', 'yellow');
-  tw('[INFO] Output is streamed from the log file below.\n', 'yellow');
-  $('run-status').textContent = 'Running…';
-  $('term-proc').textContent  = t.value;
-  try {
-    const r = await fetch('/api/run', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ target: t.value, server: server || undefined, env: envVars }),
-    });
-    if (!r.ok) throw new Error((await r.json()).detail);
-    const data = await r.json();
-    if (data.log) tw('[LOG] ' + data.log + '\n', 'cyan');
-  } catch (e) {
-    tw('[ERROR] ' + e.message + '\n', 'red');
-    enableRunControls();
-    setStatus('idle');
-  }
-});
-
-// Utility buttons (init, setup, build, validate, check-health, test, etc.)
-document.querySelectorAll('.util-btn').forEach(btn => {
-  btn.addEventListener('click', async () => {
-    const target = btn.dataset.target;
-    if (!target) return;
-    const confirmed = ['clean-results','clean-build','clean-env'].includes(target)
-      ? confirm('Run: make ' + target + '?') : true;
-    if (!confirmed) return;
-    const env = {};
-    if (target === 'clean-port') {
-      const port = $('util-port')?.value?.trim();
-      if (!port) { tw('\n[ERROR] Enter a port number before running clean-port\n', 'red'); return; }
-      env.PORT = port;
-    }
-    const cmdLabel = 'make ' + target + (env.PORT ? ' PORT=' + env.PORT : '');
-    setTermState('visible');
-    setStatus('busy');
-    tw('\n[GUI] ' + cmdLabel + '\n', 'cyan');
-    $('term-proc').textContent = target;
-    try {
-      const r = await fetch('/api/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target, env }),
+  // ─── Tabs ───────────────────────────────────────────────────────────
+  initTabs() {
+    for (const btn of $$('.tab-btn')) {
+      btn.addEventListener('click', () => {
+        $$('.tab-btn').forEach(b => b.classList.remove('active'));
+        $$('.tab-panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        $('tab-' + btn.dataset.tab).classList.add('active');
+        this.onTabActivate(btn.dataset.tab);
       });
-      if (!r.ok) tw('[ERROR] ' + (await r.json()).detail + '\n', 'red');
-    } catch (e) { tw('[ERROR] ' + e + '\n', 'red'); }
-  });
-});
+    }
+  },
 
-$('btn-stop').addEventListener('click', async () => {
-  await fetch('/api/stop', { method: 'POST' });
-  $('btn-stop').disabled = true;
-});
+  onTabActivate(tab) {
+    if (tab === 'config') this.loadConfig();
+    if (tab === 'containers') this.loadContainers();
+    if (tab === 'run') this.loadContainersForRun();
+    if (tab === 'results') this.loadSessions();
+    if (tab === 'utilities') this.loadLogs();
+  },
 
-// ── Queue ────────────────────────────────────────────────────────────────────
-
-let _queue = [], _qRunning = false;
-
-$('btn-q-add').addEventListener('click', () => {
-  _queue.push({ target: $('q-target').value, server: $('q-server').value.trim(), state: null });
-  renderQueue();
-});
-$('btn-q-clear').addEventListener('click', () => { _queue = []; renderQueue(); });
-
-function renderQueue() {
-  const list = $('queue-list');
-  $('btn-q-run').disabled = _qRunning || !_queue.length;
-  if (!_queue.length) {
-    list.innerHTML = '<span class="muted">Queue is empty.</span>';
-    return;
-  }
-  list.innerHTML = '';
-  _queue.forEach((e, i) => {
-    const d = document.createElement('div');
-    d.className = 'q-item' + (e.state ? ' ' + e.state : '');
-    const cmd = 'make ' + e.target + (e.server ? ' SERVER=' + e.server : '');
-    d.innerHTML = `<span class="qi">${i + 1}</span><span class="qc">${cmd}</span>
-      <span class="qs">${e.state === 'running' ? '⟳' : e.state === 'done' ? '✓' : e.state === 'failed' ? '✗' : ''}</span>
-      <button class="qr" data-i="${i}">×</button>`;
-    d.querySelector('.qr').addEventListener('click', ev => {
-      if (_qRunning) return;
-      _queue.splice(+ev.target.dataset.i, 1);
-      renderQueue();
+  // ─── Terminal (xterm.js + WebSocket) ────────────────────────────────
+  initTerminal() {
+    const isDark = (document.documentElement.getAttribute('data-theme') || 'dark') === 'dark';
+    this.term = new Terminal({
+      theme: {
+        background: isDark ? '#0f1117' : '#ffffff',
+        foreground: isDark ? '#d1d5db' : '#1f2937',
+        cursor: isDark ? '#818cf8' : '#6366f1',
+        selectionBackground: isDark ? 'rgba(99,102,241,0.3)' : 'rgba(99,102,241,0.2)',
+      },
+      fontFamily: "'JetBrains Mono','Fira Code','Cascadia Code',monospace",
+      fontSize: 13,
+      cursorBlink: true,
+      scrollback: 5000,
     });
-    list.appendChild(d);
-  });
-}
+    // Robust FitAddon import — handle different CDN export shapes
+    const FA = window.FitAddon || window.FitAddon_ || {};
+    const FitCls = FA.FitAddon || FA;
+    this.fitAddon = new FitCls();
+    this.term.loadAddon(this.fitAddon);
+    this.term.open($('xterm-container'));
+    // Re-fit terminal on window resize
+    window.addEventListener('resize', () => this.termFit());
 
-$('btn-q-run').addEventListener('click', async () => {
-  if (_qRunning || !_queue.length) return;
-  _qRunning = true;
-  $('btn-q-run').disabled = true;
-  setTermState('visible');
-  for (let i = 0; i < _queue.length; i++) {
-    const e = _queue[i];
-    e.state = 'running'; renderQueue();
-    $('q-status').textContent = `${i + 1}/${_queue.length}: ${e.target}`;
-    setStatus('busy');
-    const cmd = 'make ' + e.target + (e.server ? ' SERVER=' + e.server : '');
-    tw(`\n[QUEUE ${i + 1}/${_queue.length}] ${cmd}\n`, 'cyan');
-    _lastCmd = cmd;
+    this.term.onData(data => {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ type: 'input', data }));
+      }
+    });
+
+    this.connectWs();
+  },
+
+  connectWs() {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    this.ws = new WebSocket(`${proto}//${location.host}/ws/terminal`);
+
+    this.ws.onopen = () => {
+      this.termFit();
+    };
+
+    this.ws.onmessage = (ev) => {
+      try {
+        const msg = JSON.parse(ev.data);
+        if (msg.ping) return;
+        if (msg.stream === 'stdout' || msg.stream === 'stderr') {
+          this.term.write(msg.data);
+          this.termShow();
+        }
+        if (msg.exit !== undefined) {
+          const code = msg.exit;
+          const color = code === 0 ? '\x1b[32m' : '\x1b[31m';
+          this.term.write(`\r\n${color}[${msg.label || 'process'}] exited with code ${code}\x1b[0m\r\n`);
+          this.onProcessExit(msg.label, code);
+        }
+      } catch (_) {}
+    };
+
+    this.ws.onclose = () => {
+      setTimeout(() => this.connectWs(), 3000);
+    };
+  },
+
+  termFit() {
     try {
-      await launchMake(e.target, e.server || '');
-      const code = await waitForExit();
-      e.state = code === 0 ? 'done' : 'failed';
+      this.fitAddon.fit();
+      const dims = this.fitAddon.proposeDimensions();
+      if (dims && this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ type: 'resize', rows: dims.rows, cols: dims.cols }));
+      }
+    } catch (_) {}
+  },
+
+  termShow() {
+    const strip = $('terminal-strip');
+    if (!strip.classList.contains('visible')) {
+      this.termToggle('visible');
+    }
+  },
+
+  termClickToggle() {
+    const strip = $('terminal-strip');
+    if (strip.classList.contains('visible')) {
+      this.termToggle('minimized');
+    } else {
+      this.termToggle('visible');
+    }
+  },
+
+  termToggle(state) {
+    const strip = $('terminal-strip');
+    strip.classList.remove('visible', 'minimized', 'hidden');
+    strip.classList.add(state);
+    const btn = $('t-btn-toggle');
+    if (state === 'visible') {
+      btn.innerHTML = '&#9660;';
+      btn.title = 'Hide terminal';
+      setTimeout(() => this.termFit(), 50);
+    } else {
+      btn.innerHTML = '&#9650;';
+      btn.title = 'Show terminal';
+    }
+  },
+
+  termClear() {
+    this.term.clear();
+  },
+
+  initTerminalResize() {
+    const handle = $('terminal-resize');
+    const strip = $('terminal-strip');
+    let startY, startH;
+
+    handle.addEventListener('mousedown', (e) => {
+      startY = e.clientY;
+      startH = strip.offsetHeight;
+      strip.style.transition = 'none';
+
+      const onMove = (e2) => {
+        const newH = Math.max(80, startH - (e2.clientY - startY));
+        strip.style.height = newH + 'px';
+      };
+      const onUp = () => {
+        strip.style.transition = '';
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        this.termFit();
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  },
+
+  // ─── Target watcher (show/hide server selector) ────────────────────
+  initTargetWatcher() {
+    $('run-target').addEventListener('change', () => {
+      const target = $('run-target').value;
+      const needServer = target.includes('single');
+      $('server-group').style.display = needServer ? '' : 'none';
+    });
+    // Auto-replot when metric or plot type changes
+    $('chart-metric').addEventListener('change', () => {
+      if (this.selectedFiles.length && $('chart-metric').value) this.plotChart();
+    });
+    $('chart-type').addEventListener('change', () => {
+      if (this.selectedFiles.length && $('chart-metric').value) this.plotChart();
+    });
+  },
+
+  // ─── Email notification persistence ───────────────────────────────
+  initNotifyEmail() {
+    const saved = localStorage.getItem('bench-gui-email') || '';
+    const enabled = localStorage.getItem('bench-gui-email-enabled') === 'true';
+    if ($('notify-email')) $('notify-email').value = saved;
+    if ($('notify-enabled')) $('notify-enabled').checked = enabled;
+    // Auto-save on change
+    if ($('notify-email')) {
+      $('notify-email').addEventListener('change', () => {
+        localStorage.setItem('bench-gui-email', $('notify-email').value);
+      });
+    }
+    if ($('notify-enabled')) {
+      $('notify-enabled').addEventListener('change', () => {
+        localStorage.setItem('bench-gui-email-enabled', $('notify-enabled').checked);
+      });
+    }
+  },
+
+  // ─── Status polling ────────────────────────────────────────────────
+  async pollStatus() {
+    try {
+      const st = await api('status');
+      const dotJob = $('dot-job');
+      const chipText = $('chip-job-text');
+      if (st.running) {
+        dotJob.className = 'dot ok';
+        chipText.textContent = st.label || 'Running';
+        $('terminal-label').textContent = st.label || '';
+        $('btn-run').disabled = true;
+        $('btn-stop').disabled = false;
+        $('run-status').style.display = '';
+        $('run-status-label').textContent = st.label || 'Running...';
+        if (!this.elapsedTimer) this.startElapsed(st.started);
+      } else {
+        dotJob.className = 'dot';
+        chipText.textContent = 'Idle';
+        $('btn-run').disabled = false;
+        $('btn-stop').disabled = true;
+        $('run-status').style.display = 'none';
+        this.stopElapsed();
+      }
+    } catch (_) {}
+    setTimeout(() => this.pollStatus(), 3000);
+  },
+
+  startElapsed(started) {
+    this.elapsedStart = started || (Date.now() / 1000);
+    this.stopElapsed();
+    const tick = () => {
+      const sec = Math.floor(Date.now() / 1000 - this.elapsedStart);
+      $('run-elapsed').textContent = formatTime(sec);
+    };
+    tick();
+    this.elapsedTimer = setInterval(tick, 1000);
+  },
+
+  stopElapsed() {
+    if (this.elapsedTimer) {
+      clearInterval(this.elapsedTimer);
+      this.elapsedTimer = null;
+    }
+  },
+
+  onProcessExit(label, code) {
+    $('btn-run').disabled = false;
+    $('btn-stop').disabled = true;
+    $('run-status').style.display = 'none';
+    $('terminal-label').textContent = '';
+    this.stopElapsed();
+
+    if (this.queueRunning) {
+      this.advanceQueue(code);
+    }
+  },
+
+  // ═══ DASHBOARD ════════════════════════════════════════════════════
+  async loadDashboard() {
+    try {
+      const info = await api('sysinfo');
+
+      $('si-cpu').textContent = info.cpu_model || '--';
+      $('si-cores').textContent = `${info.cpu_physical}P / ${info.cpu_logical}L`;
+      $('si-mem').textContent = info.memory_gb ? info.memory_gb + ' GB' : '--';
+      $('si-os').textContent = info.os || '--';
+      $('si-kernel').textContent = info.kernel || '--';
+      $('si-host').textContent = info.hostname || '--';
+      $('si-gov').textContent = info.governor || '--';
+      $('si-temp').textContent = info.temp_current ? info.temp_current + ' C' : '--';
+
+      $('chip-host-text').textContent = info.hostname || 'localhost';
+
+      // Docker chip
+      const dotDocker = $('dot-docker');
+      dotDocker.className = 'dot ' + (info.docker_ok ? 'ok' : 'err');
+
+      // Temp chip
+      const dotTemp = $('dot-temp');
+      const tempVal = info.temp_current;
+      if (tempVal) {
+        $('chip-temp-text').textContent = tempVal + ' C';
+        dotTemp.className = 'dot ' + (tempVal < 60 ? 'ok' : tempVal < 80 ? 'warn' : 'err');
+      }
+
+      // Checklist
+      const check = (id, ok) => {
+        $(id).innerHTML = ok ? '&#9989;' : '&#10060;';
+      };
+      check('chk-venv', info.venv_ok);
+      check('chk-docker', info.docker_ok);
+      check('chk-scaph', !!info.scaphandre);
+      check('chk-rapl', !!info.rapl);
+      check('chk-config', info.config_exists);
+
+      // Config summary
+      $('cs-isolation').textContent = info.isolation || '--';
+      $('cs-runs').textContent = info.runs || '--';
+      $('cs-filter').textContent = info.filter || '--';
+      $('cs-benchdir').textContent = this.getBenchDir();
+      $('cs-resultsdir').textContent = this.getResultsDir();
+
     } catch (err) {
-      tw('[ERROR] ' + err.message + '\n', 'red');
-      e.state = 'failed';
-    }
-    renderQueue();
-  }
-  _qRunning = false;
-  renderQueue();
-  const ok = _queue.filter(e => e.state === 'done').length;
-  const fail = _queue.filter(e => e.state === 'failed').length;
-  $('q-status').textContent = `Done. ${ok} succeeded, ${fail} failed.`;
-  tw(`\n[QUEUE] Complete. ${ok} succeeded, ${fail} failed.\n`, ok === _queue.length ? 'green' : 'yellow');
-  setStatus('idle');
-});
-
-// ═══════════════════════════════════════════════════════════════════════════
-// RESULTS TAB
-// ═══════════════════════════════════════════════════════════════════════════
-
-let _sessions      = [];
-let _activeSession = null;
-let _activeFile    = null;
-let _currentRows   = [];
-
-async function loadSessions() {
-  const list = $('session-list');
-  list.innerHTML = '<span class="muted">Loading…</span>';
-  try {
-    _sessions = await fetch('/api/results/sessions').then(r => r.json());
-    if (!_sessions.length) { list.innerHTML = '<span class="muted">No sessions yet. Run a benchmark first.</span>'; return; }
-    list.innerHTML = '';
-    _sessions.forEach(s => {
-      const d = document.createElement('div');
-      d.className = 'sess-item';
-      d.innerHTML = `<div class="sn">${s.name}</div><div class="st">${(s.types || []).join(' · ')}</div>`;
-      d.addEventListener('click', () => selectSession(s, d));
-      list.appendChild(d);
-    });
-    selectSession(_sessions[0], list.firstChild);
-  } catch { list.innerHTML = '<span class="muted">Failed to load sessions.</span>'; }
-}
-
-async function selectSession(session, el) {
-  document.querySelectorAll('#session-list .sess-item').forEach(e => e.classList.remove('active'));
-  el?.classList.add('active');
-  _activeSession = session;
-  _activeFile    = null;
-
-  const fl = $('file-list');
-  fl.innerHTML = '<span class="muted">Loading…</span>';
-  try {
-    const files = await fetch('/api/results?path=' + encodeURIComponent(session.path)).then(r => r.json());
-    if (!files.length) { fl.innerHTML = '<span class="muted">No CSV files in this session.</span>'; return; }
-    fl.innerHTML = '';
-    // Show path relative to session dir (e.g. "static/st-cowboy-27-self.csv")
-    const sessionPrefix = session.path.replace(/\\/g, '/').replace(/\/?$/, '/');
-    files.forEach(f => {
-      const relToSession = (f.path.replace(/\\/g, '/') + '').split(sessionPrefix)[1] || f.rel || f.name;
-      const d = document.createElement('div');
-      d.className = 'file-item';
-      d.innerHTML = `<span class="fi-name" title="${f.rel}">${relToSession}</span><span class="fi-sz">${fmtBytes(f.size)}</span>`;
-      d.addEventListener('click', () => selectFile(f, d));
-      fl.appendChild(d);
-    });
-    selectFile(files[0], fl.firstChild);
-  } catch { fl.innerHTML = '<span class="muted">Failed to load files.</span>'; }
-}
-
-async function selectFile(file, el) {
-  document.querySelectorAll('#file-list .file-item').forEach(e => e.classList.remove('active'));
-  el?.classList.add('active');
-  _activeFile = file;
-  $('results-status').textContent = 'Loading…';
-  try {
-    _currentRows = await fetch('/api/results/file?path=' + encodeURIComponent(file.path)).then(r => r.json());
-    drawResultsChart();
-    $('results-status').textContent = `${_currentRows.length} row(s) · ${file.rel || file.name}`;
-  } catch { $('results-status').textContent = 'Failed to load file.'; }
-}
-
-function drawResultsChart() {
-  if (!_currentRows.length) return;
-  const metric    = $('results-metric').value;
-  const showCi    = $('results-ci').checked;
-  let   chartType = $('results-chart-type').value;
-
-  // Auto: if multiple distinct request levels → line; otherwise bar
-  if (chartType === 'auto') {
-    const reqLevels = new Set(_currentRows.map(r => r['Total Requests']));
-    chartType = reqLevels.size > 1 ? 'line' : 'bar';
-  }
-  renderResultChart(_currentRows, metric, chartType, showCi);
-}
-
-$('results-metric').addEventListener('change',     drawResultsChart);
-$('results-chart-type').addEventListener('change', drawResultsChart);
-$('results-ci').addEventListener('change',         drawResultsChart);
-$('btn-refresh-results').addEventListener('click', loadSessions);
-
-// ═══════════════════════════════════════════════════════════════════════════
-// EXPORT TAB
-// ═══════════════════════════════════════════════════════════════════════════
-
-const EXPORT_METRICS = [
-  'Total Energy (J)', 'Avg Power (W)', 'Execution Time (s)', 'Requests/s',
-  'Successful Requests', 'Failed Requests', 'Avg CPU (%)', 'Peak CPU (%)',
-  'Avg Mem (MB)', 'Peak Mem (MB)',
-];
-const SIZE_PRESETS = {
-  column: { w: 320, h: 240 }, half: { w: 454, h: 340 },
-  full:   { w: 658, h: 440 }, a4:   { w: 1122, h: 794 }, screen: null,
-};
-
-function buildExportMetrics() {
-  const grid = $('exp-metric-grid');
-  grid.innerHTML = '';
-  EXPORT_METRICS.forEach(m => {
-    const lbl = document.createElement('label');
-    lbl.className = 'metric-chk';
-    const chk = document.createElement('input');
-    chk.type = 'checkbox'; chk.value = m; chk.checked = true;
-    lbl.appendChild(chk);
-    lbl.appendChild(document.createTextNode(m));
-    grid.appendChild(lbl);
-  });
-}
-$('btn-exp-selall').addEventListener('click',  () => document.querySelectorAll('#exp-metric-grid input').forEach(c => c.checked = true));
-$('btn-exp-selnone').addEventListener('click', () => document.querySelectorAll('#exp-metric-grid input').forEach(c => c.checked = false));
-
-async function loadExportSessions() {
-  const sel = $('exp-session');
-  const cur = sel.value;
-  const sessions = await fetch('/api/results/sessions').then(r => r.json()).catch(() => []);
-  sel.innerHTML = '<option value="">— select session —</option>';
-  sessions.forEach(s => {
-    const o = document.createElement('option');
-    o.value = s.path; o.textContent = s.name;
-    sel.appendChild(o);
-  });
-  if (cur) sel.value = cur;
-}
-
-$('exp-session').addEventListener('change', async () => {
-  const path = $('exp-session').value;
-  const fileSel = $('exp-file');
-  fileSel.innerHTML = '<option value="">— select file —</option>';
-  if (!path) return;
-  const files = await fetch('/api/results?path=' + encodeURIComponent(path)).then(r => r.json()).catch(() => []);
-  files.forEach(f => {
-    const o = document.createElement('option');
-    o.value = f.path; o.textContent = f.rel || f.name;
-    fileSel.appendChild(o);
-  });
-});
-
-$('btn-exp-chart').addEventListener('click', async () => {
-  const filePath = $('exp-file').value;
-  if (!filePath) { $('exp-status').textContent = 'Select a file first.'; return; }
-  const rows = await fetch('/api/results/file?path=' + encodeURIComponent(filePath)).then(r => r.json()).catch(() => []);
-  if (!rows.length) { $('exp-status').textContent = 'No data.'; return; }
-  const metrics = [...document.querySelectorAll('#exp-metric-grid input:checked')].map(c => c.value);
-  const format  = $('exp-format').value;
-  const sizeKey = $('exp-size').value;
-  const style   = $('exp-style').value;
-  const dpi     = parseInt($('exp-dpi').value) || 150;
-  $('exp-status').textContent = `Exporting ${metrics.length} chart(s)…`;
-  for (const m of metrics) {
-    await exportChart(rows, m, format, sizeKey, style, dpi);
-    await new Promise(r => setTimeout(r, 120));
-  }
-  $('exp-status').textContent = `Exported ${metrics.length} chart(s).`;
-});
-
-$('btn-exp-csv').addEventListener('click', async () => {
-  const filePath = $('exp-file').value;
-  if (!filePath) { $('exp-status').textContent = 'Select a file first.'; return; }
-  const rows = await fetch('/api/results/file?path=' + encodeURIComponent(filePath)).then(r => r.json()).catch(() => []);
-  if (!rows.length) return;
-  const headers = Object.keys(rows[0]);
-  const csv = [headers.join(','), ...rows.map(r => headers.map(h => JSON.stringify(r[h] ?? '')).join(','))].join('\n');
-  const a = document.createElement('a');
-  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-  a.download = filePath.split('/').pop();
-  a.click();
-  $('exp-status').textContent = 'CSV downloaded.';
-});
-
-async function exportChart(rows, metric, format, sizeKey, style, dpi) {
-  const preset = SIZE_PRESETS[sizeKey];
-  const w = preset ? Math.round(preset.w * dpi / 96) : 800;
-  const h = preset ? Math.round(preset.h * dpi / 96) : 500;
-  window._exportStyle = style === 'paper' ? 'paper' : 'color';
-  const canvas = document.createElement('canvas');
-  canvas.width = w; canvas.height = h;
-  const reqLevels = new Set(rows.map(r => r['Total Requests']));
-  const chartType = reqLevels.size > 1 ? 'line' : 'bar';
-  const chart = renderResultChart(rows, metric, chartType, false, canvas);
-  await new Promise(r => setTimeout(r, 80));
-  const fname = metric.replace(/[^a-z0-9]+/gi, '_').replace(/_+$/, '') + '.' + (format === 'pdf' ? 'png' : format);
-  const a = document.createElement('a');
-  a.download = fname;
-  a.href = canvas.toDataURL('image/png');
-  a.click();
-  if (chart) chart.destroy();
-  window._exportStyle = null;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// MODEL SELECTOR TAB
-// ═══════════════════════════════════════════════════════════════════════════
-//
-// Correct flow:
-//   - One benchmark session = one `make run` invocation
-//   - CV scoring needs ≥ 3 separate sessions of the same containers
-//   - Container names come from session CSVs (reliable), not JSON consumers (unreliable on cgroups v2)
-//   - JSON files for a session are found by timestamp: session dir name → start time;
-//     last CSV mtime → end time; JSON files whose filename timestamp falls in that window
-//
-
-let _msSessions   = [];   // available sessions (checkboxes)
-let _msContainer  = null; // selected container name
-let _msJsonFiles  = [];   // json files from selected sessions
-let _msCsvContainers = []; // containers found in selected sessions' CSVs
-
-async function loadMsSessions() {
-  const list = $('ms-session-list');
-  list.innerHTML = '<span class="muted">Loading…</span>';
-  try {
-    _msSessions = await fetch('/api/results/sessions').then(r => r.json());
-    if (!_msSessions.length) {
-      list.innerHTML = '<span class="muted">No sessions yet. Run a benchmark first.</span>';
-      return;
-    }
-    list.innerHTML = '';
-    _msSessions.forEach(s => {
-      const lbl = document.createElement('label');
-      lbl.style.cssText = 'display:flex;align-items:flex-start;gap:8px;padding:6px 4px;cursor:pointer;font-size:12px;border-radius:4px';
-      lbl.onmouseenter = () => lbl.style.background = 'var(--surf2)';
-      lbl.onmouseleave = () => lbl.style.background = '';
-      const chk = document.createElement('input');
-      chk.type = 'checkbox'; chk.value = JSON.stringify({ path: s.path, name: s.name });
-      chk.style.marginTop = '2px';
-      chk.addEventListener('change', updateMsSessionCount);
-      const info = document.createElement('span');
-      info.innerHTML = `<span style="font-family:var(--mono);color:var(--accent)">${s.name}</span>
-        <span style="color:var(--muted);margin-left:6px">${(s.types || []).join(' · ')}</span>`;
-      lbl.appendChild(chk); lbl.appendChild(info);
-      list.appendChild(lbl);
-    });
-  } catch { list.innerHTML = '<span class="muted">Failed to load sessions.</span>'; }
-}
-
-function updateMsSessionCount() {
-  const selected = [...document.querySelectorAll('#ms-session-list input:checked')].length;
-  const warn = $('ms-cv-warn');
-  const found = $('ms-sessions-found');
-  if (found) found.textContent = selected;
-  if (warn)  warn.style.display = selected > 0 && selected < 3 ? '' : 'none';
-}
-
-$('btn-ms-scan').addEventListener('click', async () => {
-  const checked = [...document.querySelectorAll('#ms-session-list input:checked')];
-  if (!checked.length) {
-    $('ms-scan-status').textContent = 'Select at least one session first.';
-    return;
-  }
-  const sessions = checked.map(c => JSON.parse(c.value));
-  const folder   = $('ms-json-folder').value.trim() || 'output';
-
-  $('ms-cont-card').style.display    = 'none';
-  $('ms-config-card').style.display  = 'none';
-  $('ms-results-card').style.display = 'none';
-  $('ms-scan-status').textContent    = 'Scanning…';
-  _msJsonFiles     = [];
-  _msCsvContainers = [];
-  _msContainer     = null;
-
-  try {
-    // Collect JSON files and container names from all selected sessions
-    const allJsonFiles = [];
-    const containerSet = new Set();
-
-    for (const s of sessions) {
-      // JSON files for this session (by timestamp window)
-      const files = await fetch(
-        '/api/json-for-session?session_path=' + encodeURIComponent(s.path) + '&folder=' + encodeURIComponent(folder)
-      ).then(r => r.json()).catch(() => []);
-      allJsonFiles.push(...files);
-
-      // Containers from this session's CSVs (reliable)
-      const conts = await fetch(
-        '/api/session-containers?session_path=' + encodeURIComponent(s.path)
-      ).then(r => r.json()).catch(() => []);
-      conts.forEach(c => containerSet.add(c));
+      flash('dashboard', 'Failed to load system info: ' + err.message, 'err');
     }
 
-    _msJsonFiles     = allJsonFiles;
-    _msCsvContainers = [...containerSet].sort();
+    this.loadRecentSessions();
+  },
 
-    $('ms-scan-status').textContent = `${sessions.length} session(s) · ${allJsonFiles.length} JSON file(s) · ${_msCsvContainers.length} container(s)`;
+  async loadRecentSessions() {
+    try {
+      const resultsDir = this.getResultsDir();
+      const sessions = await api('results/sessions?root=' + encodeURIComponent(resultsDir));
+      const tbody = $('recent-sessions');
+      if (!sessions.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="empty-state" style="font-style:italic">No benchmark sessions yet. Run a benchmark to get started.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = sessions.slice(0, 10).map(s => {
+        const date = s.mtime ? new Date(s.mtime * 1000).toLocaleString(undefined, {
+          month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+        }) : '--';
+        return `<tr>
+          <td style="font-family:var(--mono);font-size:.78rem">${escHtml(s.name)}</td>
+          <td>${(s.types || []).map(t => typeTag(t)).join(' ')}</td>
+          <td>${s.csv_count}</td>
+          <td style="font-size:.75rem;color:var(--text-dim)">${date}</td>
+          <td><button class="btn btn-sm" onclick="App.viewSession('${escHtml(s.path)}')">View</button></td>
+        </tr>`;
+      }).join('');
+    } catch (_) {}
+  },
 
-    if (!_msCsvContainers.length) {
-      $('ms-scan-status').textContent += ' — no containers found in session CSVs.';
-      return;
+  viewSession(path) {
+    $$('.tab-btn').forEach(b => b.classList.remove('active'));
+    $$('.tab-panel').forEach(p => p.classList.remove('active'));
+    $$('.tab-btn[data-tab="results"]')[0].classList.add('active');
+    $('tab-results').classList.add('active');
+    this.selectedSession = path;
+    this.loadSessions();
+    this.loadFilesForSession(path);
+  },
+
+  // ═══ CONFIGURATION ════════════════════════════════════════════════
+  async loadConfig() {
+    try {
+      const cfg = await api('config');
+      for (const [section, keys] of Object.entries(cfg)) {
+        for (const [key, value] of Object.entries(keys)) {
+          const el = $(`cfg-${section}-${key}`);
+          if (!el) continue;
+          if (el.type === 'checkbox') {
+            el.checked = value === 'true' || value === true;
+          } else {
+            el.value = value;
+          }
+        }
+      }
+      flash('config', 'Configuration loaded', 'ok');
+    } catch (err) {
+      flash('config', 'Failed to load config: ' + err.message, 'err');
     }
+  },
 
-    renderMsContainers(_msCsvContainers);
-    $('ms-cont-card').style.display   = '';
-    $('ms-config-card').style.display = '';
-    updateMsCmd();
-
-  } catch (e) {
-    $('ms-scan-status').textContent = 'Scan failed: ' + e;
-  }
-});
-
-function renderMsContainers(names) {
-  const list = $('ms-cont-list');
-  list.innerHTML = '';
-  names.forEach((name, i) => {
-    const d = document.createElement('div');
-    d.className = 'cont-item';
-    d.style.cursor = 'pointer';
-    // Infer type from name prefix (st- / dy- / ws-)
-    const typeClass = name.startsWith('st-') ? 's' : name.startsWith('dy-') ? 'd' : name.startsWith('ws-') ? 'w' : 's';
-    d.innerHTML = `<span class="badge badge-${typeClass}">${typeClass.toUpperCase()}</span><span class="ci-name">${name}</span>`;
-    if (i === 0) { d.style.borderColor = 'var(--accent)'; _msContainer = name; }
-    d.addEventListener('click', () => {
-      list.querySelectorAll('.cont-item').forEach(x => x.style.borderColor = '');
-      d.style.borderColor = 'var(--accent)';
-      _msContainer = name;
-      updateMsCmd();
-    });
-    list.appendChild(d);
-  });
-  $('ms-json-count').textContent = `${_msJsonFiles.length} JSON file(s) will be analysed.`;
-}
-
-function updateMsCmd() {
-  if (!_msContainer) return;
-  const metric = $('ms-metric').value;
-  const apply  = $('ms-apply').checked;
-  const folder = $('ms-json-folder').value.trim() || 'output';
-  let cmd = `python3 tools/model_selector.py --input "${folder}/*.json" --container ${_msContainer} --metric ${metric}`;
-  if (apply) cmd += ' --apply';
-  $('ms-cmd-preview').textContent = '$ ' + cmd;
-  _lastCmd = cmd;
-}
-
-$('ms-metric').addEventListener('change', updateMsCmd);
-$('ms-apply').addEventListener('change',  updateMsCmd);
-
-$('btn-ms-run').addEventListener('click', async () => {
-  if (!_msContainer || !_msJsonFiles.length) return;
-  const folder = $('ms-json-folder').value.trim() || 'output';
-  const body = {
-    container:  _msContainer,
-    metric:     $('ms-metric').value,
-    apply:      $('ms-apply').checked,
-    json_files: _msJsonFiles,
-  };
-
-  $('ms-results-card').style.display = 'none';
-  setTermState('visible');
-  setStatus('busy');
-  updateMsCmd();
-  tw('\n[GUI] Running model_selector.py…\n', 'cyan');
-  tw('[GUI] ' + $('ms-cmd-preview').textContent.replace(/^\$ /, '') + '\n', 'cyan');
-  $('term-proc').textContent = 'model-selector';
-
-  try {
-    const r = await fetch('/api/model-selector', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-    });
-    if (!r.ok) {
-      tw('[ERROR] ' + (await r.json()).detail + '\n', 'red');
-      setStatus('idle');
-      return;
-    }
-    const code = await waitForExit();
-    if (code === 0) {
-      const results = await fetch('/api/model-selector-results').then(r => r.ok ? r.json() : null).catch(() => null);
-      if (results?.rows?.length) {
-        renderMsResults(results);
-        $('ms-results-card').style.display = '';
-        $('ms-results-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  async saveConfig() {
+    const cfg = {};
+    for (const el of $$('[id^="cfg-"]')) {
+      const parts = el.id.replace('cfg-', '').split('-');
+      const key = parts.pop();
+      const section = parts.join('_');
+      if (!section || !key) continue;
+      if (!cfg[section]) cfg[section] = {};
+      if (el.type === 'checkbox') {
+        cfg[section][key] = el.checked ? 'true' : 'false';
+      } else {
+        cfg[section][key] = el.value;
       }
     }
-  } catch (e) {
-    tw('[ERROR] ' + e + '\n', 'red');
-    setStatus('idle');
-  }
-});
-
-function renderMsResults(data) {
-  const tbody    = $('ms-result-body');
-  tbody.innerHTML = '';
-  const maxScore = Math.max(...data.rows.map(r => r.score));
-  data.rows.forEach(row => {
-    const tr = document.createElement('tr');
-    if (row.winner) tr.className = 'winner';
-    const pct = maxScore > 0 ? Math.round(row.score / maxScore * 100) : 0;
-    tr.innerHTML = `
-      <td>${row.model}${row.winner ? ' ★' : ''}</td>
-      <td>${row.score.toFixed(4)}</td>
-      <td>${row.mean_w != null ? row.mean_w.toFixed(4) : '—'}</td>
-      <td>${row.kept_pct != null ? row.kept_pct.toFixed(1) + '%' : '—'}</td>
-      <td>${row.runs}</td>
-      <td><div class="ms-bar-wrap"><div class="ms-bar" style="width:${pct}%"></div></div></td>`;
-    tbody.appendChild(tr);
-  });
-  const label = data.metric === 'cv' ? 'CV (lower = more consistent)' : 'Error % (lower = better recovery)';
-  $('ms-winner-note').textContent = `Recommended: ${data.winner}  —  ${label}`;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// DIRECTORY BROWSER MODAL
-// ═══════════════════════════════════════════════════════════════════════════
-
-let _dirCallback = null;
-let _dirCurrent  = '';
-
-async function _dirBrowse(path) {
-  try {
-    const data = await fetch('/api/browse?path=' + encodeURIComponent(path || '.')).then(r => r.json());
-    _dirCurrent = data.path;
-    $('dir-modal-crumb').textContent = data.path;
-    const list = $('dir-modal-list');
-    list.innerHTML = '';
-    if (data.parent) {
-      const d = document.createElement('div');
-      d.className = 'dir-entry';
-      d.innerHTML = '<span class="de-icon">⬆</span><span class="de-name">..</span>';
-      d.addEventListener('click', () => _dirBrowse(data.parent));
-      list.appendChild(d);
+    try {
+      await apiPost('config', cfg);
+      flash('config', 'Configuration saved', 'ok');
+    } catch (err) {
+      flash('config', 'Save failed: ' + err.message, 'err');
     }
-    data.entries.filter(e => e.type === 'dir').forEach(e => {
-      const d = document.createElement('div');
-      d.className = 'dir-entry';
-      d.innerHTML = `<span class="de-icon">📁</span><span class="de-name">${e.name}</span>`;
-      d.addEventListener('dblclick', () => _dirBrowse(e.path));
-      d.addEventListener('click', () => {
-        list.querySelectorAll('.dir-entry').forEach(x => x.style.background = '');
-        d.style.background = 'var(--surf2)';
-        _dirCurrent = e.path;
-        $('dir-modal-crumb').textContent = e.path;
+  },
+
+  async runProfiler() {
+    try {
+      await apiPost('profile');
+      this.termShow();
+      flash('config', 'Profiler started — see terminal', 'ok');
+    } catch (err) {
+      flash('config', 'Profiler failed: ' + err.message, 'err');
+    }
+  },
+
+  async runModelSelector() {
+    try {
+      await apiPost('model-selector', { apply: true });
+      this.termShow();
+      flash('config', 'Model selector started — see terminal', 'ok');
+    } catch (err) {
+      flash('config', 'Model selector failed: ' + err.message, 'err');
+    }
+  },
+
+  // ═══ CONTAINERS ═══════════════════════════════════════════════════
+  async loadContainers() {
+    const benchDir = this.getBenchDir();
+    try {
+      const containers = await api('containers?bench_dir=' + encodeURIComponent(benchDir));
+      this.containers = containers;
+      $('container-count').textContent = containers.length;
+
+      const body = $('containers-body');
+      if (!containers.length) {
+        body.innerHTML = '<div class="empty-state">No containers found in benchmarks/</div>';
+        return;
+      }
+
+      const groups = {};
+      for (const c of containers) {
+        if (!groups[c.type]) groups[c.type] = [];
+        groups[c.type].push(c);
+      }
+
+      let html = '';
+      for (const [type, list] of Object.entries(groups).sort()) {
+        html += `<div class="container-group">`;
+        html += `<div class="container-group-header">${typeTag(type)} <span>${list.length} containers</span></div>`;
+        html += `<div class="container-list">`;
+        for (const c of list) {
+          html += `<div class="container-card">
+            <div class="c-name">${escHtml(c.name)}</div>
+            <div class="c-path">${escHtml(c.path)}</div>
+          </div>`;
+        }
+        html += `</div></div>`;
+      }
+      body.innerHTML = html;
+    } catch (err) {
+      flash('containers', 'Failed to load containers: ' + err.message, 'err');
+    }
+  },
+
+  async loadContainersForRun() {
+    if (this.containers.length === 0) await this.loadContainers();
+    const sel = $('run-server');
+    sel.innerHTML = '<option value="">-- select --</option>';
+    for (const c of this.containers) {
+      sel.innerHTML += `<option value="${escHtml(c.name)}">${escHtml(c.name)} (${c.type})</option>`;
+    }
+  },
+
+  // ═══ RUN BENCHMARKS ═══════════════════════════════════════════════
+  async startRun() {
+    const target = $('run-target').value;
+    const server = $('run-server').value;
+    const env = this.collectEnvVars();
+
+    if (target.includes('single') && !server) {
+      flash('run', 'Select a server for single-run targets', 'warn');
+      return;
+    }
+
+    try {
+      await apiPost('run', { target, server, env });
+      this.termShow();
+      this.startElapsed();
+      $('btn-run').disabled = true;
+      $('btn-stop').disabled = false;
+      $('run-status').style.display = '';
+      $('run-status-label').textContent = target + (server ? ':' + server : '');
+      flash('run', `Started: make ${target}` + (server ? ` SERVER=${server}` : ''), 'ok');
+    } catch (err) {
+      flash('run', 'Failed to start: ' + err.message, 'err');
+    }
+  },
+
+  collectEnvVars() {
+    const env = {};
+    const benchDir = this.getBenchDir();
+    if (benchDir && benchDir !== 'benchmarks') env.BENCH_DIR = benchDir;
+    const maxW = $('env-max-workers').value.trim();
+    if (maxW) env.HTTP_MAX_WORKERS = maxW;
+    const port = $('env-host-port').value.trim();
+    if (port && port !== '8001') env.HOST_PORT = port;
+    env.BENCH_MEASURE_QUIET = $('env-quiet').checked ? '1' : '0';
+    const hb = $('env-heartbeat').value.trim();
+    if (hb && hb !== '60') env.MEASURE_HEARTBEAT_SEC = hb;
+    return env;
+  },
+
+  async stopJob() {
+    try {
+      await apiPost('stop');
+      flash('run', 'Stop signal sent', 'ok');
+    } catch (err) {
+      flash('run', 'Stop failed: ' + err.message, 'err');
+    }
+  },
+
+  // ─── Queue ────────────────────────────────────────────────────────
+  addToQueue() {
+    const target = $('run-target').value;
+    const server = $('run-server').value;
+    const env = this.collectEnvVars();
+    const label = target + (server ? ':' + server : '');
+    this.queue.push({ target, server, env, label, status: 'pending' });
+    this.renderQueue();
+  },
+
+  addAllToQueue() {
+    const target = $('run-target').value;
+    const env = this.collectEnvVars();
+    for (const c of this.containers) {
+      this.queue.push({
+        target: target.includes('single') ? target : 'run-single-super-quick',
+        server: c.name, env, label: `run-single:${c.name}`, status: 'pending',
       });
-      list.appendChild(d);
-    });
-    if (!data.entries.filter(e => e.type === 'dir').length) {
-      list.innerHTML += '<div class="muted" style="padding:8px 10px">No subdirectories</div>';
     }
-  } catch (err) {
-    $('dir-modal-crumb').textContent = 'Error: ' + err;
-  }
-}
+    this.renderQueue();
+  },
 
-function openDirModal(initialPath, callback) {
-  _dirCallback = callback;
-  $('dir-modal').style.display = 'flex';
-  _dirBrowse(initialPath || '.');
-}
+  clearQueue() {
+    this.queue = [];
+    this.queueRunning = false;
+    this.renderQueue();
+  },
 
-$('dir-modal-select').addEventListener('click', () => {
-  $('dir-modal').style.display = 'none';
-  if (_dirCallback) { _dirCallback(_dirCurrent); _dirCallback = null; }
-});
-$('dir-modal-cancel').addEventListener('click', () => { $('dir-modal').style.display = 'none'; _dirCallback = null; });
-$('dir-modal-close').addEventListener('click',  () => { $('dir-modal').style.display = 'none'; _dirCallback = null; });
-$('dir-modal').addEventListener('click', e => { if (e.target === $('dir-modal')) { $('dir-modal').style.display = 'none'; _dirCallback = null; } });
+  renderQueue() {
+    const list = $('queue-list');
+    $('queue-count').textContent = this.queue.length;
+    if (!this.queue.length) {
+      list.innerHTML = '<li class="empty-state" style="font-size:.8rem">Queue is empty. Add runs above.</li>';
+      return;
+    }
+    list.innerHTML = this.queue.map((item, i) => {
+      const cls = item.status === 'running' ? 'q-running' : item.status === 'done' ? 'q-done' : '';
+      const icon = item.status === 'running' ? '<span class="spinner"></span>' :
+                   item.status === 'done' ? '&#9989;' :
+                   item.status === 'error' ? '&#10060;' : '&#9898;';
+      return `<li class="queue-item ${cls}">
+        ${icon}
+        <span class="q-label">${escHtml(item.label)}</span>
+        <span class="q-status">${item.status}</span>
+        <button class="q-remove" onclick="App.removeFromQueue(${i})" title="Remove">&#10005;</button>
+      </li>`;
+    }).join('');
+  },
 
-// BENCH_DIR browse button
-$('btn-bench-dir-browse').addEventListener('click', () => {
-  openDirModal($('env-bench-dir').value.trim() || '.', path => {
-    $('env-bench-dir').value = path;
-    loadRunContainers();
-    updateRunPreview();
-  });
-});
+  removeFromQueue(idx) {
+    this.queue.splice(idx, 1);
+    this.renderQueue();
+  },
 
-// ═══════════════════════════════════════════════════════════════════════════
-// QUEUE — Add all containers
-// ═══════════════════════════════════════════════════════════════════════════
+  async startQueue() {
+    if (this.queueRunning || !this.queue.length) return;
+    this.queueRunning = true;
+    this.advanceQueue(0);
+  },
 
-$('btn-q-add-all').addEventListener('click', () => {
-  const target = $('q-target').value;
-  if (target.includes('single') && _containers.length) {
-    _containers.forEach(c => _queue.push({ target, server: c.name, state: null }));
-  } else {
-    _queue.push({ target, server: '', state: null });
-  }
-  renderQueue();
-});
+  async advanceQueue(lastCode) {
+    const current = this.queue.find(q => q.status === 'running');
+    if (current) {
+      current.status = lastCode === 0 ? 'done' : 'error';
+    }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// RESULTS — custom folder path
-// ═══════════════════════════════════════════════════════════════════════════
+    const next = this.queue.find(q => q.status === 'pending');
+    if (!next) {
+      this.queueRunning = false;
+      this.renderQueue();
+      flash('run', 'Queue finished', 'ok');
+      return;
+    }
 
-async function loadFilesFromFolder(folderPath) {
-  const list = $('file-list');
-  list.innerHTML = '<span class="muted">Loading…</span>';
-  const sessionList = $('session-list');
-  sessionList.innerHTML = '<span class="muted" style="padding:4px 8px;display:block">Custom folder</span>';
-  try {
-    const files = await fetch('/api/results?path=' + encodeURIComponent(folderPath)).then(r => r.json());
-    if (!files.length) { list.innerHTML = '<span class="muted">No CSV files found.</span>'; return; }
-    list.innerHTML = '';
-    files.forEach(f => {
-      const d = document.createElement('div');
-      d.className = 'file-item';
-      d.innerHTML = `<span class="fi-name" title="${f.rel || f.path}">${f.rel || f.name}</span><span class="fi-sz">${fmtBytes(f.size)}</span>`;
-      d.addEventListener('click', () => selectFile(f, d));
-      list.appendChild(d);
+    next.status = 'running';
+    this.renderQueue();
+
+    try {
+      await apiPost('run', { target: next.target, server: next.server, env: next.env });
+      this.termShow();
+      this.startElapsed();
+      $('btn-run').disabled = true;
+      $('btn-stop').disabled = false;
+      $('run-status').style.display = '';
+      $('run-status-label').textContent = next.label;
+    } catch (err) {
+      next.status = 'error';
+      this.renderQueue();
+      setTimeout(() => this.advanceQueue(1), 500);
+    }
+  },
+
+  // ═══ RESULTS & CHARTS ════════════════════════════════════════════
+  async loadSessions() {
+    const resultsDir = this.getResultsDir();
+    try {
+      const sessions = await api('results/sessions?root=' + encodeURIComponent(resultsDir));
+      this.sessions = sessions;
+      const list = $('session-list');
+      if (!sessions.length) {
+        list.innerHTML = '<div class="empty-state">No benchmark runs found</div>';
+        return;
+      }
+      list.innerHTML = sessions.map(s => {
+        const sel = this.selectedSession === s.path ? 'selected' : '';
+        const types = (s.types || []).map(t => typeTag(t)).join(' ');
+        const date = s.mtime ? new Date(s.mtime * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+        return `<div class="file-tree-item ${sel}" onclick="App.selectSession('${escHtml(s.path)}')" title="${escHtml(s.path)}">
+          <span style="flex:1;display:flex;flex-direction:column;gap:2px">
+            <span style="font-weight:500">${escHtml(s.name)}</span>
+            <span style="font-size:.65rem;color:var(--text-dim)">${types} ${s.csv_count} files &middot; ${date}</span>
+          </span>
+        </div>`;
+      }).join('');
+    } catch (_) {}
+  },
+
+  selectSession(path) {
+    this.selectedSession = path;
+    this.selectedFiles = [];
+    this.csvCache = {};  // clear cache on session change
+    this.loadSessions();
+    this.loadFilesForSession(path);
+    // Reset chart and metric dropdown
+    $('chart-metric').innerHTML = '<option value="">-- load files first --</option>';
+    if (this.chart) { this.chart.destroy(); this.chart = null; }
+    $('chart-placeholder').style.display = '';
+  },
+
+  async loadFilesForSession(path) {
+    try {
+      const files = await api('results/files?path=' + encodeURIComponent(path));
+      this.renderFileList(files);
+    } catch (err) {
+      flash('results', 'Failed to load files: ' + err.message, 'err');
+    }
+  },
+
+  renderFileList(files) {
+    const list = $('file-list');
+    this._allFiles = files;  // store for select-all
+    if (!files.length) {
+      list.innerHTML = '<div class="empty-state">No CSV files found</div>';
+      $('file-sel-actions').style.display = 'none';
+      return;
+    }
+
+    $('file-sel-actions').style.display = '';
+    const groups = {};
+    for (const f of files) {
+      if (!groups[f.type]) groups[f.type] = [];
+      groups[f.type].push(f);
+    }
+
+    let html = '';
+    for (const [type, items] of Object.entries(groups).sort()) {
+      html += `<div class="file-tree-group">${type} <span style="font-weight:400;opacity:.6">(${items.length})</span></div>`;
+      for (const f of items) {
+        const sel = this.selectedFiles.some(sf => sf.path === f.path) ? 'selected' : '';
+        html += `<div class="file-tree-item ${sel}" onclick="App.toggleFile(${JSON.stringify(f).replace(/"/g, '&quot;')})">
+          ${typeTag(f.type)}
+          <span style="flex:1">${escHtml(f.stem)}</span>
+          <span style="font-size:.68rem;color:var(--text-dim)">${formatBytes(f.size)}</span>
+        </div>`;
+      }
+    }
+    list.innerHTML = html;
+  },
+
+  selectAllFiles() {
+    if (!this._allFiles) return;
+    this.selectedFiles = [...this._allFiles];
+    this.refreshFileListSelection();
+    this.updateMetricDropdown();
+  },
+
+  deselectAllFiles() {
+    this.selectedFiles = [];
+    this.refreshFileListSelection();
+    $('chart-metric').innerHTML = '<option value="">-- load files first --</option>';
+  },
+
+  toggleFile(file) {
+    const idx = this.selectedFiles.findIndex(f => f.path === file.path);
+    if (idx >= 0) {
+      this.selectedFiles.splice(idx, 1);
+    } else {
+      this.selectedFiles.push(file);
+    }
+    this.refreshFileListSelection();
+    this.updateMetricDropdown();
+    if (this.selectedFiles.length === 1) {
+      this.loadCsvTable(this.selectedFiles[0].path);
+    }
+  },
+
+  refreshFileListSelection() {
+    const items = $$('#file-list .file-tree-item');
+    items.forEach(item => {
+      const onclick = item.getAttribute('onclick');
+      const isSelected = this.selectedFiles.some(f => onclick && onclick.includes(f.path));
+      item.classList.toggle('selected', isSelected);
     });
-    selectFile(files[0], list.firstChild);
-  } catch { list.innerHTML = '<span class="muted">Failed to load folder.</span>'; }
-}
+    // Update selected count badge
+    const badge = $('file-sel-count');
+    if (badge) {
+      badge.textContent = this.selectedFiles.length || '';
+      badge.style.display = this.selectedFiles.length ? '' : 'none';
+    }
+  },
 
-$('btn-results-load').addEventListener('click', () => {
-  const p = $('results-custom-path').value.trim();
-  if (p) loadFilesFromFolder(p);
-  else   loadSessions();
+  async updateMetricDropdown() {
+    const sel = $('chart-metric');
+    if (!this.selectedFiles.length) {
+      sel.innerHTML = '<option value="">-- load files first --</option>';
+      return;
+    }
+
+    const allHeaders = new Set();
+    let sampleRows = [];
+    for (const f of this.selectedFiles) {
+      if (!this.csvCache[f.path]) {
+        try {
+          this.csvCache[f.path] = await api('results/csv?path=' + encodeURIComponent(f.path));
+        } catch (_) { continue; }
+      }
+      const data = this.csvCache[f.path];
+      (data.headers || []).forEach(h => allHeaders.add(h));
+      if (data.rows && data.rows.length) sampleRows = sampleRows.concat(data.rows.slice(0, 3));
+    }
+
+    const numeric = getNumericColumns([...allHeaders], sampleRows);
+    const prev = sel.value;
+    sel.innerHTML = numeric.map(h => `<option value="${escHtml(h)}">${escHtml(h)}</option>`).join('');
+    // Restore previous selection if still available
+    if (prev && numeric.includes(prev)) sel.value = prev;
+  },
+
+  async loadCsvTable(path) {
+    if (!this.csvCache[path]) {
+      try {
+        this.csvCache[path] = await api('results/csv?path=' + encodeURIComponent(path));
+      } catch (err) {
+        flash('results', 'Failed to load CSV: ' + err.message, 'err');
+        return;
+      }
+    }
+    const data = this.csvCache[path];
+    const headers = data.headers || [];
+    this._tableRows = data.rows || [];
+    this._tableHeaders = headers;
+    this._tableSortCol = null;
+    this._tableSortAsc = true;
+
+    $('dt-count').textContent = this._tableRows.length + ' rows';
+    this.renderTable(this._tableRows);
+  },
+
+  renderTable(rows) {
+    const headers = this._tableHeaders || [];
+    $('dt-head').innerHTML = '<tr>' + headers.map(h => {
+      const arrow = this._tableSortCol === h ? (this._tableSortAsc ? ' &#9650;' : ' &#9660;') : '';
+      return `<th style="cursor:pointer" onclick="App.sortTable('${escHtml(h)}')">${escHtml(h)}${arrow}</th>`;
+    }).join('') + '</tr>';
+    $('dt-body').innerHTML = rows.slice(0, 200).map(row =>
+      '<tr>' + headers.map(h => `<td>${escHtml(String(row[h] ?? ''))}</td>`).join('') + '</tr>'
+    ).join('');
+  },
+
+  sortTable(col) {
+    if (this._tableSortCol === col) {
+      this._tableSortAsc = !this._tableSortAsc;
+    } else {
+      this._tableSortCol = col;
+      this._tableSortAsc = true;
+    }
+    const sorted = [...(this._tableRows || [])].sort((a, b) => {
+      const va = a[col] ?? '', vb = b[col] ?? '';
+      const na = parseFloat(va), nb = parseFloat(vb);
+      if (!isNaN(na) && !isNaN(nb)) return this._tableSortAsc ? na - nb : nb - na;
+      return this._tableSortAsc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
+    });
+    this.renderTable(sorted);
+  },
+
+  // ─── Charting ─────────────────────────────────────────────────────
+  async plotChart() {
+    const metric = $('chart-metric').value;
+    const plotType = $('chart-type').value;
+    if (!metric || !this.selectedFiles.length) {
+      flash('results', 'Select files and a metric first', 'warn');
+      return;
+    }
+
+    // Show loading state
+    $('chart-placeholder').textContent = 'Loading data...';
+    $('chart-placeholder').style.display = '';
+
+    // Ensure all CSV data is loaded
+    for (const f of this.selectedFiles) {
+      if (!this.csvCache[f.path]) {
+        try {
+          this.csvCache[f.path] = await api('results/csv?path=' + encodeURIComponent(f.path));
+        } catch (_) { continue; }
+      }
+    }
+
+    if (this.chart) {
+      this.chart.destroy();
+      this.chart = null;
+    }
+    $('chart-placeholder').style.display = 'none';
+
+    const datasets = [];
+    let xLabel = 'Test parameter';
+    let isWebsocket = false;
+
+    for (let i = 0; i < this.selectedFiles.length; i++) {
+      const f = this.selectedFiles[i];
+      const data = this.csvCache[f.path];
+      if (!data) continue;
+      const headers = data.headers || [];
+      const rows = data.rows || [];
+      const color = COLORS[i % COLORS.length];
+
+      // Determine label
+      let label = f.stem;
+      if (headers.includes('Container Name') && rows.length && rows[0]['Container Name']) {
+        label = rows[0]['Container Name'];
+      }
+
+      // Determine x-axis
+      let xValues, yValues;
+      if (f.type === 'websocket') {
+        isWebsocket = true;
+        const subtype = detectWsSubtype(f.name, headers, rows);
+        const xcol = wsXaxisColumn(headers, rows, subtype);
+        if (xcol) {
+          xLabel = XAXIS_DISPLAY[xcol] || xcol;
+          xValues = rows.map(r => safeFloat(r[xcol]));
+        } else {
+          xValues = rows.map((_, idx) => idx + 1);
+        }
+      } else if (headers.includes('Total Requests')) {
+        xLabel = 'Total requests';
+        xValues = rows.map(r => safeFloat(r['Total Requests']));
+      } else {
+        xValues = rows.map((_, idx) => idx + 1);
+      }
+      yValues = rows.map(r => safeFloat(r[metric]));
+
+      datasets.push({
+        label,
+        data: xValues.map((x, idx) => ({ x, y: yValues[idx] })),
+        borderColor: color,
+        backgroundColor: color + '33',
+        pointBackgroundColor: color,
+        pointRadius: 3,
+        borderWidth: 2,
+        tension: 0.2,
+        fill: false,
+      });
+    }
+
+    if (plotType === 'heatmap') {
+      this.plotHeatmap(datasets, metric, xLabel);
+      return;
+    }
+
+    const chartType = plotType === 'bar' ? 'bar' : 'line';
+
+    if (plotType === 'bar') {
+      // For bar charts, group by x value
+      const allX = [...new Set(datasets.flatMap(ds => ds.data.map(p => p.x)))].sort((a, b) => a - b);
+      const barDatasets = datasets.map(ds => ({
+        label: ds.label,
+        data: allX.map(x => {
+          const pt = ds.data.find(p => p.x === x);
+          return pt ? pt.y : 0;
+        }),
+        backgroundColor: ds.borderColor + '99',
+        borderColor: ds.borderColor,
+        borderWidth: 1,
+      }));
+
+      this.chart = new Chart($('chart-canvas'), {
+        type: 'bar',
+        data: { labels: allX.map(String), datasets: barDatasets },
+        options: this.chartOptions(metric, xLabel),
+      });
+    } else {
+      this.chart = new Chart($('chart-canvas'), {
+        type: 'scatter',
+        data: { datasets },
+        options: {
+          ...this.chartOptions(metric, xLabel),
+          showLine: true,
+        },
+      });
+    }
+  },
+
+  themeColors() {
+    const s = getComputedStyle(document.documentElement);
+    return {
+      text:    s.getPropertyValue('--text').trim()      || '#d1d5db',
+      textDim: s.getPropertyValue('--text-dim').trim()   || '#8b8f98',
+      textHead:s.getPropertyValue('--text-head').trim()  || '#f3f4f6',
+      bgCard:  s.getPropertyValue('--bg-card').trim()    || '#181a20',
+      bgInput: s.getPropertyValue('--bg-input').trim()   || '#1e2028',
+      border:  s.getPropertyValue('--border').trim()     || '#2a2d35',
+      borderHi:s.getPropertyValue('--border-hi').trim()  || '#3a3d48',
+    };
+  },
+
+  chartOptions(metric, xLabel) {
+    const tc = this.themeColors();
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'top',
+          labels: { color: tc.text, font: { size: 11 }, boxWidth: 12 },
+        },
+        tooltip: {
+          backgroundColor: tc.bgInput,
+          titleColor: tc.textHead,
+          bodyColor: tc.text,
+          borderColor: tc.borderHi,
+          borderWidth: 1,
+        },
+      },
+      scales: {
+        x: {
+          title: { display: true, text: xLabel, color: tc.textDim },
+          ticks: { color: tc.textDim },
+          grid: { color: tc.border + '40' },
+        },
+        y: {
+          title: { display: true, text: metric, color: tc.textDim },
+          ticks: { color: tc.textDim },
+          grid: { color: tc.border + '40' },
+        },
+      },
+    };
+  },
+
+  plotHeatmap(datasets, metric, xLabel) {
+    if (!datasets.length) return;
+    const tc = this.themeColors();
+
+    const canvas = $('chart-canvas');
+    const ctx = canvas.getContext('2d');
+
+    // Collect all unique x values and labels
+    const labels = datasets.map(ds => ds.label);
+    const allX = [...new Set(datasets.flatMap(ds => ds.data.map(p => p.x)))].sort((a, b) => a - b);
+
+    // Build matrix
+    const matrix = datasets.map(ds => {
+      return allX.map(x => {
+        const pt = ds.data.find(p => p.x === x);
+        return pt ? pt.y : null;
+      });
+    });
+
+    // Find min/max for color scale
+    const flat = matrix.flat().filter(v => v !== null);
+    const minVal = Math.min(...flat);
+    const maxVal = Math.max(...flat);
+
+    // Set canvas size
+    const cellW = Math.max(40, Math.min(80, Math.floor(600 / allX.length)));
+    const cellH = Math.max(28, Math.min(50, Math.floor(300 / labels.length)));
+    const padL = 160, padT = 40, padR = 20, padB = 60;
+    canvas.width = padL + allX.length * cellW + padR;
+    canvas.height = padT + labels.length * cellH + padB;
+    canvas.style.width = canvas.width + 'px';
+    canvas.style.height = canvas.height + 'px';
+
+    ctx.fillStyle = tc.bgInput;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw cells
+    for (let row = 0; row < labels.length; row++) {
+      for (let col = 0; col < allX.length; col++) {
+        const val = matrix[row][col];
+        const x = padL + col * cellW;
+        const y = padT + row * cellH;
+
+        if (val === null) {
+          ctx.fillStyle = tc.border;
+        } else {
+          const ratio = maxVal === minVal ? 0.5 : (val - minVal) / (maxVal - minVal);
+          const r = Math.round(15 + ratio * 84);
+          const g = Math.round(23 + (1 - ratio) * 174);
+          const b = Math.round(212 - ratio * 80);
+          ctx.fillStyle = `rgb(${r},${g},${b})`;
+        }
+        ctx.fillRect(x + 1, y + 1, cellW - 2, cellH - 2);
+
+        if (val !== null) {
+          ctx.fillStyle = tc.textHead;
+          ctx.font = '10px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(val.toFixed(1), x + cellW / 2, y + cellH / 2);
+        }
+      }
+    }
+
+    // Y labels
+    ctx.fillStyle = tc.text;
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    for (let i = 0; i < labels.length; i++) {
+      const text = labels[i].length > 20 ? labels[i].substring(0, 18) + '..' : labels[i];
+      ctx.fillText(text, padL - 8, padT + i * cellH + cellH / 2);
+    }
+
+    // X labels
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    for (let i = 0; i < allX.length; i++) {
+      ctx.fillText(String(allX[i]), padL + i * cellW + cellW / 2, padT + labels.length * cellH + 8);
+    }
+
+    // Axis labels
+    ctx.fillStyle = tc.textDim;
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(xLabel, padL + (allX.length * cellW) / 2, canvas.height - 10);
+
+    ctx.save();
+    ctx.translate(12, padT + (labels.length * cellH) / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText(metric, 0, 0);
+    ctx.restore();
+
+    if (this.chart) { this.chart.destroy(); this.chart = null; }
+  },
+
+  exportChart() {
+    const canvas = $('chart-canvas');
+    const link = document.createElement('a');
+    const metric = $('chart-metric').value || 'chart';
+    const slug = metric.replace(/[^\w\s-]/g, '').trim().replace(/[\s-]+/g, '-').toLowerCase();
+    const ts = new Date().toISOString().slice(0, 16).replace(/[T:]/g, '-');
+    link.download = `${slug}-${this.selectedFiles.length}bench-${ts}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  },
+
+  async batchExport() {
+    if (!this.selectedFiles.length) {
+      flash('results', 'Select files first', 'warn');
+      return;
+    }
+    const metric = $('chart-metric').value;
+    if (!metric) {
+      flash('results', 'Select a metric first', 'warn');
+      return;
+    }
+
+    // Get all numeric metrics from selected files
+    const allHeaders = new Set();
+    let sampleRows = [];
+    for (const f of this.selectedFiles) {
+      if (!this.csvCache[f.path]) {
+        try { this.csvCache[f.path] = await api('results/csv?path=' + encodeURIComponent(f.path)); }
+        catch (_) { continue; }
+      }
+      const data = this.csvCache[f.path];
+      (data.headers || []).forEach(h => allHeaders.add(h));
+      if (data.rows) sampleRows = sampleRows.concat(data.rows.slice(0, 3));
+    }
+    const metrics = getNumericColumns([...allHeaders], sampleRows);
+
+    const plotType = $('chart-type').value;
+    let exported = 0;
+    const ts = new Date().toISOString().slice(0, 16).replace(/[T:]/g, '-');
+
+    flash('results', `Batch exporting ${metrics.length} charts...`, 'ok');
+
+    for (const m of metrics) {
+      $('chart-metric').value = m;
+      await this.plotChart();
+      // Small delay for render
+      await new Promise(r => setTimeout(r, 100));
+      const canvas = $('chart-canvas');
+      const slug = m.replace(/[^\w\s-]/g, '').trim().replace(/[\s-]+/g, '-').toLowerCase();
+      const link = document.createElement('a');
+      link.download = `${slug}-${this.selectedFiles.length}bench-${ts}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+      exported++;
+    }
+
+    // Restore original metric
+    $('chart-metric').value = metric;
+    await this.plotChart();
+    flash('results', `Batch export complete: ${exported} charts downloaded`, 'ok');
+  },
+
+  async loadCustomPath() {
+    const path = $('custom-results-path').value.trim();
+    if (!path) return;
+    try {
+      const files = await api('results/files?path=' + encodeURIComponent(path));
+      this.renderFileList(files);
+      flash('results', `Loaded ${files.length} files from custom path`, 'ok');
+    } catch (err) {
+      flash('results', 'Failed to load path: ' + err.message, 'err');
+    }
+  },
+
+  // ─── Browse modal ─────────────────────────────────────────────────
+  browseForField(fieldId) {
+    this.browseCallback = (path) => {
+      $(fieldId).value = path;
+      $(fieldId).dispatchEvent(new Event('change'));
+    };
+    const current = $(fieldId) ? $(fieldId).value || '.' : '.';
+    this.openBrowse(current || '.');
+  },
+
+  browseForResults() {
+    this.browseCallback = (path) => {
+      $('custom-results-path').value = path;
+    };
+    this.openBrowse('.');
+  },
+
+  async openBrowse(path) {
+    try {
+      const data = await api('browse?path=' + encodeURIComponent(path));
+      this.browseCurrent = data.path;
+      $('browse-path').textContent = data.path;
+
+      let html = '';
+      if (data.parent) {
+        html += `<div class="browse-item is-dir" onclick="App.openBrowse('${escHtml(data.parent)}')">
+          <span class="b-icon">&#128194;</span>
+          <span class="b-name">..</span>
+        </div>`;
+      }
+      for (const entry of data.entries) {
+        if (entry.type === 'dir') {
+          html += `<div class="browse-item is-dir" onclick="App.openBrowse('${escHtml(entry.path)}')">
+            <span class="b-icon">&#128194;</span>
+            <span class="b-name">${escHtml(entry.name)}</span>
+          </div>`;
+        } else {
+          html += `<div class="browse-item">
+            <span class="b-icon">&#128196;</span>
+            <span class="b-name">${escHtml(entry.name)}</span>
+            <span style="font-size:.7rem;color:var(--text-dim)">${entry.size ? formatBytes(entry.size) : ''}</span>
+          </div>`;
+        }
+      }
+      $('browse-body').innerHTML = html;
+      $('browse-modal').classList.add('open');
+    } catch (err) {
+      flash('results', 'Browse failed: ' + err.message, 'err');
+    }
+  },
+
+  browseSelect() {
+    if (this.browseCallback) {
+      this.browseCallback(this.browseCurrent);
+    }
+    this.closeBrowse();
+  },
+
+  closeBrowse() {
+    $('browse-modal').classList.remove('open');
+  },
+
+  // ═══ UTILITIES ════════════════════════════════════════════════════
+  async quickAction(target) {
+    try {
+      await apiPost('run', { target });
+      this.termShow();
+      flash('dashboard', `Started: make ${target}`, 'ok');
+      flash('utilities', `Started: make ${target}`, 'ok');
+    } catch (err) {
+      const msg = 'Failed: ' + err.message;
+      flash('dashboard', msg, 'err');
+      flash('utilities', msg, 'err');
+    }
+  },
+
+  async sudoAuth() {
+    try {
+      await apiPost('sudo-auth');
+      this.termShow();
+      flash('dashboard', 'Sudo auth started — enter password in terminal', 'ok');
+    } catch (err) {
+      flash('dashboard', 'Sudo auth failed: ' + err.message, 'err');
+    }
+  },
+
+  async cleanPort() {
+    const port = $('clean-port-input').value || '8001';
+    try {
+      await apiPost('run', { target: 'clean-port', env: { PORT: port } });
+      this.termShow();
+      flash('utilities', `Started: make clean-port PORT=${port}`, 'ok');
+    } catch (err) {
+      flash('utilities', 'Failed: ' + err.message, 'err');
+    }
+  },
+
+  confirmClean(target) {
+    this.confirmAction = target;
+    $('confirm-title').textContent = 'Confirm: make ' + target;
+    const msgs = {
+      'clean-benchmarks': 'This will remove the benchmarks/ folder. This cannot be undone.',
+      'clean-nuclear': 'This will remove results, Docker images, and benchmarks/. This cannot be undone.',
+      'clean-repo': 'This will run git clean -xfd and git reset --hard. All uncommitted work will be lost.',
+    };
+    $('confirm-msg').textContent = msgs[target] || 'Are you sure you want to run make ' + target + '?';
+    $('confirm-modal').classList.add('open');
+  },
+
+  closeConfirm() {
+    $('confirm-modal').classList.remove('open');
+    this.confirmAction = null;
+  },
+
+  async confirmOk() {
+    const target = this.confirmAction;
+    this.closeConfirm();
+    if (!target) return;
+
+    const env = {};
+    if (target === 'clean-benchmarks' || target === 'clean-nuclear') {
+      env.CONFIRM = '1';
+    }
+    try {
+      await apiPost('run', { target, env });
+      this.termShow();
+      flash('utilities', `Started: make ${target}`, 'ok');
+    } catch (err) {
+      flash('utilities', 'Failed: ' + err.message, 'err');
+    }
+  },
+
+  // ─── Logs ─────────────────────────────────────────────────────────
+  async loadLogs() {
+    try {
+      const logs = await api('logs');
+      const list = $('log-list');
+      if (!logs.length) {
+        list.innerHTML = '<div class="empty-state">No logs found</div>';
+        return;
+      }
+      list.innerHTML = logs.map(l => `
+        <div class="log-item" onclick="App.viewLog('${escHtml(l.path)}','${escHtml(l.name)}')">
+          <span class="log-name">${escHtml(l.name)}</span>
+          <span class="log-meta">${formatBytes(l.size)}</span>
+          <span class="log-meta">${formatDate(l.mtime)}</span>
+        </div>
+      `).join('');
+    } catch (_) {}
+  },
+
+  async viewLog(path, name) {
+    try {
+      const data = await api('logs/content?path=' + encodeURIComponent(path));
+      $('log-viewer-card').style.display = '';
+      $('log-viewer-title').textContent = name;
+      $('log-viewer-content').textContent = (data.lines || []).join('');
+      // Scroll to log viewer
+      $('log-viewer-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (err) {
+      flash('utilities', 'Failed to load log: ' + err.message, 'err');
+    }
+  },
+};
+
+// ─── Boot ──────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => App.init());
+
+// Close modals on Escape
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    App.closeBrowse();
+    App.closeConfirm();
+  }
 });
-
-$('results-custom-path').addEventListener('keydown', e => {
-  if (e.key === 'Enter') $('btn-results-load').click();
-});
-
-$('btn-results-browse').addEventListener('click', () => {
-  openDirModal($('results-custom-path').value.trim() || 'results', path => {
-    $('results-custom-path').value = path;
-    loadFilesFromFolder(path);
-  });
-});
-
-// ═══════════════════════════════════════════════════════════════════════════
-// INIT
-// ═══════════════════════════════════════════════════════════════════════════
-
-// Keep xterm sized correctly when the browser window is resized
-window.addEventListener('resize', () => {
-  if (_termState === 'visible') fitAddon.fit();
-});
-
-loadSysinfo();
-loadConfig();
-loadRunContainers();
-buildExportMetrics();
-renderQueue();
