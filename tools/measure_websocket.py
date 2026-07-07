@@ -56,9 +56,11 @@ def parse_args():
     parser.add_argument('--size_kb', type=int, default=64, help='Message size in KB (per message)')
     parser.add_argument('--rate', type=int, default=10, help='Messages per second per client (stream mode only)')
     parser.add_argument('--bursts', type=int, default=10, help='Number of bursts (burst mode only)')
-    parser.add_argument('--interval', type=float, default=1.0, help='Interval between bursts (seconds)')
+    parser.add_argument('--interval', type=float, default=0.0, help='Seconds to wait between bursts (default: 0 = back-to-back saturation burst, which matches "as fast as possible"; set higher for a paced burst)')
     parser.add_argument('--duration', type=int, default=30, help='Test duration in seconds (stream mode)')
     parser.add_argument('--url', type=str, default='ws://localhost:8001/ws', help='WebSocket server URL')
+    parser.add_argument('--repeat', type=int, default=1, help="Run the whole measurement this many times, then report the average and give-or-take (default: 1)")
+    parser.add_argument('--cooldown', type=int, default=30, help="Seconds to rest between repeated runs (default: 30; only applies when --repeat > 1)")
     return parser.parse_args()
 
 # =====================
@@ -322,12 +324,87 @@ async def echo_stream_client(url, size_kb, rate, duration, results, client_id, v
 # =====================
 # Main Benchmark Runner
 # =====================
+def run_repeats(args):
+    """Run the measurement args.repeat times, each as a fresh process, then summarise.
+
+    Each repeat is a separate run of this same script with --repeat 1, so it boots
+    its own container and does its own load. All runs append to one CSV, and then
+    tools/aggregate_repeats.py turns those rows into an average with a give-or-take.
+    """
+    import subprocess
+    import sys
+    import time as _time
+
+    container_name = args.container_name or args.server_image
+    if args.output_csv:
+        target_csv = args.output_csv
+    else:
+        os.makedirs("results_docker", exist_ok=True)
+        stamp = datetime.now().strftime("%Y-%m-%d-%H%M%S")
+        target_csv = os.path.join("results_docker", f"{container_name}_{stamp}_repeats.csv")
+
+    base_cmd = [
+        sys.executable, os.path.abspath(__file__),
+        "--server_image", args.server_image,
+        "--pattern", args.pattern,
+        "--port_mapping", args.port_mapping,
+        "--network", args.network,
+        "--mode", args.mode,
+        "--clients", str(args.clients),
+        "--size_kb", str(args.size_kb),
+        "--rate", str(args.rate),
+        "--bursts", str(args.bursts),
+        "--interval", str(args.interval),
+        "--duration", str(args.duration),
+        "--url", args.url,
+        "--measurement_type", args.measurement_type,
+        "--output_csv", target_csv,
+        "--repeat", "1",
+    ]
+    if args.container_name:
+        base_cmd += ["--container_name", args.container_name]
+    if args.verbose:
+        base_cmd += ["--verbose"]
+
+    logger.warning("Repeat mode: %d runs of '%s' (%s, %d clients), %ds cooldown -> %s",
+                   args.repeat, container_name, args.pattern, args.clients, args.cooldown, target_csv)
+    completed = 0
+    any_failed = False
+    for i in range(1, args.repeat + 1):
+        logger.warning("--- run %d of %d ---", i, args.repeat)
+        if subprocess.run(base_cmd).returncode != 0:
+            logger.error("Run %d failed; stopping repeats.", i)
+            any_failed = True
+            break
+        completed += 1
+        if i < args.repeat and args.cooldown > 0:
+            logger.warning("Cooldown %ds ...", args.cooldown)
+            _time.sleep(args.cooldown)
+
+    if completed == 0:
+        logger.error("No runs completed; nothing to summarise.")
+        return 1
+    aggregator = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aggregate_repeats.py")
+    logger.warning("Summarising %d run(s) ...", completed)
+    rc = subprocess.run([sys.executable, aggregator, target_csv]).returncode
+    if rc != 0:
+        logger.error("Summary step failed (aggregate_repeats.py exited %d).", rc)
+        return 1
+    return 1 if any_failed else 0
+
+
 def main():
     args = parse_args()
     if args.verbose:
         logger.setLevel(logging.DEBUG)
     elif is_measure_quiet():
         logger.setLevel(logging.WARNING)
+
+    # Repeat mode: run the whole measurement several times (each a fresh run), then
+    # summarise with tools/aggregate_repeats.py. Handled before any measurement setup.
+    if args.repeat and args.repeat > 1:
+        sys.exit(run_repeats(args))
+
     check_prerequisites()  # Exit with error before any measurement if anything is missing
     scaphandre_path = get_binary_path("scaphandre")
     docker_path = get_binary_path("docker")

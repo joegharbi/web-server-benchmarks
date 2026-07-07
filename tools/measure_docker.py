@@ -362,6 +362,70 @@ def print_summary(results, total_energy, average_power, runtime, requests_per_se
     logger.info(f"JSON: {output_json}, CSV: {output_csv or f'results_docker/{container_name}.csv'}")
     logger.info("==========================")
 
+
+def run_repeats(args):
+    """Run the measurement args.repeat times, each as a fresh process, then summarise.
+
+    Each repeat is a separate run of this same script with --repeat 1, so it boots
+    its own container and does its own load. All runs append to one CSV, and then
+    tools/aggregate_repeats.py turns those rows into an average with a give-or-take.
+    """
+    import subprocess
+    import sys
+
+    container_name = args.container_name or args.server_image
+    if args.output_csv:
+        target_csv = args.output_csv
+    else:
+        os.makedirs("results_docker", exist_ok=True)
+        stamp = datetime.now().strftime("%Y-%m-%d-%H%M%S")
+        target_csv = os.path.join("results_docker", f"{container_name}_{stamp}_repeats.csv")
+
+    base_cmd = [
+        sys.executable, os.path.abspath(__file__),
+        "--server_image", args.server_image,
+        "--port_mapping", args.port_mapping,
+        "--network", args.network,
+        "--num_requests", str(args.num_requests),
+        "--output_csv", target_csv,
+        "--repeat", "1",
+    ]
+    if args.container_name:
+        base_cmd += ["--container_name", args.container_name]
+    if args.max_workers is not None:
+        base_cmd += ["--max_workers", str(args.max_workers)]
+    if args.measurement_type:
+        base_cmd += ["--measurement_type", args.measurement_type]
+    if args.verbose:
+        base_cmd += ["--verbose"]
+
+    logger.warning("Repeat mode: %d runs of '%s', %ds cooldown between runs -> %s",
+                   args.repeat, container_name, args.cooldown, target_csv)
+    completed = 0
+    any_failed = False
+    for i in range(1, args.repeat + 1):
+        logger.warning("--- run %d of %d ---", i, args.repeat)
+        if subprocess.run(base_cmd).returncode != 0:
+            logger.error("Run %d failed; stopping repeats.", i)
+            any_failed = True
+            break
+        completed += 1
+        if i < args.repeat and args.cooldown > 0:
+            logger.warning("Cooldown %ds ...", args.cooldown)
+            time.sleep(args.cooldown)
+
+    if completed == 0:
+        logger.error("No runs completed; nothing to summarise.")
+        return 1
+    aggregator = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aggregate_repeats.py")
+    logger.warning("Summarising %d run(s) ...", completed)
+    rc = subprocess.run([sys.executable, aggregator, target_csv]).returncode
+    if rc != 0:
+        logger.error("Summary step failed (aggregate_repeats.py exited %d).", rc)
+        return 1
+    return 1 if any_failed else 0
+
+
 def main():
     parser = argparse.ArgumentParser(description="Measure web server energy with Scaphandre in Docker")
     parser.add_argument('--server_image', type=str, required=True, help="Docker image of the server (e.g., nginx-deb)")
@@ -374,12 +438,19 @@ def main():
     parser.add_argument('--output_json', type=str, default=None, help="Output JSON file path (default: output/<timestamp>.json)")
     parser.add_argument('--verbose', action='store_true', help="Enable verbose logging")
     parser.add_argument('--measurement_type', type=str, default=None, help="Type of measurement (static, dynamic, etc.)")
-    
+    parser.add_argument('--repeat', type=int, default=1, help="Run the whole measurement this many times, then report the average and give-or-take (default: 1)")
+    parser.add_argument('--cooldown', type=int, default=30, help="Seconds to rest between repeated runs (default: 30; only applies when --repeat > 1)")
+
     args = parser.parse_args()
     if args.verbose:
         logger.setLevel(logging.DEBUG)
     elif is_measure_quiet():
         logger.setLevel(logging.WARNING)
+
+    # Repeat mode: run the whole measurement several times (each a fresh run), then
+    # summarise with tools/aggregate_repeats.py. Handled before any measurement setup.
+    if args.repeat and args.repeat > 1:
+        sys.exit(run_repeats(args))
 
     check_prerequisites()  # Exit with error before any measurement if anything is missing
     scaphandre_path = get_binary_path("scaphandre")
